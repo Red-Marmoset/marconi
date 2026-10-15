@@ -15,6 +15,7 @@ namespace Test
         RmVncTest::RunStreamTests();
         RmVncTest::RunHandshakeTests();
         RmVncTest::RunClientTests();
+        RmVncTest::RunDecoderTests();
 
         printf("\nRmVncCoreTest: %d passed, %d failed\n", RmVncTest::g_passed, RmVncTest::g_failed);
         return RmVncTest::g_failed;

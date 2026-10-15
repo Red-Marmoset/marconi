@@ -13,6 +13,16 @@ namespace RmVnc
             {
             case Encoding::Raw:
                 return std::make_unique<RawDecoder>();
+            case Encoding::CopyRect:
+                return std::make_unique<CopyRectDecoder>();
+            case Encoding::Rre:
+                return std::make_unique<RreDecoder>();
+            case Encoding::Hextile:
+                return std::make_unique<HextileDecoder>();
+            case Encoding::Zrle:
+                return std::make_unique<ZrleDecoder>();
+            case Encoding::Tight:
+                return std::make_unique<TightDecoder>();
             default:
                 return nullptr;
             }

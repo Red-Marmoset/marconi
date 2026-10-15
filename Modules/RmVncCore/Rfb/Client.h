@@ -28,6 +28,8 @@ namespace RmVnc
             Credentials credentials; // used first; the listener is asked if they're missing or rejected
             int connectTimeoutMs = 10000;
             std::vector<int32_t> encodings; // preferred order; empty = rmvnc's default order
+            int compressLevel = 2;           // Tight/ZRLE zlib level hint 0-9, or -1 to let the server choose
+            int qualityLevel = 8;            // Tight JPEG quality 0-9, or -1 for lossless only (no JPEG)
         };
 
         struct DisconnectInfo

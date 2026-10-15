@@ -159,7 +159,19 @@ namespace RmVnc
                 m_decoders[Encoding::Raw] = CreateDecoder(Encoding::Raw);
                 encodings.push_back(Encoding::Raw);
             }
+            if (m_decoders.count(Encoding::Tight) != 0 || m_decoders.count(Encoding::Zrle) != 0)
+            {
+                if (options.compressLevel >= 0 && options.compressLevel <= 9)
+                {
+                    encodings.push_back(Encoding::CompressLevel0 + options.compressLevel);
+                }
+                if (m_decoders.count(Encoding::Tight) != 0 && options.qualityLevel >= 0 && options.qualityLevel <= 9)
+                {
+                    encodings.push_back(Encoding::QualityLevel0 + options.qualityLevel);
+                }
+            }
             encodings.push_back(Encoding::DesktopSize);
+            encodings.push_back(Encoding::LastRect);
 
             OutBuffer setEncodings;
             setEncodings.U8(ClientMessage::SetEncodings).Padding(1).U16(static_cast<uint16_t>(encodings.size()));

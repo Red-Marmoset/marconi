@@ -98,4 +98,5 @@ namespace RmVncTest
     void RunStreamTests();
     void RunHandshakeTests();
     void RunClientTests();
+    void RunDecoderTests();
 } // namespace RmVncTest
