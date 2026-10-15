@@ -91,6 +91,7 @@ namespace RmVncTest
 
     RmVnc::Rfb::Bytes HexBytes(const std::string& hex);
 
+    void RunAddressTests();
     void RunStreamTests();
     void RunHandshakeTests();
     void RunClientTests();
