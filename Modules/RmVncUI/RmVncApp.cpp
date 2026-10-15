@@ -3,7 +3,7 @@
 
 #include "RmVncApp.h"
 
-#include "ConnectFrame.h"
+#include "ConnectionsFrame.h"
 #include "ViewerFrame.h"
 
 #include <RmVncCore/Address.h>
@@ -71,7 +71,7 @@ namespace RmVncUI
             wxMessageBox(wxString::FromUTF8(error), "rmvnc", wxOK | wxICON_WARNING);
         }
 
-        ConnectFrame* frame = new ConnectFrame();
+        ConnectionsFrame* frame = new ConnectionsFrame();
         frame->Show(true);
         SetTopWindow(frame);
         return true;

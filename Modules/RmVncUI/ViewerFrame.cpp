@@ -3,6 +3,7 @@
 
 #include "ViewerFrame.h"
 
+#include "ConnectionStore.h"
 #include "CredentialsDialog.h"
 #include "VncCanvas.h"
 
@@ -170,9 +171,11 @@ namespace RmVncUI
     void ViewerFrame::AskForCredentials(bool needUsername)
     {
         SetStatusText("Waiting for credentials...");
+        bool offerRemember = !m_options.savedId.empty() && ConnectionStore::IsKeychainAvailable();
         CredentialsDialog dialog(this, GetServerDisplayName(), needUsername,
-                                 wxString::FromUTF8(m_options.credentials.username));
+                                 wxString::FromUTF8(m_options.credentials.username), offerRemember);
         bool accepted = dialog.ShowModal() == wxID_OK;
+        m_rememberPassword = accepted && dialog.GetRemember();
         {
             std::lock_guard<std::mutex> lock(m_credentialsMutex);
             m_credentialsAccepted = accepted;
@@ -194,6 +197,20 @@ namespace RmVncUI
         m_desktopName = wxString::FromUTF8(serverInit.name);
         SetTitle(GetServerDisplayName() + " - rmvnc");
         m_connected = true;
+        if (m_rememberPassword)
+        {
+            // Only now: the credentials are known to work.
+            m_rememberPassword = false;
+            ConnectionStore store;
+            SavedConnection saved;
+            if (store.Load(m_options.savedId, saved))
+            {
+                saved.username = wxString::FromUTF8(m_options.credentials.username);
+                saved.rememberPassword = true;
+                store.Save(saved);
+                store.SavePassword(saved.id, saved.username, wxString::FromUTF8(m_options.credentials.password));
+            }
+        }
         m_canvas->SetDesktopSize(serverInit.width, serverInit.height);
         FitToDesktop();
         if (m_options.fullScreen && !IsFullScreen())
@@ -425,8 +442,24 @@ namespace RmVncUI
         SetStatusText(status);
     }
 
+    void ViewerFrame::SaveSettings()
+    {
+        // Reopening a saved connection restores how this window was left.
+        ConnectionStore store;
+        SavedConnection saved;
+        if (m_options.savedId.empty() || !store.Load(m_options.savedId, saved))
+        {
+            return;
+        }
+        saved.scaleMode = m_canvas->GetScaleMode();
+        saved.viewOnly = m_canvas->IsViewOnly();
+        saved.clipboard = m_clipboard.IsEnabled();
+        store.Save(saved);
+    }
+
     void ViewerFrame::OnClose(wxCloseEvent& event)
     {
+        SaveSettings();
         {
             std::lock_guard<std::mutex> lock(m_credentialsMutex);
             m_closing = true;

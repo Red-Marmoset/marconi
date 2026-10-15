@@ -27,6 +27,7 @@ namespace RmVncUI
         bool viewOnly = false;
         bool fullScreen = false;
         bool clipboard = true;
+        wxString savedId; // the saved connection this window was opened from, if any
     };
 
     class ViewerFrame : public wxFrame, private RmVnc::Rfb::ClientListener
@@ -65,6 +66,7 @@ namespace RmVncUI
         void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
         void ToggleFullScreen();
         void SyncClipboardToServer();
+        void SaveSettings();
 
         ViewerOptions m_options;
         RmVnc::Rfb::Client m_client;
@@ -74,6 +76,7 @@ namespace RmVncUI
         wxString m_desktopName;
         wxSize m_connectedSize;
         bool m_connected = false;
+        bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in
 
         // Hand-off between the connection thread (waiting for credentials) and the UI thread (asking the user).
         std::mutex m_credentialsMutex;

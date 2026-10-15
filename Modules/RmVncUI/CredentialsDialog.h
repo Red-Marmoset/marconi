@@ -5,6 +5,7 @@
 
 #include <wx/dialog.h>
 
+class wxCheckBox;
 class wxTextCtrl;
 
 namespace RmVncUI
@@ -12,13 +13,17 @@ namespace RmVncUI
     class CredentialsDialog : public wxDialog
     {
     public:
-        CredentialsDialog(wxWindow* parent, const wxString& serverName, bool needUsername, const wxString& username);
+        // `offerRemember` adds a "Remember password" check box (for saved connections, when a keychain exists).
+        CredentialsDialog(wxWindow* parent, const wxString& serverName, bool needUsername, const wxString& username,
+                          bool offerRemember);
 
         wxString GetUsername() const;
         wxString GetPassword() const;
+        bool GetRemember() const;
 
     private:
         wxTextCtrl* m_username = nullptr;
         wxTextCtrl* m_password = nullptr;
+        wxCheckBox* m_remember = nullptr;
     };
 } // namespace RmVncUI

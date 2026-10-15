@@ -4,6 +4,7 @@
 #include "CredentialsDialog.h"
 
 #include <wx/button.h>
+#include <wx/checkbox.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
@@ -11,7 +12,7 @@
 namespace RmVncUI
 {
     CredentialsDialog::CredentialsDialog(wxWindow* parent, const wxString& serverName, bool needUsername,
-                                         const wxString& username)
+                                         const wxString& username, bool offerRemember)
         : wxDialog(parent, wxID_ANY, "Authentication required")
     {
         wxBoxSizer* outer = new wxBoxSizer(wxVERTICAL);
@@ -31,6 +32,12 @@ namespace RmVncUI
         m_password = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, FromDIP(wxSize(240, -1)),
                                     wxTE_PASSWORD);
         grid->Add(m_password, 1, wxEXPAND);
+        if (offerRemember)
+        {
+            grid->AddSpacer(0);
+            m_remember = new wxCheckBox(this, wxID_ANY, "Remember password in the system keychain");
+            grid->Add(m_remember);
+        }
         outer->Add(grid, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(12));
 
         outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(12));
@@ -55,5 +62,10 @@ namespace RmVncUI
     wxString CredentialsDialog::GetPassword() const
     {
         return m_password->GetValue();
+    }
+
+    bool CredentialsDialog::GetRemember() const
+    {
+        return m_remember != nullptr && m_remember->GetValue();
     }
 } // namespace RmVncUI
