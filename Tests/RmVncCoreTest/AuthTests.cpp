@@ -7,7 +7,10 @@
 #include <RmVncCore/Rfb/Messages.h>
 #include <RmVncCore/Text.h>
 
+#include <Crypto/Crypto.h>
 #include <Crypto/Software/Software.h>
+
+#include <cstring>
 
 namespace RmVncTest
 {
@@ -16,6 +19,35 @@ namespace RmVncTest
     namespace
     {
         const Rfb::Bytes kChallenge = HexBytes("00112233445566778899aabbccddeeff");
+
+        // RFC 2409 Oakley group 2, the 1024-bit MODP group (macOS uses a 128 byte key too).
+        const Rfb::Bytes kArdPrime = HexBytes(
+            "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+            "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
+            "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF");
+
+        // Server side of Apple authentication: decrypts what the client sent and returns username/password.
+        bool DecryptArd(const Crypto::DhKeyPair& serverKeys, const Rfb::Bytes& response, std::string& username,
+                        std::string& password)
+        {
+            if (response.size() != 128 + kArdPrime.size())
+            {
+                return false;
+            }
+            Rfb::Bytes clientPublic(response.begin() + 128, response.end());
+            Rfb::Bytes secret;
+            if (!Crypto::DhComputeSharedSecret(kArdPrime, serverKeys, clientPublic, secret))
+            {
+                return false;
+            }
+            uint8_t key[16];
+            Crypto::Md5(secret.data(), secret.size(), key);
+            uint8_t plain[128];
+            Crypto::Aes128EcbDecrypt(key, response.data(), plain, 128);
+            username.assign(reinterpret_cast<const char*>(plain), strnlen(reinterpret_cast<const char*>(plain), 64));
+            password.assign(reinterpret_cast<const char*>(plain + 64), strnlen(reinterpret_cast<const char*>(plain + 64), 64));
+            return true;
+        }
 
         // Starts a client against a fake server and runs the server side up to sending the VNC auth challenge.
         struct AuthSession
@@ -76,6 +108,73 @@ namespace RmVncTest
             const uint8_t shortKey[8] = {0x86, 0x46, 0xc6, 0, 0, 0, 0, 0}; // "abc"
             Crypto::Software::DesEcbEncrypt(shortKey, kChallenge.data(), expected.data(), 16);
             CHECK(Rfb::ComputeVncAuthResponse("abc", kChallenge) == expected);
+        });
+
+        RunTest("Apple ARD response decrypts to the credentials", []() {
+            Crypto::DhKeyPair server;
+            CHECK(Crypto::DhGenerateKeyPair(kArdPrime, {0, 2}, server));
+            Rfb::Credentials credentials{"sem", "hunter2-\xc3\xa9"}; // non-ASCII is sent as Latin-1
+            Rfb::Bytes response = Rfb::ComputeArdResponse({0, 2}, kArdPrime, server.publicKey, credentials);
+            std::string username;
+            std::string password;
+            CHECK(DecryptArd(server, response, username, password));
+            CHECK(username == "sem");
+            CHECK(password == "hunter2-\xe9");
+
+            // Two responses differ (fresh DH keys and random padding) but both decrypt.
+            Rfb::Bytes again = Rfb::ComputeArdResponse({0, 2}, kArdPrime, server.publicKey, credentials);
+            CHECK(again != response);
+            CHECK(DecryptArd(server, again, username, password) && username == "sem");
+
+            // A degenerate server key is rejected.
+            bool threw = false;
+            try
+            {
+                Rfb::ComputeArdResponse({0, 2}, kArdPrime, Rfb::Bytes{1}, credentials);
+            }
+            catch (const Rfb::RfbError&)
+            {
+                threw = true;
+            }
+            CHECK(threw);
+        });
+
+        RunTest("Apple ARD against the fake server, preferred over VNC auth", []() {
+            FakeServer server;
+            RecordingListener listener;
+            listener.credentialsToGive = {"admin", "secret"};
+            Rfb::Client client(listener);
+            Rfb::ConnectionOptions options;
+            options.host = "127.0.0.1";
+            options.port = server.GetPort();
+            client.Connect(options);
+            CHECK(server.AcceptClient());
+            server.SendString("RFB 003.889\n");
+            CHECK(server.In().ReadString(12) == "RFB 003.008\n");
+            Rfb::OutBuffer types;
+            types.U8(2).U8(Rfb::SecurityType::VncAuth).U8(Rfb::SecurityType::AppleRemoteDesktop);
+            server.Send(types);
+            CHECK(server.In().U8() == Rfb::SecurityType::AppleRemoteDesktop);
+
+            Crypto::DhKeyPair keys;
+            CHECK(Crypto::DhGenerateKeyPair(kArdPrime, {0, 2}, keys));
+            Rfb::OutBuffer parameters;
+            parameters.U16(2).U16(static_cast<uint16_t>(kArdPrime.size()));
+            parameters.Append(kArdPrime.data(), kArdPrime.size());
+            parameters.Append(keys.publicKey.data(), keys.publicKey.size());
+            server.Send(parameters);
+
+            Rfb::Bytes response = server.In().ReadBytes(128 + kArdPrime.size());
+            std::string username;
+            std::string password;
+            CHECK(DecryptArd(keys, response, username, password));
+            CHECK(username == "admin" && password == "secret");
+            CHECK(listener.credentialRequests == 1 && listener.lastNeedUsername);
+
+            Rfb::OutBuffer ok;
+            ok.U32(0);
+            server.Send(ok);
+            CHECK(server.In().U8() == 1); // ClientInit
         });
 
         RunTest("VNC auth with a supplied password", []() {
