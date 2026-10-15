@@ -43,5 +43,10 @@ namespace Marconi
             int m_height = 0;
             std::vector<uint32_t> m_pixels;
         };
+
+        // True when the picture is really an image twice as wide laid out at this width: every other row comes
+        // from the other half, so rows two apart match better than neighbouring rows (natural pictures are the
+        // other way round). macOS sends such pictures while switching display modes.
+        bool LooksRowInterleaved(const Framebuffer& framebuffer);
     } // namespace Rfb
 } // namespace Marconi

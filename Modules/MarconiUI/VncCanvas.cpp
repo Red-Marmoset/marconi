@@ -61,6 +61,14 @@ namespace MarconiUI
         ApplyDesktopSize(width, height);
     }
 
+    bool VncCanvas::FramebufferIsBlack()
+    {
+        // A Mac's screen goes dark for a moment while it switches modes; that's not a picture worth showing.
+        Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+        std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
+        return framebuffer.IsBlack();
+    }
+
     void VncCanvas::ApplyDesktopSize(int width, int height)
     {
         m_pending = false;
@@ -172,7 +180,7 @@ namespace MarconiUI
             // wxRegion::Contains(rect) reports partial overlap as inside on Windows, so check what's missing.
             wxRegion missing{wxRect(m_pendingSize)};
             missing.Subtract(m_coverage);
-            if (missing.IsEmpty())
+            if (missing.IsEmpty() && !FramebufferIsBlack())
             {
                 ApplyDesktopSize(m_pendingSize.x, m_pendingSize.y); // copies the whole framebuffer
             }

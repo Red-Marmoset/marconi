@@ -62,6 +62,7 @@ namespace MarconiUI
 
     private:
         void ApplyDesktopSize(int width, int height);
+        bool FramebufferIsBlack();
         void UpdateLayout();
         void ApplyCursor();
         void CopyFromFramebuffer(const Marconi::Rfb::Rect& rect);

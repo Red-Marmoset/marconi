@@ -127,6 +127,8 @@ namespace Marconi
             void HandleExtendedDesktopSize(InStream& in, const Rect& rect);
             void ResizeFramebuffer(int width, int height);
             bool IsAppleMislabelledRect(const Rect& rect);
+            bool IsWholeDesktop(const Rect& rect);
+            bool DecodeAppleWholeDesktop(Decoder& decoder, InStream& in, const Rect& rect);
             Rect DecodeAppleMislabelledRect(Decoder& decoder, InStream& in, const Rect& rect);
 
             ClientListener& m_listener;

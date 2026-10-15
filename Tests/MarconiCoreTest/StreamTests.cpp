@@ -111,6 +111,33 @@ namespace MarconiTest
             CHECK(fb.IsBlack()); // old pixels belong to a different layout
         });
 
+        RunTest("Row-interleaved pictures are recognised", []() {
+            // A smooth gradient laid out normally, and the same twice-as-wide picture laid out at half width.
+            const int width = 320;
+            const int height = 200;
+            auto pixel = [](int x, int y) {
+                return static_cast<uint32_t>(((x / 3) & 0xFF) << 16 | ((y / 2) & 0xFF) << 8 | ((x + y) / 5 & 0xFF));
+            };
+            Rfb::Framebuffer natural;
+            natural.Resize(width, height);
+            Rfb::Framebuffer garbled;
+            garbled.Resize(width, height);
+            for (int y = 0; y < height; ++y)
+            {
+                for (int x = 0; x < width; ++x)
+                {
+                    natural.Row(y)[x] = pixel(x, y);
+                    // Row y of the garbled picture is half of row y / 2 of a picture 2 * width wide.
+                    garbled.Row(y)[x] = pixel(x + (y % 2) * width, y / 2) ^ (y % 2 ? 0x404040u : 0);
+                }
+            }
+            CHECK(!Rfb::LooksRowInterleaved(natural));
+            CHECK(Rfb::LooksRowInterleaved(garbled));
+            Rfb::Framebuffer black;
+            black.Resize(width, height);
+            CHECK(!Rfb::LooksRowInterleaved(black));
+        });
+
         RunTest("Rect union", []() {
             Rfb::Rect a{0, 0, 2, 2};
             Rfb::Rect b{5, 1, 1, 4};

@@ -72,9 +72,16 @@ namespace MarconiUI
             event.Skip();
             if (event.GetActive())
             {
+                // Windows gives an activated frame the focus itself, and keys typed at the frame go nowhere:
+                // every activation must hand the keyboard back to the desktop.
+                CallAfter([this]() { m_canvas->SetFocus(); });
                 // Someone who copied something locally is probably about to paste it remotely.
                 CallAfter([this]() { SyncClipboardToServer(); });
             }
+        });
+        Bind(wxEVT_SET_FOCUS, [this](wxFocusEvent& event) {
+            event.Skip();
+            CallAfter([this]() { m_canvas->SetFocus(); });
         });
         Bind(wxEVT_CLOSE_WINDOW, &ViewerFrame::OnClose, this);
         m_pictureTimer.SetOwner(this);
@@ -606,6 +613,8 @@ namespace MarconiUI
 
     void ViewerFrame::OnCommand(wxCommandEvent& event)
     {
+        // A toolbar click may have taken the keyboard focus; give it back to the desktop afterwards.
+        CallAfter([this]() { m_canvas->SetFocus(); });
         switch (event.GetId())
         {
         case ID_SCALE_FIT:

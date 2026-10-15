@@ -412,6 +412,15 @@ namespace Marconi
                     dirty.push_back(DecodeAppleMislabelledRect(*found->second, in, rect));
                     continue;
                 }
+                if (m_appleServer && encoding != Encoding::CopyRect && IsWholeDesktop(rect))
+                {
+                    if (!DecodeAppleWholeDesktop(*found->second, in, rect))
+                    {
+                        continue; // garbled: leave the framebuffer as it was
+                    }
+                    dirty.push_back(rect);
+                    continue;
+                }
                 found->second->Decode(in, rect, m_framebuffer);
                 dirty.push_back(rect);
             }
@@ -493,6 +502,30 @@ namespace Marconi
             LOG_INFO("Rfb", "Repaired a mislabelled %dx%d rectangle from macOS into the top %d rows", rect.width,
                      rect.height, rows);
             return {0, 0, width, rows};
+        }
+
+        bool Client::IsWholeDesktop(const Rect& rect)
+        {
+            std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+            return rect.x == 0 && rect.y == 0 && rect.width == m_framebuffer.GetWidth() &&
+                   rect.height == m_framebuffer.GetHeight();
+        }
+
+        bool Client::DecodeAppleWholeDesktop(Decoder& decoder, InStream& in, const Rect& rect)
+        {
+            // macOS sometimes sends a picture of the whole (scaled) desktop that really holds consecutive rows of
+            // its full-resolution screen. Decode into a scratch image and only keep it if it isn't garbled.
+            Framebuffer scratch;
+            scratch.Resize(rect.width, rect.height);
+            decoder.Decode(in, {0, 0, rect.width, rect.height}, scratch);
+            if (LooksRowInterleaved(scratch))
+            {
+                LOG_INFO("Rfb", "Discarded a garbled %dx%d picture from macOS", rect.width, rect.height);
+                return false;
+            }
+            std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+            m_framebuffer.PutPixels(rect, scratch.Row(0), static_cast<size_t>(rect.width));
+            return true;
         }
 
         void Client::ResizeFramebuffer(int width, int height)

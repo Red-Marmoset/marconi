@@ -4,6 +4,7 @@
 #include <MarconiCore/Rfb/Framebuffer.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 
 namespace Marconi
@@ -32,6 +33,38 @@ namespace Marconi
                 }
             }
             return true;
+        }
+
+        bool LooksRowInterleaved(const Framebuffer& framebuffer)
+        {
+            const int width = framebuffer.GetWidth();
+            const int height = framebuffer.GetHeight();
+            if (width < 64 || height < 64)
+            {
+                return false;
+            }
+            auto channelDifference = [](uint32_t a, uint32_t b) {
+                return std::abs(static_cast<int>(a & 0xFF) - static_cast<int>(b & 0xFF)) +
+                       std::abs(static_cast<int>((a >> 8) & 0xFF) - static_cast<int>((b >> 8) & 0xFF)) +
+                       std::abs(static_cast<int>((a >> 16) & 0xFF) - static_cast<int>((b >> 16) & 0xFF));
+            };
+            // Sample every 7th row and every 3rd column; plenty for a picture this size.
+            long long neighbour = 0;
+            long long twoApart = 0;
+            for (int y = 0; y + 2 < height; y += 7)
+            {
+                const uint32_t* row = framebuffer.Row(y);
+                const uint32_t* next = framebuffer.Row(y + 1);
+                const uint32_t* afterNext = framebuffer.Row(y + 2);
+                for (int x = 0; x < width; x += 3)
+                {
+                    neighbour += channelDifference(row[x], next[x]);
+                    twoApart += channelDifference(row[x], afterNext[x]);
+                }
+            }
+            // Measured on a Mac's lock screen: natural pictures 4.6 vs 6.9 per channel, garbled ones 12.9 vs 0.45.
+            const long long samples = static_cast<long long>((height - 2 + 6) / 7) * ((width + 2) / 3) * 3;
+            return neighbour > 3 * twoApart && neighbour > samples; // and at least 1 per channel on average
         }
 
         bool Framebuffer::Contains(const Rect& rect) const
