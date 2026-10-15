@@ -3,22 +3,28 @@
 
 #pragma once
 
+#include "VncCanvas.h"
+
 #include <RmVncCore/Address.h>
 #include <RmVncCore/Rfb/Client.h>
 
 #include <wx/frame.h>
+
+class wxMenu;
+class wxToolBar;
 
 #include <condition_variable>
 #include <mutex>
 
 namespace RmVncUI
 {
-    class VncCanvas;
-
     struct ViewerOptions
     {
         RmVnc::Address address;
         RmVnc::Rfb::Credentials credentials;
+        ScaleMode scaleMode = ScaleMode::Fit;
+        bool viewOnly = false;
+        bool fullScreen = false;
     };
 
     class ViewerFrame : public wxFrame, private RmVnc::Rfb::ClientListener
@@ -46,10 +52,23 @@ namespace RmVncUI
         void OnClose(wxCloseEvent& event);
         wxString GetServerDisplayName() const;
 
+        // Toolbar / F8 menu
+        void CreateToolbar();
+        wxMenu* CreateMenu() const;
+        void ShowMenu();
+        void OnCommand(wxCommandEvent& event);
+        void UpdateControls();
+        void UpdateStatus();
+        void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
+        void ToggleFullScreen();
+
         ViewerOptions m_options;
         RmVnc::Rfb::Client m_client;
         VncCanvas* m_canvas = nullptr;
+        wxToolBar* m_toolBar = nullptr;
         wxString m_desktopName;
+        wxSize m_connectedSize;
+        bool m_connected = false;
 
         // Hand-off between the connection thread (waiting for credentials) and the UI thread (asking the user).
         std::mutex m_credentialsMutex;

@@ -1,14 +1,18 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Scrollable view of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer
+// View of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer: actual size with
+// scrollbars, or scaled to fit the window
 
 #include "VncCanvas.h"
 
+#include "ScaledBlit.h"
+
+#include <wx/cursor.h>
 #include <wx/dcclient.h>
 #include <wx/dcmemory.h>
-#include <wx/cursor.h>
 #include <wx/image.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 namespace RmVncUI
@@ -26,6 +30,7 @@ namespace RmVncUI
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         SetScrollRate(16, 16);
         Bind(wxEVT_PAINT, &VncCanvas::OnPaint, this);
+        Bind(wxEVT_SIZE, &VncCanvas::OnSize, this);
 
         for (const wxEventTypeTag<wxMouseEvent>& type : {wxEVT_LEFT_DOWN, wxEVT_LEFT_UP, wxEVT_LEFT_DCLICK, wxEVT_MIDDLE_DOWN, wxEVT_MIDDLE_UP,
                                  wxEVT_MIDDLE_DCLICK, wxEVT_RIGHT_DOWN, wxEVT_RIGHT_UP, wxEVT_RIGHT_DCLICK, wxEVT_MOTION})
@@ -39,6 +44,220 @@ namespace RmVncUI
         Bind(wxEVT_KEY_UP, &VncCanvas::OnKeyUp, this);
         Bind(wxEVT_CHAR, &VncCanvas::OnChar, this);
         Bind(wxEVT_KILL_FOCUS, &VncCanvas::OnKillFocus, this);
+        UpdateLayout();
+    }
+
+    void VncCanvas::SetDesktopSize(int width, int height)
+    {
+        m_desktopSize = wxSize(width, height);
+        if (width > 0 && height > 0)
+        {
+            m_backing = wxBitmap(width, height, 24);
+            wxMemoryDC dc(m_backing);
+            dc.SetBackground(*wxBLACK_BRUSH);
+            dc.Clear();
+        }
+        else
+        {
+            m_backing = wxBitmap();
+        }
+        UpdateLayout();
+        CopyFromFramebuffer({0, 0, width, height});
+        Refresh(false);
+    }
+
+    void VncCanvas::SetScaleMode(ScaleMode mode)
+    {
+        m_scaleMode = mode;
+        UpdateLayout();
+        Refresh(false);
+    }
+
+    void VncCanvas::UpdateLayout()
+    {
+        wxSize client = GetClientSize();
+        if (m_scaleMode == ScaleMode::Actual || m_desktopSize.x <= 0 || m_desktopSize.y <= 0)
+        {
+            m_scale = 1.0;
+            m_offset = wxPoint();
+            ShowScrollbars(wxSHOW_SB_DEFAULT, wxSHOW_SB_DEFAULT);
+            SetVirtualSize(m_desktopSize);
+        }
+        else
+        {
+            ShowScrollbars(wxSHOW_SB_NEVER, wxSHOW_SB_NEVER);
+            SetVirtualSize(client);
+            Scroll(0, 0);
+            client = GetClientSize();
+            m_scale = std::min(static_cast<double>(client.x) / m_desktopSize.x,
+                               static_cast<double>(client.y) / m_desktopSize.y);
+            m_scale = std::max(m_scale, 0.01);
+            wxSize shown(static_cast<int>(std::lround(m_desktopSize.x * m_scale)),
+                         static_cast<int>(std::lround(m_desktopSize.y * m_scale)));
+            m_offset = wxPoint((client.x - shown.x) / 2, (client.y - shown.y) / 2);
+        }
+        ApplyCursor();
+    }
+
+    void VncCanvas::OnSize(wxSizeEvent& event)
+    {
+        UpdateLayout();
+        Refresh(false);
+        event.Skip();
+    }
+
+    wxPoint VncCanvas::ToDesktop(const wxPoint& windowPoint) const
+    {
+        wxPoint point;
+        if (m_scaleMode == ScaleMode::Actual)
+        {
+            point = CalcUnscrolledPosition(windowPoint);
+        }
+        else
+        {
+            point.x = static_cast<int>(std::floor((windowPoint.x - m_offset.x) / m_scale));
+            point.y = static_cast<int>(std::floor((windowPoint.y - m_offset.y) / m_scale));
+        }
+        point.x = std::clamp(point.x, 0, std::max(m_desktopSize.x - 1, 0));
+        point.y = std::clamp(point.y, 0, std::max(m_desktopSize.y - 1, 0));
+        return point;
+    }
+
+    wxRect VncCanvas::ToWindow(const wxRect& desktopRect) const
+    {
+        if (m_scaleMode == ScaleMode::Actual)
+        {
+            return wxRect(CalcScrolledPosition(desktopRect.GetPosition()), desktopRect.GetSize());
+        }
+        // Round outwards so the repainted area always covers every partially affected screen pixel.
+        int left = m_offset.x + static_cast<int>(std::floor(desktopRect.x * m_scale)) - 1;
+        int top = m_offset.y + static_cast<int>(std::floor(desktopRect.y * m_scale)) - 1;
+        int right = m_offset.x + static_cast<int>(std::ceil((desktopRect.x + desktopRect.width) * m_scale)) + 1;
+        int bottom = m_offset.y + static_cast<int>(std::ceil((desktopRect.y + desktopRect.height) * m_scale)) + 1;
+        return wxRect(left, top, right - left, bottom - top);
+    }
+
+    void VncCanvas::UpdateRects(const std::vector<RmVnc::Rfb::Rect>& rects)
+    {
+        for (const RmVnc::Rfb::Rect& rect : rects)
+        {
+            CopyFromFramebuffer(rect);
+            RefreshRect(ToWindow(wxRect(rect.x, rect.y, rect.width, rect.height)), false);
+        }
+    }
+
+    void VncCanvas::CopyFromFramebuffer(const RmVnc::Rfb::Rect& requested)
+    {
+        if (!m_backing.IsOk())
+        {
+            return;
+        }
+        // The framebuffer may have been resized by the connection thread since this update was queued; clip to
+        // both sizes so we never read or draw outside either.
+        RmVnc::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+        wxImage image;
+        RmVnc::Rfb::Rect rect = requested;
+        {
+            std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
+            int right = std::min({rect.Right(), framebuffer.GetWidth(), m_backing.GetWidth()});
+            int bottom = std::min({rect.Bottom(), framebuffer.GetHeight(), m_backing.GetHeight()});
+            rect.x = std::max(rect.x, 0);
+            rect.y = std::max(rect.y, 0);
+            rect.width = right - rect.x;
+            rect.height = bottom - rect.y;
+            if (rect.IsEmpty())
+            {
+                return;
+            }
+
+            image.Create(rect.width, rect.height, false);
+            unsigned char* out = image.GetData();
+            for (int y = 0; y < rect.height; ++y)
+            {
+                const uint32_t* row = framebuffer.Row(rect.y + y) + rect.x;
+                for (int x = 0; x < rect.width; ++x)
+                {
+                    uint32_t pixel = row[x];
+                    *out++ = static_cast<unsigned char>(pixel >> 16);
+                    *out++ = static_cast<unsigned char>(pixel >> 8);
+                    *out++ = static_cast<unsigned char>(pixel);
+                }
+            }
+        }
+
+        wxMemoryDC dc(m_backing);
+        dc.DrawBitmap(wxBitmap(image), rect.x, rect.y);
+    }
+
+    void VncCanvas::OnPaint(wxPaintEvent&)
+    {
+        wxPaintDC dc(this);
+        DoPrepareDC(dc);
+        wxSize client = GetClientSize();
+        wxRect visible(CalcUnscrolledPosition(wxPoint(0, 0)), client);
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.SetBrush(wxBrush(kOutsideColour));
+
+        if (m_scaleMode == ScaleMode::Actual)
+        {
+            if (m_backing.IsOk())
+            {
+                wxMemoryDC source(m_backing);
+                for (wxRegionIterator it(GetUpdateRegion()); it; ++it)
+                {
+                    wxRect area = it.GetRect();
+                    area.SetPosition(CalcUnscrolledPosition(area.GetPosition()));
+                    wxRect inside = area.Intersect(wxRect(m_desktopSize));
+                    if (!inside.IsEmpty())
+                    {
+                        dc.Blit(inside.GetPosition(), inside.GetSize(), &source, inside.GetPosition());
+                    }
+                }
+            }
+            // Fill whatever part of the window lies outside the desktop.
+            if (visible.GetRight() >= m_desktopSize.x)
+            {
+                dc.DrawRectangle(m_desktopSize.x, visible.y, visible.GetRight() - m_desktopSize.x + 1, visible.height);
+            }
+            if (visible.GetBottom() >= m_desktopSize.y)
+            {
+                dc.DrawRectangle(visible.x, m_desktopSize.y, std::min(visible.width, m_desktopSize.x - visible.x),
+                                 visible.GetBottom() - m_desktopSize.y + 1);
+            }
+            return;
+        }
+
+        // Fit mode: no scrolling. Map each damaged window area back to the desktop pixels covering it (plus a
+        // pixel of margin for the filter) and stretch those; the clip region keeps neighbouring draws seamless.
+        wxRect shown(m_offset, wxSize(static_cast<int>(std::lround(m_desktopSize.x * m_scale)),
+                                      static_cast<int>(std::lround(m_desktopSize.y * m_scale))));
+        if (m_backing.IsOk())
+        {
+            wxMemoryDC source(m_backing);
+            for (wxRegionIterator it(GetUpdateRegion()); it; ++it)
+            {
+                wxRect area = it.GetRect().Intersect(shown);
+                if (area.IsEmpty())
+                {
+                    continue;
+                }
+                int x0 = std::max(0, static_cast<int>(std::floor((area.x - m_offset.x) / m_scale)) - 1);
+                int y0 = std::max(0, static_cast<int>(std::floor((area.y - m_offset.y) / m_scale)) - 1);
+                int x1 = std::min(m_desktopSize.x, static_cast<int>(std::ceil((area.GetRight() + 1 - m_offset.x) / m_scale)) + 1);
+                int y1 = std::min(m_desktopSize.y, static_cast<int>(std::ceil((area.GetBottom() + 1 - m_offset.y) / m_scale)) + 1);
+                wxRect sourceRect(x0, y0, x1 - x0, y1 - y0);
+                wxRect destinationRect(m_offset.x + static_cast<int>(std::lround(x0 * m_scale)),
+                                       m_offset.y + static_cast<int>(std::lround(y0 * m_scale)),
+                                       static_cast<int>(std::lround(x1 * m_scale)) - static_cast<int>(std::lround(x0 * m_scale)),
+                                       static_cast<int>(std::lround(y1 * m_scale)) - static_cast<int>(std::lround(y0 * m_scale)));
+                ScaledBlit(dc, destinationRect, source, sourceRect);
+            }
+        }
+        // Letterbox bars.
+        dc.DrawRectangle(0, 0, client.x, shown.y);
+        dc.DrawRectangle(0, shown.GetBottom() + 1, client.x, client.y - shown.GetBottom() - 1);
+        dc.DrawRectangle(0, shown.y, shown.x, shown.height);
+        dc.DrawRectangle(shown.GetRight() + 1, shown.y, client.x - shown.GetRight() - 1, shown.height);
     }
 
     void VncCanvas::SetViewOnly(bool viewOnly)
@@ -68,6 +287,18 @@ namespace RmVncUI
     {
         m_remoteCursor = cursor;
         m_hasRemoteCursor = true;
+        m_cursorScale = 0.0; // force rebuild
+        ApplyCursor();
+    }
+
+    void VncCanvas::ApplyCursor()
+    {
+        if (!m_hasRemoteCursor || m_cursorScale == m_scale)
+        {
+            return;
+        }
+        m_cursorScale = m_scale;
+        const RmVnc::Rfb::CursorShape& cursor = m_remoteCursor;
         if (cursor.width <= 0 || cursor.height <= 0)
         {
             SetCursor(wxCursor(wxCURSOR_BLANK));
@@ -86,17 +317,21 @@ namespace RmVncUI
             rgb[i * 3 + 2] = static_cast<unsigned char>(pixel);
             alpha[i] = static_cast<unsigned char>(pixel >> 24);
         }
-        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, std::clamp(cursor.hotspotX, 0, cursor.width - 1));
-        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, std::clamp(cursor.hotspotY, 0, cursor.height - 1));
+        int hotspotX = std::clamp(cursor.hotspotX, 0, cursor.width - 1);
+        int hotspotY = std::clamp(cursor.hotspotY, 0, cursor.height - 1);
+        // Match the cursor to the desktop's displayed size (but never smaller than half size, so it stays usable).
+        double scale = std::max(m_scale, 0.5);
+        if (std::abs(scale - 1.0) > 0.01)
+        {
+            int width = std::max(1, static_cast<int>(std::lround(cursor.width * scale)));
+            int height = std::max(1, static_cast<int>(std::lround(cursor.height * scale)));
+            image.Rescale(width, height, wxIMAGE_QUALITY_HIGH);
+            hotspotX = std::min(static_cast<int>(hotspotX * scale), width - 1);
+            hotspotY = std::min(static_cast<int>(hotspotY * scale), height - 1);
+        }
+        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, hotspotX);
+        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, hotspotY);
         SetCursor(wxCursor(image));
-    }
-
-    wxPoint VncCanvas::ToDesktop(const wxPoint& windowPoint) const
-    {
-        wxPoint point = CalcUnscrolledPosition(windowPoint);
-        point.x = std::clamp(point.x, 0, std::max(m_desktopSize.x - 1, 0));
-        point.y = std::clamp(point.y, 0, std::max(m_desktopSize.y - 1, 0));
-        return point;
     }
 
     void VncCanvas::SendPointer(const wxPoint& windowPoint)
@@ -176,6 +411,11 @@ namespace RmVncUI
 
     void VncCanvas::OnKeyDown(wxKeyEvent& event)
     {
+        if (event.GetKeyCode() == WXK_F8 && event.GetModifiers() == wxMOD_NONE && m_menuKeyHandler)
+        {
+            m_menuKeyHandler();
+            return;
+        }
         if (m_viewOnly || !m_keys.OnKeyDown(event))
         {
             event.Skip(); // let wxEVT_CHAR deliver the produced character
@@ -202,115 +442,5 @@ namespace RmVncUI
     {
         ReleaseInput();
         event.Skip();
-    }
-
-    void VncCanvas::SetDesktopSize(int width, int height)
-    {
-        m_desktopSize = wxSize(width, height);
-        if (width > 0 && height > 0)
-        {
-            m_backing = wxBitmap(width, height, 24);
-            wxMemoryDC dc(m_backing);
-            dc.SetBackground(*wxBLACK_BRUSH);
-            dc.Clear();
-        }
-        else
-        {
-            m_backing = wxBitmap();
-        }
-        SetVirtualSize(m_desktopSize);
-        CopyFromFramebuffer({0, 0, width, height});
-        Refresh(false);
-    }
-
-    void VncCanvas::UpdateRects(const std::vector<RmVnc::Rfb::Rect>& rects)
-    {
-        for (const RmVnc::Rfb::Rect& rect : rects)
-        {
-            CopyFromFramebuffer(rect);
-            wxPoint topLeft = CalcScrolledPosition(wxPoint(rect.x, rect.y));
-            RefreshRect(wxRect(topLeft, wxSize(rect.width, rect.height)), false);
-        }
-    }
-
-    void VncCanvas::CopyFromFramebuffer(const RmVnc::Rfb::Rect& requested)
-    {
-        if (!m_backing.IsOk())
-        {
-            return;
-        }
-        // The framebuffer may have been resized by the connection thread since this update was queued; clip to
-        // both sizes so we never read or draw outside either.
-        RmVnc::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
-        wxImage image;
-        RmVnc::Rfb::Rect rect = requested;
-        {
-            std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
-            int right = std::min({rect.Right(), framebuffer.GetWidth(), m_backing.GetWidth()});
-            int bottom = std::min({rect.Bottom(), framebuffer.GetHeight(), m_backing.GetHeight()});
-            rect.x = std::max(rect.x, 0);
-            rect.y = std::max(rect.y, 0);
-            rect.width = right - rect.x;
-            rect.height = bottom - rect.y;
-            if (rect.IsEmpty())
-            {
-                return;
-            }
-
-            image.Create(rect.width, rect.height, false);
-            unsigned char* out = image.GetData();
-            for (int y = 0; y < rect.height; ++y)
-            {
-                const uint32_t* row = framebuffer.Row(rect.y + y) + rect.x;
-                for (int x = 0; x < rect.width; ++x)
-                {
-                    uint32_t pixel = row[x];
-                    *out++ = static_cast<unsigned char>(pixel >> 16);
-                    *out++ = static_cast<unsigned char>(pixel >> 8);
-                    *out++ = static_cast<unsigned char>(pixel);
-                }
-            }
-        }
-
-        wxMemoryDC dc(m_backing);
-        dc.DrawBitmap(wxBitmap(image), rect.x, rect.y);
-    }
-
-    void VncCanvas::OnPaint(wxPaintEvent&)
-    {
-        wxPaintDC dc(this);
-        DoPrepareDC(dc);
-
-        wxSize client = GetClientSize();
-        wxPoint origin = CalcUnscrolledPosition(wxPoint(0, 0));
-        wxRect visible(origin, client);
-
-        if (m_backing.IsOk())
-        {
-            wxMemoryDC source(m_backing);
-            for (wxRegionIterator it(GetUpdateRegion()); it; ++it)
-            {
-                wxRect area = it.GetRect();
-                area.SetPosition(CalcUnscrolledPosition(area.GetPosition()));
-                wxRect inside = area.Intersect(wxRect(m_desktopSize));
-                if (!inside.IsEmpty())
-                {
-                    dc.Blit(inside.GetPosition(), inside.GetSize(), &source, inside.GetPosition());
-                }
-            }
-        }
-
-        // Fill whatever part of the window lies outside the desktop.
-        dc.SetPen(*wxTRANSPARENT_PEN);
-        dc.SetBrush(wxBrush(kOutsideColour));
-        if (visible.GetRight() >= m_desktopSize.x)
-        {
-            dc.DrawRectangle(m_desktopSize.x, visible.y, visible.GetRight() - m_desktopSize.x + 1, visible.height);
-        }
-        if (visible.GetBottom() >= m_desktopSize.y)
-        {
-            dc.DrawRectangle(visible.x, m_desktopSize.y, std::min(visible.width, m_desktopSize.x - visible.x),
-                             visible.GetBottom() - m_desktopSize.y + 1);
-        }
     }
 } // namespace RmVncUI

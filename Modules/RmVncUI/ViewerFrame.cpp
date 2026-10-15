@@ -6,17 +6,36 @@
 #include "CredentialsDialog.h"
 #include "VncCanvas.h"
 
+#include <RmVncCore/Keysyms.h>
+
 #include <Log/Log.h>
 
 #include <wx/display.h>
+#include <wx/menu.h>
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
+#include <wx/toolbar.h>
 #include <wx/utils.h>
 
 #include <algorithm>
 
 namespace RmVncUI
 {
+    namespace
+    {
+        enum CommandId
+        {
+            ID_SCALE_FIT = wxID_HIGHEST + 100,
+            ID_SCALE_ACTUAL,
+            ID_FULL_SCREEN,
+            ID_VIEW_ONLY,
+            ID_SEND_CTRL_ALT_DEL,
+            ID_SEND_F8,
+            ID_REFRESH,
+            ID_DISCONNECT,
+        };
+    } // namespace
+
     ViewerFrame::ViewerFrame(const ViewerOptions& options)
         : wxFrame(nullptr, wxID_ANY, wxString::FromUTF8(RmVnc::FormatAddress(options.address)) + " - rmvnc"),
           m_options(options),
@@ -27,10 +46,21 @@ namespace RmVncUI
         sizer->Add(m_canvas, 1, wxEXPAND);
         SetSizer(sizer);
 
+        CreateToolbar();
         CreateStatusBar();
         SetClientSize(FromDIP(wxSize(800, 600)));
 
+        m_canvas->SetMenuKeyHandler([this]() { ShowMenu(); });
+        m_canvas->SetScaleMode(options.scaleMode);
+        m_canvas->SetViewOnly(options.viewOnly);
         Bind(wxEVT_CLOSE_WINDOW, &ViewerFrame::OnClose, this);
+        Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
+        Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
+        Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+            event.Skip();
+            CallAfter([this]() { UpdateStatus(); }); // after the canvas has recomputed its scale
+        });
+        UpdateControls();
         Connect();
     }
 
@@ -75,6 +105,7 @@ namespace RmVncUI
         CallAfter([this, width, height]() {
             m_canvas->SetDesktopSize(width, height);
             FitToDesktop();
+            UpdateStatus();
         });
     }
 
@@ -138,10 +169,15 @@ namespace RmVncUI
     {
         m_desktopName = wxString::FromUTF8(serverInit.name);
         SetTitle(GetServerDisplayName() + " - rmvnc");
-        SetStatusText(wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), serverInit.width,
-                                       serverInit.height));
+        m_connected = true;
         m_canvas->SetDesktopSize(serverInit.width, serverInit.height);
         FitToDesktop();
+        if (m_options.fullScreen && !IsFullScreen())
+        {
+            ShowFullScreen(true, wxFULLSCREEN_ALL);
+        }
+        UpdateControls();
+        UpdateStatus();
         m_canvas->SetFocus();
     }
 
@@ -156,6 +192,8 @@ namespace RmVncUI
         }
         LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
         m_canvas->ReleaseInput();
+        m_connected = false;
+        UpdateControls();
         if (info.error.empty())
         {
             Close(true);
@@ -205,6 +243,147 @@ namespace RmVncUI
             Move(std::max(available.x, std::min(frame.x, available.GetRight() - frame.width)),
                  std::max(available.y, std::min(frame.y, available.GetBottom() - frame.height)));
         }
+    }
+
+    void ViewerFrame::CreateToolbar()
+    {
+        m_toolBar = CreateToolBar(wxTB_HORIZONTAL | wxTB_TEXT | wxTB_NOICONS | wxTB_FLAT);
+        m_toolBar->AddCheckTool(ID_SCALE_FIT, "Scale to Fit", wxNullBitmap, wxNullBitmap,
+                                "Scale the remote desktop to fit the window (otherwise show it at 100%)");
+        m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap, "Full screen (F8 opens the menu)");
+        m_toolBar->AddCheckTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, wxNullBitmap,
+                                "Watch without sending mouse or keyboard input");
+        m_toolBar->AddSeparator();
+        m_toolBar->AddTool(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+Del", wxNullBitmap, "Send Ctrl+Alt+Del");
+        m_toolBar->AddTool(ID_REFRESH, "Refresh", wxNullBitmap, "Ask the server for a full screen update");
+        m_toolBar->AddSeparator();
+        m_toolBar->AddTool(ID_DISCONNECT, "Disconnect", wxNullBitmap, "Close this connection");
+        m_toolBar->Realize();
+    }
+
+    wxMenu* ViewerFrame::CreateMenu() const
+    {
+        wxMenu* menu = new wxMenu();
+        menu->AppendRadioItem(ID_SCALE_FIT, "Scale to &Fit");
+        menu->AppendRadioItem(ID_SCALE_ACTUAL, "&Actual Size (100%)");
+        menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
+        menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
+        menu->AppendSeparator();
+        menu->Append(ID_SEND_CTRL_ALT_DEL, "Send Ctrl+Alt+&Del");
+        menu->Append(ID_SEND_F8, "Send F&8");
+        menu->Append(ID_REFRESH, "&Refresh Screen");
+        menu->AppendSeparator();
+        menu->Append(ID_DISCONNECT, "Dis&connect");
+
+        bool fit = m_canvas->GetScaleMode() == ScaleMode::Fit;
+        menu->Check(fit ? ID_SCALE_FIT : ID_SCALE_ACTUAL, true);
+        menu->Check(ID_FULL_SCREEN, IsFullScreen());
+        menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
+        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_REFRESH})
+        {
+            menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
+        }
+        return menu;
+    }
+
+    void ViewerFrame::ShowMenu()
+    {
+        std::unique_ptr<wxMenu> menu(CreateMenu());
+        m_canvas->ReleaseInput();
+        PopupMenu(menu.get(), m_canvas->GetPosition() + wxPoint(FromDIP(8), FromDIP(8)));
+        m_canvas->SetFocus();
+    }
+
+    void ViewerFrame::OnCommand(wxCommandEvent& event)
+    {
+        switch (event.GetId())
+        {
+        case ID_SCALE_FIT:
+            // The toolbar button toggles; the menu's radio item always selects Fit.
+            m_canvas->SetScaleMode(event.GetEventType() == wxEVT_TOOL && !event.IsChecked() ? ScaleMode::Actual
+                                                                                            : ScaleMode::Fit);
+            break;
+        case ID_SCALE_ACTUAL:
+            m_canvas->SetScaleMode(ScaleMode::Actual);
+            break;
+        case ID_FULL_SCREEN:
+            ToggleFullScreen();
+            break;
+        case ID_VIEW_ONLY:
+            m_canvas->SetViewOnly(!m_canvas->IsViewOnly());
+            break;
+        case ID_SEND_CTRL_ALT_DEL:
+            SendKeyCombination({RmVnc::Keysym::Control_L, RmVnc::Keysym::Alt_L, RmVnc::Keysym::Delete});
+            break;
+        case ID_SEND_F8:
+            SendKeyCombination({RmVnc::Keysym::F1 + 7});
+            break;
+        case ID_REFRESH:
+            m_client.RequestFullUpdate();
+            break;
+        case ID_DISCONNECT:
+            Close();
+            return;
+        default:
+            break;
+        }
+        UpdateControls();
+        UpdateStatus();
+        m_canvas->SetFocus();
+    }
+
+    void ViewerFrame::SendKeyCombination(std::initializer_list<uint32_t> keysyms)
+    {
+        if (m_canvas->IsViewOnly())
+        {
+            return;
+        }
+        m_canvas->ReleaseInput();
+        for (uint32_t keysym : keysyms)
+        {
+            m_client.SendKeyEvent(keysym, true);
+        }
+        for (auto it = std::rbegin(keysyms); it != std::rend(keysyms); ++it)
+        {
+            m_client.SendKeyEvent(*it, false);
+        }
+    }
+
+    void ViewerFrame::ToggleFullScreen()
+    {
+        m_canvas->ReleaseInput();
+        ShowFullScreen(!IsFullScreen(), wxFULLSCREEN_ALL);
+        if (!IsFullScreen())
+        {
+            FitToDesktop();
+        }
+    }
+
+    void ViewerFrame::UpdateControls()
+    {
+        m_toolBar->ToggleTool(ID_SCALE_FIT, m_canvas->GetScaleMode() == ScaleMode::Fit);
+        m_toolBar->ToggleTool(ID_VIEW_ONLY, m_canvas->IsViewOnly());
+        m_toolBar->EnableTool(ID_SEND_CTRL_ALT_DEL, m_connected && !m_canvas->IsViewOnly());
+        m_toolBar->EnableTool(ID_REFRESH, m_connected);
+    }
+
+    void ViewerFrame::UpdateStatus()
+    {
+        if (!m_connected)
+        {
+            return;
+        }
+        wxSize desktop = m_canvas->GetDesktopSize();
+        wxString status = wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), desktop.x, desktop.y);
+        if (m_canvas->GetScaleMode() == ScaleMode::Fit)
+        {
+            status += wxString::Format(" - %d%%", static_cast<int>(m_canvas->GetScale() * 100.0 + 0.5));
+        }
+        if (m_canvas->IsViewOnly())
+        {
+            status += " - view only";
+        }
+        SetStatusText(status);
     }
 
     void ViewerFrame::OnClose(wxCloseEvent& event)

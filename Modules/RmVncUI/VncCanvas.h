@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Scrollable view of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer
+// View of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer: actual size with
+// scrollbars, or scaled to fit the window
 
 #pragma once
 
@@ -10,10 +11,17 @@
 #include <wx/bitmap.h>
 #include <wx/scrolwin.h>
 
+#include <functional>
 #include <vector>
 
 namespace RmVncUI
 {
+    enum class ScaleMode
+    {
+        Fit,    // scale the whole desktop into the window, keeping its aspect ratio
+        Actual, // one desktop pixel per screen pixel, scroll if needed
+    };
+
     class VncCanvas : public wxScrolledCanvas
     {
     public:
@@ -26,6 +34,11 @@ namespace RmVncUI
 
         wxSize GetDesktopSize() const { return m_desktopSize; }
 
+        void SetScaleMode(ScaleMode mode);
+        ScaleMode GetScaleMode() const { return m_scaleMode; }
+        // Current desktop-to-window scale factor (1 in Actual mode).
+        double GetScale() const { return m_scale; }
+
         // View-only ignores local input (and releases anything held when switched on).
         void SetViewOnly(bool viewOnly);
         bool IsViewOnly() const { return m_viewOnly; }
@@ -36,11 +49,20 @@ namespace RmVncUI
         // UI thread only. Shows the server's cursor shape as our local cursor.
         void SetRemoteCursor(const RmVnc::Rfb::CursorShape& cursor);
 
+        // Called instead of sending F8, which opens the viewer's menu (as in other VNC viewers).
+        void SetMenuKeyHandler(std::function<void()> handler) { m_menuKeyHandler = std::move(handler); }
+
     private:
+        void UpdateLayout();
+        void ApplyCursor();
         void CopyFromFramebuffer(const RmVnc::Rfb::Rect& rect);
         void OnPaint(wxPaintEvent& event);
+        void OnSize(wxSizeEvent& event);
 
+        // Window (client) coordinates <-> desktop coordinates, for the current mode, scroll position and scale.
         wxPoint ToDesktop(const wxPoint& windowPoint) const;
+        wxRect ToWindow(const wxRect& desktopRect) const;
+
         void SendPointer(const wxPoint& windowPoint);
         void OnMouse(wxMouseEvent& event);
         void OnMouseWheel(wxMouseEvent& event);
@@ -54,6 +76,10 @@ namespace RmVncUI
         wxBitmap m_backing;
         wxSize m_desktopSize;
 
+        ScaleMode m_scaleMode = ScaleMode::Fit;
+        double m_scale = 1.0;
+        wxPoint m_offset; // top-left of the scaled desktop inside the window (Fit mode letterboxing)
+
         KeyMapper m_keys;
         bool m_viewOnly = false;
         uint8_t m_buttons = 0;
@@ -62,5 +88,7 @@ namespace RmVncUI
         int m_wheelHorizontal = 0;
         RmVnc::Rfb::CursorShape m_remoteCursor;
         bool m_hasRemoteCursor = false;
+        double m_cursorScale = 0.0;
+        std::function<void()> m_menuKeyHandler;
     };
 } // namespace RmVncUI

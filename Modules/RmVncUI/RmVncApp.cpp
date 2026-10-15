@@ -11,6 +11,7 @@
 
 #include <Log/Log.h>
 
+#include <wx/cmdline.h>
 #include <wx/config.h>
 #include <wx/filename.h>
 #include <wx/msgdlg.h>
@@ -33,15 +34,35 @@ namespace RmVncUI
         Log::InitializeFileLogging(logDir.utf8_string(), "rmvnc");
         LOG_INFO("App", "rmvnc %s starting", RmVnc::GetVersionString());
 
-        // "rmvnc host[:display]" connects straight away.
-        if (argc > 1)
+        // "rmvnc [options] host[:display]" connects straight away.
+        static const wxCmdLineEntryDesc kCommandLine[] = {
+            {wxCMD_LINE_SWITCH, "h", "help", "show this help", wxCMD_LINE_VAL_NONE, wxCMD_LINE_OPTION_HELP},
+            {wxCMD_LINE_OPTION, nullptr, "scale", "fit (default) or 100", wxCMD_LINE_VAL_STRING, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "view-only", "don't send keyboard or mouse input", wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "fullscreen", "start full screen", wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_PARAM, nullptr, nullptr, "host[:display] | host::port", wxCMD_LINE_VAL_STRING,
+             wxCMD_LINE_PARAM_OPTIONAL},
+            wxCMD_LINE_DESC_END,
+        };
+        wxCmdLineParser parser(kCommandLine, argc, argv);
+        if (parser.Parse() != 0)
         {
-            RmVnc::Address address;
+            return false; // help shown or bad arguments (wx reports them)
+        }
+        if (parser.GetParamCount() > 0)
+        {
+            ViewerOptions options;
             std::string error;
-            if (RmVnc::ParseAddress(argv[1].utf8_string(), address, error))
+            wxString scale;
+            if (parser.Found("scale", &scale) && scale != "fit" && scale != "100")
             {
-                ViewerOptions options;
-                options.address = address;
+                error = "--scale must be 'fit' or '100'";
+            }
+            else if (RmVnc::ParseAddress(parser.GetParam(0).utf8_string(), options.address, error))
+            {
+                options.scaleMode = scale == "100" ? ScaleMode::Actual : ScaleMode::Fit;
+                options.viewOnly = parser.Found("view-only");
+                options.fullScreen = parser.Found("fullscreen");
                 (new ViewerFrame(options))->Show();
                 return true;
             }
