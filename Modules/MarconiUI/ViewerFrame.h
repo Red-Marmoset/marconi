@@ -46,13 +46,15 @@ namespace MarconiUI
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnServerCutText(const std::string& latin1Text) override;
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
-        bool OnCredentialsRequired(bool needUsername, Marconi::Rfb::Credentials& credentials) override;
+        bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
 
         // UI thread
         void Connect();
         void HandleConnected(const Marconi::Rfb::ServerInit& serverInit);
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
-        void AskForCredentials(bool needUsername);
+        void AskForCredentials(Marconi::Rfb::CredentialsKind kind);
+        void SaveSnapshot();
+        void WatchClipboard();
         void FitToDesktop();
         void OnClose(wxCloseEvent& event);
         wxString GetServerDisplayName() const;
@@ -81,7 +83,11 @@ namespace MarconiUI
         bool m_connected = false;
         wxTimer m_pictureTimer;   // re-asks for the desktop if a fresh connection still shows nothing
         int m_pictureRetries = 0;
-        wxTimer m_statsTimer; // logs traffic every 10 seconds
+        wxTimer m_statsTimer;     // logs traffic every 10 seconds
+        wxTimer m_snapshotTimer;  // saves the framebuffer to the log folder a little after a resize
+        int m_snapshots = 0;
+        wxTimer m_clipboardTimer; // sends local clipboard changes while connected
+        long m_clipboardChangeCount = -1;
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in
 
         // Hand-off between the connection thread (waiting for credentials) and the UI thread (asking the user).

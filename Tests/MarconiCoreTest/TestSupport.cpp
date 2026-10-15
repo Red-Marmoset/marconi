@@ -196,11 +196,12 @@ namespace MarconiTest
         changed.notify_all();
     }
 
-    bool RecordingListener::OnCredentialsRequired(bool needUsername, Rfb::Credentials& credentials)
+    bool RecordingListener::OnCredentialsRequired(Rfb::CredentialsKind kind, Rfb::Credentials& credentials)
     {
         std::lock_guard<std::mutex> lock(mutex);
         ++credentialRequests;
-        lastNeedUsername = needUsername;
+        lastNeedUsername = kind == Rfb::CredentialsKind::Account;
+        lastKind = kind;
         if (credentialsToGive.password.empty())
         {
             return false;

@@ -66,7 +66,7 @@ namespace Marconi
             // Exactly once per Connect().
             virtual void OnDisconnected(const DisconnectInfo& /*info*/) {}
             // Blocking request for credentials. Return false to cancel the connection.
-            virtual bool OnCredentialsRequired(bool /*needUsername*/, Credentials& /*inOutCredentials*/)
+            virtual bool OnCredentialsRequired(CredentialsKind /*kind*/, Credentials& /*inOutCredentials*/)
             {
                 return false;
             }
@@ -129,7 +129,8 @@ namespace Marconi
             ClientListener& m_listener;
             Framebuffer m_framebuffer;
             std::map<int32_t, std::unique_ptr<Decoder>> m_decoders;
-            int m_updatesReceived = 0; // connection thread only
+            static constexpr int kDetailedUpdates = 3;
+            int m_detailedUpdates = 0; // connection thread only: how many more updates to log in detail
             std::atomic<int> m_statUpdates{0};
             std::atomic<int> m_statRectangles{0};
             std::atomic<int> m_statRequests{0};

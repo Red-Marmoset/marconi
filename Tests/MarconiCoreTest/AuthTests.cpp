@@ -178,12 +178,56 @@ namespace MarconiTest
             std::string password;
             CHECK(DecryptArd(keys, response, username, password));
             CHECK(username == "admin" && password == "secret");
-            CHECK(listener.credentialRequests == 1 && listener.lastNeedUsername);
+            CHECK(listener.credentialRequests == 1 && listener.lastKind == Rfb::CredentialsKind::PasswordOrAccount);
 
             Rfb::OutBuffer ok;
             ok.U32(0);
             server.Send(ok);
             CHECK(server.In().U8() == 1); // ClientInit
+        });
+
+        RunTest("A Mac offering both logins: no user name at the prompt means the VNC password", []() {
+            FakeServer server;
+            RecordingListener listener;
+            listener.credentialsToGive = {"", "secret"};
+            Rfb::Client client(listener);
+            Rfb::ConnectionOptions options;
+            options.host = "127.0.0.1";
+            options.port = server.GetPort();
+            client.Connect(options);
+            CHECK(server.AcceptClient());
+            server.SendString("RFB 003.889\n");
+            CHECK(server.In().ReadString(12) == "RFB 003.008\n");
+            Rfb::OutBuffer types;
+            types.U8(2).U8(Rfb::SecurityType::AppleRemoteDesktop).U8(Rfb::SecurityType::VncAuth);
+            server.Send(types);
+            CHECK(server.In().U8() == Rfb::SecurityType::VncAuth);
+            Rfb::Bytes challenge(16, 0x5a);
+            server.Send(challenge);
+            CHECK(server.In().ReadBytes(16) == Rfb::ComputeVncAuthResponse("secret", challenge));
+            CHECK(listener.credentialRequests == 1 && listener.lastKind == Rfb::CredentialsKind::PasswordOrAccount);
+        });
+
+        RunTest("A Mac offering both logins: a saved VNC password doesn't prompt", []() {
+            FakeServer server;
+            RecordingListener listener;
+            Rfb::Client client(listener);
+            Rfb::ConnectionOptions options;
+            options.host = "127.0.0.1";
+            options.port = server.GetPort();
+            options.credentials.password = "saved";
+            client.Connect(options);
+            CHECK(server.AcceptClient());
+            server.SendString("RFB 003.889\n");
+            CHECK(server.In().ReadString(12) == "RFB 003.008\n");
+            Rfb::OutBuffer types;
+            types.U8(2).U8(Rfb::SecurityType::AppleRemoteDesktop).U8(Rfb::SecurityType::VncAuth);
+            server.Send(types);
+            CHECK(server.In().U8() == Rfb::SecurityType::VncAuth);
+            Rfb::Bytes challenge(16, 0x11);
+            server.Send(challenge);
+            CHECK(server.In().ReadBytes(16) == Rfb::ComputeVncAuthResponse("saved", challenge));
+            CHECK(listener.credentialRequests == 0);
         });
 
         RunTest("VNC auth with a supplied password", []() {

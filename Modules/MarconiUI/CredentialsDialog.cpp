@@ -11,21 +11,41 @@
 
 namespace MarconiUI
 {
-    CredentialsDialog::CredentialsDialog(wxWindow* parent, const wxString& serverName, bool needUsername,
-                                         const wxString& username, bool offerRemember)
+    CredentialsDialog::CredentialsDialog(wxWindow* parent, const wxString& serverName,
+                                         Marconi::Rfb::CredentialsKind kind, const wxString& username,
+                                         bool offerRemember)
         : wxDialog(parent, wxID_ANY, "Authentication required")
     {
+        using Marconi::Rfb::CredentialsKind;
         wxBoxSizer* outer = new wxBoxSizer(wxVERTICAL);
-        wxString prompt = needUsername ? wxString::Format("Log in to %s with an account on that computer:", serverName)
-                                       : wxString::Format("Enter the VNC password for %s:", serverName);
+        wxString prompt;
+        switch (kind)
+        {
+        case CredentialsKind::Account:
+            prompt = wxString::Format("Log in to %s with an account on that computer:", serverName);
+            break;
+        case CredentialsKind::PasswordOrAccount:
+            prompt = wxString::Format("Log in to %s with an account on that computer, or leave the user name empty\n"
+                                      "to use the VNC password:",
+                                      serverName);
+            break;
+        default:
+            prompt = wxString::Format("Enter the VNC password for %s:", serverName);
+            break;
+        }
+        const bool needUsername = kind != CredentialsKind::Password;
         outer->Add(new wxStaticText(this, wxID_ANY, prompt), 0, wxALL, FromDIP(12));
 
         wxFlexGridSizer* grid = new wxFlexGridSizer(2, FromDIP(wxSize(8, 8)));
         grid->AddGrowableCol(1);
         if (needUsername)
         {
-            grid->Add(new wxStaticText(this, wxID_ANY, "Name:"), 0, wxALIGN_CENTER_VERTICAL);
+            grid->Add(new wxStaticText(this, wxID_ANY, "User name:"), 0, wxALIGN_CENTER_VERTICAL);
             m_username = new wxTextCtrl(this, wxID_ANY, username, wxDefaultPosition, FromDIP(wxSize(240, -1)));
+            if (kind == CredentialsKind::PasswordOrAccount)
+            {
+                m_username->SetHint("optional");
+            }
             grid->Add(m_username, 1, wxEXPAND);
         }
         grid->Add(new wxStaticText(this, wxID_ANY, "Password:"), 0, wxALIGN_CENTER_VERTICAL);

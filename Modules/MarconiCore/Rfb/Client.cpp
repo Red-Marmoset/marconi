@@ -246,10 +246,12 @@ namespace Marconi
                 InStream in(source);
 
                 Credentials credentials = options.credentials;
-                CredentialsProvider provider = [this, &credentials](bool needUsername, Credentials& out) {
-                    // Use what we were given first; ask the user when something is missing.
-                    bool complete = !credentials.password.empty() && (!needUsername || !credentials.username.empty());
-                    if (!complete && !m_listener.OnCredentialsRequired(needUsername, credentials))
+                CredentialsProvider provider = [this, &credentials](CredentialsKind kind, Credentials& out) {
+                    // Use what we were given first; ask the user when something is missing. For a Mac offering both
+                    // logins, a saved password with no user name means the VNC password.
+                    bool complete = !credentials.password.empty() &&
+                                    (kind != CredentialsKind::Account || !credentials.username.empty());
+                    if (!complete && !m_listener.OnCredentialsRequired(kind, credentials))
                     {
                         return false;
                     }
@@ -257,16 +259,14 @@ namespace Marconi
                     return true;
                 };
 
-                // A user name means "log in with my account" on a Mac that also offers a VNC password.
-                HandshakeResult handshake =
-                    PerformHandshake(in, *this, options.shared, provider, !options.credentials.username.empty());
+                HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider);
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
                 {
                     std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
                     m_framebuffer.Resize(handshake.serverInit.width, handshake.serverInit.height);
                 }
                 SendSetupMessages(options);
-                m_updatesReceived = 0;
+                m_detailedUpdates = kDetailedUpdates;
                 m_connected = true;
                 info.wasConnected = true;
                 m_listener.OnConnected(handshake.serverInit);
@@ -345,7 +345,7 @@ namespace Marconi
             in.Skip(1);
             uint16_t count = in.U16();
             std::vector<Rect> dirty;
-            std::map<int32_t, int> encodingsUsed;
+            std::vector<std::string> described; // "WxH+X+Y enc N" per rectangle, for the log
             bool resized = false;
 
             // A count of 0xFFFF with LastRect means "until a LastRect rectangle".
@@ -357,6 +357,12 @@ namespace Marconi
                 rect.width = in.U16();
                 rect.height = in.U16();
                 int32_t encoding = in.S32();
+                if (m_detailedUpdates > 0)
+                {
+                    described.push_back(std::to_string(rect.width) + "x" + std::to_string(rect.height) + "+" +
+                                        std::to_string(rect.x) + "+" + std::to_string(rect.y) + " enc " +
+                                        std::to_string(encoding));
+                }
 
                 if (encoding == Encoding::LastRect)
                 {
@@ -396,25 +402,34 @@ namespace Marconi
                 }
                 found->second->Decode(in, rect, m_framebuffer);
                 dirty.push_back(rect);
-                ++encodingsUsed[encoding];
             }
             ++m_statUpdates;
             m_statRectangles += static_cast<int>(dirty.size());
 
-            if (m_updatesReceived++ == 0)
+            if (m_detailedUpdates > 0)
             {
-                std::string used;
-                for (const auto& [encoding, rects] : encodingsUsed)
+                // The first few updates after connecting or a resize, rectangle by rectangle.
+                --m_detailedUpdates;
+                std::string rects;
+                for (size_t i = 0; i < described.size() && i < 12; ++i)
                 {
-                    used += (used.empty() ? "" : ", ") + std::to_string(rects) + "x encoding " + std::to_string(encoding);
+                    rects += (rects.empty() ? "" : ", ") + described[i];
+                }
+                if (described.size() > 12)
+                {
+                    rects += ", ... (" + std::to_string(described.size()) + " in all)";
                 }
                 bool black;
+                int width;
+                int height;
                 {
                     std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
                     black = m_framebuffer.IsBlack();
+                    width = m_framebuffer.GetWidth();
+                    height = m_framebuffer.GetHeight();
                 }
-                LOG_INFO("Rfb", "First update: %zu rectangles (%s)%s", dirty.size(), used.empty() ? "none" : used.c_str(),
-                         black ? ", desktop is still all black" : "");
+                LOG_INFO("Rfb", "Update on a %dx%d desktop: %s%s", width, height, rects.empty() ? "no rectangles" : rects.c_str(),
+                         black ? "; desktop is still all black" : "");
             }
 
             if (!dirty.empty())
@@ -439,6 +454,7 @@ namespace Marconi
                 m_framebuffer.Resize(width, height);
             }
             LOG_INFO("Rfb", "Desktop resized to %dx%d", width, height);
+            m_detailedUpdates = kDetailedUpdates;
             m_listener.OnDesktopResized(width, height);
         }
 

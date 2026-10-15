@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Red Marmoset Studios Ltd.
-# Minimal RFB 3.8 test server for manual/visual testing of Marconi without a real VNC server.
+# Minimal RFB 3.8 test server (Raw, or ZRLE when asked) for manual/visual testing of Marconi without a real VNC server.
 #
 # Serves an animated test pattern using security type None and Raw encoding (plus CopyRect when the client
 # asks for it), and logs every client message (pointer, key, clipboard) so input handling can be checked.
@@ -17,6 +17,7 @@ import struct
 import sys
 import threading
 import time
+import zlib
 
 ENCODING_NAMES = {0: "Raw", 1: "CopyRect", 2: "RRE", 5: "Hextile", 7: "Tight", 16: "ZRLE", -223: "DesktopSize",
                   -224: "LastRect", -239: "Cursor", -308: "ExtendedDesktopSize"}
@@ -71,6 +72,27 @@ class Session:
             r = g = b = 255
         return r, g, b
 
+    def rect(self, x0, y0, w, h):
+        # ZRLE when the client asked for it (like macOS), otherwise Raw.
+        if 16 in getattr(self, "encodings", []):
+            return self.zrle_rect(x0, y0, w, h)
+        return self.raw_rect(x0, y0, w, h)
+
+    def zrle_rect(self, x0, y0, w, h):
+        # Every 64x64 tile as a raw tile of 3-byte CPIXELs (B, G, R), through one zlib stream per connection.
+        if not hasattr(self, "zlib_stream"):
+            self.zlib_stream = zlib.compressobj()
+        tiles = bytearray()
+        for ty in range(y0, y0 + h, 64):
+            for tx in range(x0, x0 + w, 64):
+                tiles.append(0)
+                for y in range(ty, min(ty + 64, y0 + h)):
+                    for x in range(tx, min(tx + 64, x0 + w)):
+                        r, g, b = self.pixel(x, y)
+                        tiles += bytes((b, g, r))
+        data = self.zlib_stream.compress(bytes(tiles)) + self.zlib_stream.flush(zlib.Z_SYNC_FLUSH)
+        return struct.pack(">HHHHiI", x0, y0, w, h, 16, len(data)) + data
+
     def raw_rect(self, x0, y0, w, h):
         out = bytearray(struct.pack(">HHHHi", x0, y0, w, h, 0))
         for y in range(y0, y0 + h):
@@ -93,12 +115,12 @@ class Session:
                 self.full_update = True
             self.frame += 1
             if self.full_update:
-                rects.append(self.raw_rect(0, 0, self.width, self.height))
+                rects.append(self.rect(0, 0, self.width, self.height))
                 self.full_update = False
             else:
                 # Only the band the square moves in.
                 y = self.height // 2
-                rects.append(self.raw_rect(0, y, self.width, min(64, self.height - y)))
+                rects.append(self.rect(0, y, self.width, min(64, self.height - y)))
             try:
                 self.send(struct.pack(">BxH", 0, len(rects)) + b"".join(rects))
             except OSError:
@@ -152,11 +174,24 @@ def console(session):
             session.send(bytes([2]))
 
 
+def flipper(session, sizes, seconds):
+    index = 0
+    while session.alive:
+        time.sleep(seconds)
+        index = 1 - index
+        print("resizing to %dx%d" % sizes[index], flush=True)
+        session.pending_resize = sizes[index]
+        session.update_requested.set()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=5999)
     parser.add_argument("--size", default="1024x768")
     parser.add_argument("--cut-on-connect", default=None, help="send this text as ServerCutText after the handshake")
+    parser.add_argument("--flip", default=None, metavar="WxH",
+                        help="switch between --size and this size every --flip-every seconds (like a Mac locking)")
+    parser.add_argument("--flip-every", type=float, default=3.0)
     args = parser.parse_args()
     width, height = (int(v) for v in args.size.split("x"))
 
@@ -177,6 +212,9 @@ def main():
                 session.send(struct.pack(">Bxxxi", 3, len(text)) + text)
             threading.Thread(target=session.updater, daemon=True).start()
             threading.Thread(target=console, args=(session,), daemon=True).start()
+            if args.flip:
+                sizes = [(width, height), tuple(int(v) for v in args.flip.split("x"))]
+                threading.Thread(target=flipper, args=(session, sizes, args.flip_every), daemon=True).start()
             session.message_loop()
         except (ConnectionError, OSError) as error:
             print("session ended:", error, flush=True)

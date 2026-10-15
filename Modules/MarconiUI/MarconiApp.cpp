@@ -15,6 +15,7 @@
 #include <wx/cmdline.h>
 #include <wx/config.h>
 #include <wx/filename.h>
+#include <wx/image.h>
 #include <wx/msgdlg.h>
 #include <wx/stdpaths.h>
 
@@ -33,6 +34,7 @@ namespace MarconiUI
 #endif
         // wxRegConfig on Windows, wxFileConfig (XDG / ~/Library/Preferences) elsewhere.
         wxConfigBase::Set(wxConfigBase::Create());
+        wxImage::AddHandler(new wxPNGHandler); // diagnostic snapshots
 
         // Logs go to <user local data>/logs (e.g. %LOCALAPPDATA%/marconi/logs, ~/Library/Application Support/marconi/logs).
         wxString logDir = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs";

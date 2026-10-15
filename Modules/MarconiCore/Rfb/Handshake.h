@@ -20,9 +20,15 @@ namespace Marconi
             std::string password;
         };
 
+        enum class CredentialsKind
+        {
+            Password,          // a VNC password
+            Account,           // a user name and password (Apple Remote Desktop)
+            PasswordOrAccount, // a Mac offering both: a user name selects the account login, none the VNC password
+        };
+
         // Asked for credentials when the server requires them. Returns false if the user cancelled.
-        // `needUsername` is true for schemes that log in with an account (Apple Remote Desktop).
-        using CredentialsProvider = std::function<bool(bool needUsername, Credentials& inOutCredentials)>;
+        using CredentialsProvider = std::function<bool(CredentialsKind kind, Credentials& inOutCredentials)>;
 
         struct ServerInit
         {
@@ -60,12 +66,11 @@ namespace Marconi
 
         // Picks the security type we'll use from those the server offers, or Invalid if none is supported.
         // A Mac with "VNC viewers may control screen with password" offers both its account login and the plain VNC
-        // password; the VNC password (what other viewers use) wins unless `preferAccountLogin` is set, e.g. because
-        // the user entered a user name for this connection.
+        // password; the VNC password wins unless `preferAccountLogin` is set. PerformHandshake decides that by
+        // asking for credentials first: a user name means the account login.
         uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered, bool preferAccountLogin = false);
 
         // Runs the whole handshake up to and including ServerInit. Throws RfbError / AuthenticationFailed.
-        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials,
-                                         bool preferAccountLogin = false);
+        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials);
     } // namespace Rfb
 } // namespace Marconi

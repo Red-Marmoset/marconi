@@ -66,7 +66,7 @@ namespace MarconiTest
         void OnBell() override;
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
-        bool OnCredentialsRequired(bool needUsername, Marconi::Rfb::Credentials& credentials) override;
+        bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
 
         // Waits until `predicate` (evaluated under the lock) holds. Returns false on timeout.
         bool WaitFor(const std::function<bool()>& predicate, int timeoutMs = 5000);
@@ -91,6 +91,7 @@ namespace MarconiTest
         Marconi::Rfb::Credentials credentialsToGive;
         int credentialRequests = 0;
         bool lastNeedUsername = false;
+        Marconi::Rfb::CredentialsKind lastKind = Marconi::Rfb::CredentialsKind::Password;
     };
 
     Marconi::Rfb::Bytes HexBytes(const std::string& hex);

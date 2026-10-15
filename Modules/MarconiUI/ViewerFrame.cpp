@@ -4,6 +4,7 @@
 #include "ViewerFrame.h"
 
 #include "AppIcon.h"
+#include "ClipboardWatch.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
 #include "VncCanvas.h"
@@ -12,7 +13,10 @@
 
 #include <Log/Log.h>
 
+#include <wx/datetime.h>
 #include <wx/display.h>
+#include <wx/image.h>
+#include <wx/stdpaths.h>
 #include <wx/menu.h>
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
@@ -75,6 +79,10 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { CheckForPicture(); }, m_pictureTimer.GetId());
         m_statsTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { LogTraffic(); }, m_statsTimer.GetId());
+        m_snapshotTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { SaveSnapshot(); }, m_snapshotTimer.GetId());
+        m_clipboardTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
@@ -125,9 +133,11 @@ namespace MarconiUI
     void ViewerFrame::OnDesktopResized(int width, int height)
     {
         CallAfter([this, width, height]() {
+            // The window keeps its size (Fit mode scales): a Mac switches size whenever it locks or unlocks, and
+            // the window jumping around with it is disorienting. It was fitted to the desktop on connecting.
             m_canvas->SetDesktopSize(width, height);
-            FitToDesktop();
             UpdateStatus();
+            m_snapshotTimer.StartOnce(3000);
         });
     }
 
@@ -159,7 +169,7 @@ namespace MarconiUI
         CallAfter([this, info]() { HandleDisconnected(info); });
     }
 
-    bool ViewerFrame::OnCredentialsRequired(bool needUsername, Marconi::Rfb::Credentials& credentials)
+    bool ViewerFrame::OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials)
     {
         // Connection thread: ask the UI thread and wait for the answer (or for the window to close).
         std::unique_lock<std::mutex> lock(m_credentialsMutex);
@@ -168,7 +178,7 @@ namespace MarconiUI
             return false;
         }
         m_credentialsAnswered = false;
-        CallAfter([this, needUsername]() { AskForCredentials(needUsername); });
+        CallAfter([this, kind]() { AskForCredentials(kind); });
         m_credentialsChanged.wait(lock, [this]() { return m_credentialsAnswered || m_closing; });
         if (m_closing || !m_credentialsAccepted)
         {
@@ -178,7 +188,7 @@ namespace MarconiUI
         return true;
     }
 
-    void ViewerFrame::AskForCredentials(bool needUsername)
+    void ViewerFrame::AskForCredentials(Marconi::Rfb::CredentialsKind kind)
     {
         {
             // The window may have started closing after this was queued; nobody is waiting any more.
@@ -190,7 +200,7 @@ namespace MarconiUI
         }
         SetStatusText("Waiting for credentials...");
         bool offerRemember = !m_options.savedId.empty() && ConnectionStore::IsKeychainAvailable();
-        CredentialsDialog dialog(this, GetServerDisplayName(), needUsername,
+        CredentialsDialog dialog(this, GetServerDisplayName(), kind,
                                  wxString::FromUTF8(m_options.credentials.username), offerRemember);
         bool accepted = dialog.ShowModal() == wxID_OK;
         m_rememberPassword = accepted && dialog.GetRemember();
@@ -243,6 +253,60 @@ namespace MarconiUI
         m_pictureTimer.Start(2000);
         m_client.TakeTrafficStats(); // start counting from here
         m_statsTimer.Start(10000);
+        m_clipboardChangeCount = GetClipboardChangeCount();
+        m_clipboardTimer.Start(500);
+        m_snapshotTimer.StartOnce(3000);
+    }
+
+    void ViewerFrame::WatchClipboard()
+    {
+        // Copying while the viewer is in front doesn't change focus, so watch for changes rather than waiting
+        // for the window to be activated again.
+        long count = GetClipboardChangeCount();
+        if (count >= 0 && count != m_clipboardChangeCount)
+        {
+            m_clipboardChangeCount = count;
+            SyncClipboardToServer();
+        }
+    }
+
+    void ViewerFrame::SaveSnapshot()
+    {
+        // Diagnostics: what the framebuffer holds after connecting and after a resize, saved next to the logs.
+        constexpr int kMaxSnapshots = 10;
+        if (!m_connected || m_snapshots >= kMaxSnapshots)
+        {
+            return;
+        }
+        wxImage image;
+        {
+            Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+            std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
+            if (framebuffer.GetWidth() <= 0 || framebuffer.GetHeight() <= 0)
+            {
+                return;
+            }
+            image.Create(framebuffer.GetWidth(), framebuffer.GetHeight(), false);
+            unsigned char* out = image.GetData();
+            for (int y = 0; y < framebuffer.GetHeight(); ++y)
+            {
+                const uint32_t* row = framebuffer.Row(y);
+                for (int x = 0; x < framebuffer.GetWidth(); ++x)
+                {
+                    *out++ = static_cast<unsigned char>(row[x] >> 16);
+                    *out++ = static_cast<unsigned char>(row[x] >> 8);
+                    *out++ = static_cast<unsigned char>(row[x]);
+                }
+            }
+        }
+        ++m_snapshots;
+        wxString path = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs" + wxFILE_SEP_PATH +
+                        wxDateTime::Now().Format("snapshot_%Y-%m-%d_%H-%M-%S_") +
+                        wxString::Format("%dx%d.png", image.GetWidth(), image.GetHeight());
+        if (image.SaveFile(path, wxBITMAP_TYPE_PNG))
+        {
+            LOG_INFO("Viewer", "Saved a snapshot of the desktop to %s", path.utf8_string().c_str());
+        }
     }
 
     void ViewerFrame::LogTraffic()
@@ -286,6 +350,8 @@ namespace MarconiUI
         LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
         m_pictureTimer.Stop();
         m_statsTimer.Stop();
+        m_snapshotTimer.Stop();
+        m_clipboardTimer.Stop();
         m_canvas->ReleaseInput();
         m_connected = false;
         UpdateControls();

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <MarconiCore/Rfb/Handshake.h>
+
 #include <wx/dialog.h>
 
 class wxCheckBox;
@@ -14,8 +16,8 @@ namespace MarconiUI
     {
     public:
         // `offerRemember` adds a "Remember password" check box (for saved connections, when a keychain exists).
-        CredentialsDialog(wxWindow* parent, const wxString& serverName, bool needUsername, const wxString& username,
-                          bool offerRemember);
+        CredentialsDialog(wxWindow* parent, const wxString& serverName, Marconi::Rfb::CredentialsKind kind,
+                          const wxString& username, bool offerRemember);
 
         wxString GetUsername() const;
         wxString GetPassword() const;

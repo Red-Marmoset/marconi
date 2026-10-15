@@ -40,10 +40,10 @@ namespace Marconi
                 return text.substr(0, length);
             }
 
-            Credentials RequestCredentials(const CredentialsProvider& provider, bool needUsername)
+            Credentials RequestCredentials(const CredentialsProvider& provider, CredentialsKind kind)
             {
                 Credentials credentials;
-                if (!provider || !provider(needUsername, credentials))
+                if (!provider || !provider(kind, credentials))
                 {
                     throw AuthenticationCancelled("Authentication cancelled");
                 }
@@ -60,14 +60,14 @@ namespace Marconi
                 }
                 Bytes prime = in.ReadBytes(keyLength);
                 Bytes serverPublicKey = in.ReadBytes(keyLength);
-                Credentials credentials = RequestCredentials(provider, true);
+                Credentials credentials = RequestCredentials(provider, CredentialsKind::Account);
                 out.Send(ComputeArdResponse(generator, prime, serverPublicKey, credentials));
             }
 
             void AuthenticateVnc(InStream& in, ByteSink& out, const CredentialsProvider& provider)
             {
                 Bytes challenge = in.ReadBytes(16);
-                Credentials credentials = RequestCredentials(provider, false);
+                Credentials credentials = RequestCredentials(provider, CredentialsKind::Password);
                 out.Send(ComputeVncAuthResponse(credentials.password, challenge));
             }
         } // namespace

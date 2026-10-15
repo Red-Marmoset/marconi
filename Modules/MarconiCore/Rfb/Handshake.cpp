@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <optional>
 
 namespace Marconi
 {
@@ -51,7 +52,10 @@ namespace Marconi
                 return minor;
             }
 
-            uint8_t NegotiateSecurityType(InStream& in, ByteSink& out, int minor, bool preferAccountLogin)
+            // Returns the chosen type. When the choice depends on the credentials, they're requested here and
+            // `outCredentials` is set, so authentication must not ask again.
+            uint8_t NegotiateSecurityType(InStream& in, ByteSink& out, int minor, const CredentialsProvider& provider,
+                                          std::optional<Credentials>& outCredentials)
             {
                 if (minor == 3)
                 {
@@ -81,8 +85,23 @@ namespace Marconi
                 }
                 LOG_INFO("Rfb", "Server offers security types [%s]", offeredText.c_str());
 
-                uint8_t chosen =
-                    ChooseSecurityType(std::vector<uint8_t>(offered.begin(), offered.end()), preferAccountLogin);
+                std::vector<uint8_t> types(offered.begin(), offered.end());
+                auto isOffered = [&types](uint8_t type) {
+                    return std::find(types.begin(), types.end(), type) != types.end();
+                };
+                bool preferAccountLogin = false;
+                if (isOffered(SecurityType::AppleRemoteDesktop) && isOffered(SecurityType::VncAuth) &&
+                    !isOffered(SecurityType::None))
+                {
+                    Credentials credentials;
+                    if (!provider || !provider(CredentialsKind::PasswordOrAccount, credentials))
+                    {
+                        throw AuthenticationCancelled("Authentication cancelled");
+                    }
+                    preferAccountLogin = !credentials.username.empty();
+                    outCredentials = credentials;
+                }
+                uint8_t chosen = ChooseSecurityType(types, preferAccountLogin);
                 if (chosen == SecurityType::Invalid)
                 {
                     throw RfbError("The server requires an authentication method Marconi doesn't support yet "
@@ -150,15 +169,26 @@ namespace Marconi
             return SecurityType::Invalid;
         }
 
-        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials,
-                                         bool preferAccountLogin)
+        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials)
         {
             HandshakeResult result;
             result.minor = NegotiateVersion(in, out, result);
-            result.securityType = NegotiateSecurityType(in, out, result.minor, preferAccountLogin);
+            std::optional<Credentials> given;
+            result.securityType = NegotiateSecurityType(in, out, result.minor, credentials, given);
             LOG_INFO("Rfb", "Using security type %d", result.securityType);
 
-            Authenticate(result.securityType, in, out, credentials);
+            if (given)
+            {
+                Credentials answer = *given;
+                Authenticate(result.securityType, in, out, [answer](CredentialsKind, Credentials& answerOut) {
+                    answerOut = answer;
+                    return true;
+                });
+            }
+            else
+            {
+                Authenticate(result.securityType, in, out, credentials);
+            }
 
             // RFB 3.3 and 3.7 send no SecurityResult after "None".
             if (result.securityType != SecurityType::None || result.minor >= 8)
