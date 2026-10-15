@@ -32,6 +32,16 @@ namespace RmVnc
             int qualityLevel = 8;            // Tight JPEG quality 0-9, or -1 for lossless only (no JPEG)
         };
 
+        // Cursor image for local rendering: ARGB pixels (alpha 0 or 255), hotspot in pixels. Empty = hidden.
+        struct CursorShape
+        {
+            int width = 0;
+            int height = 0;
+            int hotspotX = 0;
+            int hotspotY = 0;
+            std::vector<uint32_t> argb;
+        };
+
         struct DisconnectInfo
         {
             std::string error;                 // empty for a clean, locally requested or cancelled disconnect
@@ -49,6 +59,8 @@ namespace RmVnc
             // A complete FramebufferUpdate has been applied; `rects` are the areas that changed.
             virtual void OnFramebufferUpdated(const std::vector<Rect>& /*rects*/) {}
             virtual void OnDesktopResized(int /*width*/, int /*height*/) {}
+            // The server sent its cursor shape: draw it locally (the framebuffer no longer contains it).
+            virtual void OnCursorShape(const CursorShape& /*cursor*/) {}
             virtual void OnServerCutText(const std::string& /*latin1Text*/) {}
             virtual void OnBell() {}
             // Exactly once per Connect().
@@ -95,6 +107,9 @@ namespace RmVnc
             void MessageLoop(InStream& in);
             void HandleFramebufferUpdate(InStream& in);
             void HandleServerCutText(InStream& in);
+            void HandleCursor(InStream& in, const Rect& rect);
+            void HandleExtendedDesktopSize(InStream& in, const Rect& rect);
+            void ResizeFramebuffer(int width, int height);
 
             ClientListener& m_listener;
             Framebuffer m_framebuffer;

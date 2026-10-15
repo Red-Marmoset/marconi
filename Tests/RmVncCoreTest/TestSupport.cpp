@@ -172,6 +172,14 @@ namespace RmVncTest
         changed.notify_all();
     }
 
+    void RecordingListener::OnCursorShape(const Rfb::CursorShape& shape)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++cursorUpdates;
+        cursor = shape;
+        changed.notify_all();
+    }
+
     void RecordingListener::OnBell()
     {
         std::lock_guard<std::mutex> lock(mutex);

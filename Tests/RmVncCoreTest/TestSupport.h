@@ -64,6 +64,7 @@ namespace RmVncTest
         void OnDesktopResized(int width, int height) override;
         void OnServerCutText(const std::string& text) override;
         void OnBell() override;
+        void OnCursorShape(const RmVnc::Rfb::CursorShape& cursor) override;
         void OnDisconnected(const RmVnc::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(bool needUsername, RmVnc::Rfb::Credentials& credentials) override;
 
@@ -83,6 +84,8 @@ namespace RmVncTest
         std::vector<std::string> cutTexts;
         int resizedWidth = 0;
         int resizedHeight = 0;
+        int cursorUpdates = 0;
+        RmVnc::Rfb::CursorShape cursor;
 
         // Credentials handed out when asked; empty password means "cancel".
         RmVnc::Rfb::Credentials credentialsToGive;

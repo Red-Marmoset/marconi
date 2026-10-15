@@ -78,6 +78,11 @@ namespace RmVncUI
         });
     }
 
+    void ViewerFrame::OnCursorShape(const RmVnc::Rfb::CursorShape& cursor)
+    {
+        CallAfter([this, cursor]() { m_canvas->SetRemoteCursor(cursor); });
+    }
+
     void ViewerFrame::OnBell()
     {
         CallAfter([]() { wxBell(); });

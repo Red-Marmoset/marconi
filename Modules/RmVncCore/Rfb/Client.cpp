@@ -170,7 +170,9 @@ namespace RmVnc
                     encodings.push_back(Encoding::QualityLevel0 + options.qualityLevel);
                 }
             }
+            encodings.push_back(Encoding::ExtendedDesktopSize);
             encodings.push_back(Encoding::DesktopSize);
+            encodings.push_back(Encoding::Cursor);
             encodings.push_back(Encoding::LastRect);
 
             OutBuffer setEncodings;
@@ -320,12 +322,19 @@ namespace RmVnc
                 }
                 if (encoding == Encoding::DesktopSize)
                 {
-                    {
-                        std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
-                        m_framebuffer.Resize(rect.width, rect.height);
-                    }
+                    ResizeFramebuffer(rect.width, rect.height);
                     resized = true;
-                    m_listener.OnDesktopResized(rect.width, rect.height);
+                    continue;
+                }
+                if (encoding == Encoding::ExtendedDesktopSize)
+                {
+                    HandleExtendedDesktopSize(in, rect);
+                    resized = true;
+                    continue;
+                }
+                if (encoding == Encoding::Cursor)
+                {
+                    HandleCursor(in, rect);
                     continue;
                 }
 
@@ -355,6 +364,67 @@ namespace RmVnc
             {
                 SendUpdateRequest(false);
             }
+        }
+
+        void Client::ResizeFramebuffer(int width, int height)
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                if (width == m_framebuffer.GetWidth() && height == m_framebuffer.GetHeight())
+                {
+                    return;
+                }
+                m_framebuffer.Resize(width, height);
+            }
+            LOG_INFO("Rfb", "Desktop resized to %dx%d", width, height);
+            m_listener.OnDesktopResized(width, height);
+        }
+
+        void Client::HandleExtendedDesktopSize(InStream& in, const Rect& rect)
+        {
+            // x = reason (0 server, 1 our request, 2 another client), y = status, w/h = new size; then screens.
+            uint8_t screens = in.U8();
+            in.Skip(3);
+            in.Skip(static_cast<size_t>(screens) * 16);
+            if (rect.x == 1 && rect.y != 0)
+            {
+                LOG_WARNING("Rfb", "The server refused to resize the desktop (status %d)", rect.y);
+                return;
+            }
+            ResizeFramebuffer(rect.width, rect.height);
+        }
+
+        void Client::HandleCursor(InStream& in, const Rect& rect)
+        {
+            // Pixels in our pixel format, then a 1bpp mask with rows padded to a byte. x/y are the hotspot.
+            CursorShape cursor;
+            cursor.width = rect.width;
+            cursor.height = rect.height;
+            cursor.hotspotX = rect.x;
+            cursor.hotspotY = rect.y;
+            const size_t pixelCount = static_cast<size_t>(rect.width) * rect.height;
+            if (pixelCount > 1024 * 1024)
+            {
+                throw RfbError("The server sent an oversized cursor");
+            }
+            cursor.argb.resize(pixelCount);
+            for (size_t i = 0; i < pixelCount; ++i)
+            {
+                cursor.argb[i] = in.Pixel32() & 0x00FFFFFFu;
+            }
+            const size_t rowBytes = (static_cast<size_t>(rect.width) + 7) / 8;
+            Bytes mask = in.ReadBytes(rowBytes * rect.height);
+            for (int y = 0; y < rect.height; ++y)
+            {
+                for (int x = 0; x < rect.width; ++x)
+                {
+                    if (mask[y * rowBytes + x / 8] & (0x80 >> (x % 8)))
+                    {
+                        cursor.argb[static_cast<size_t>(y) * rect.width + x] |= 0xFF000000u;
+                    }
+                }
+            }
+            m_listener.OnCursorShape(cursor);
         }
 
         void Client::HandleServerCutText(InStream& in)

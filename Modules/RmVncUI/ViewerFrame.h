@@ -33,6 +33,7 @@ namespace RmVncUI
         void OnFramebufferUpdated(const std::vector<RmVnc::Rfb::Rect>& rects) override;
         void OnDesktopResized(int width, int height) override;
         void OnBell() override;
+        void OnCursorShape(const RmVnc::Rfb::CursorShape& cursor) override;
         void OnDisconnected(const RmVnc::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(bool needUsername, RmVnc::Rfb::Credentials& credentials) override;
 

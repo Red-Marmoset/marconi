@@ -91,6 +91,56 @@ namespace RmVncTest
             CHECK(s.client.GetFramebuffer().GetWidth() == 10);
         });
 
+        RunTest("ExtendedDesktopSize resizes; a refused client request does not", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(2);
+            RectHeader(update, 1, 3, 99, 99, Rfb::Encoding::ExtendedDesktopSize); // our request, refused
+            update.U8(1).Padding(3).U32(0).U16(0).U16(0).U16(99).U16(99).U32(0);
+            RectHeader(update, 0, 0, 12, 9, Rfb::Encoding::ExtendedDesktopSize); // server-side change
+            update.U8(2).Padding(3);
+            update.U32(1).U16(0).U16(0).U16(6).U16(9).U32(0);
+            update.U32(2).U16(6).U16(0).U16(6).U16(9).U32(0);
+            s.server.Send(update);
+            s.ExpectUpdateRequest(false, 12, 9);
+            s.ExpectUpdateRequest(true, 12, 9);
+            CHECK(s.listener.resizedWidth == 12 && s.listener.resizedHeight == 9);
+        });
+
+        RunTest("Empty cursor shape hides the cursor", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+            RectHeader(update, 0, 0, 0, 0, Rfb::Encoding::Cursor);
+            s.server.Send(update);
+            s.ExpectUpdateRequest(true, 4, 3);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.cursorUpdates == 1; }));
+            CHECK(s.listener.cursor.width == 0 && s.listener.cursor.argb.empty());
+        });
+
+        RunTest("Cursor mask decoding", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+            RectHeader(update, 1, 2, 9, 2, Rfb::Encoding::Cursor);
+            for (int i = 0; i < 18; ++i)
+            {
+                uint32_t pixel = i == 0 ? 0x00ff0000u : 0x00ffffffu;
+                update.Append(&pixel, 4);
+            }
+            update.U8(0x80).U8(0x80).U8(0x00).U8(0x00);
+            s.server.Send(update);
+            s.ExpectUpdateRequest(true, 4, 3);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.cursorUpdates == 1; }));
+            const Rfb::CursorShape& c = s.listener.cursor;
+            CHECK(c.width == 9 && c.height == 2 && c.hotspotX == 1 && c.hotspotY == 2);
+            CHECK(c.argb.size() == 18);
+            CHECK(c.argb[0] == 0xffff0000u);  // visible red
+            CHECK(c.argb[1] == 0x00ffffffu);  // transparent
+            CHECK(c.argb[8] == 0xffffffffu);  // visible white (second mask byte)
+            CHECK(c.argb[9] == 0x00ffffffu);  // row 1 hidden
+        });
+
         RunTest("Bell, colour map and server cut text", []() {
             ConnectedSession s(4, 3);
             Rfb::OutBuffer messages;

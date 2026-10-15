@@ -33,6 +33,9 @@ namespace RmVncUI
         // Lifts every key and button the server thinks is held.
         void ReleaseInput();
 
+        // UI thread only. Shows the server's cursor shape as our local cursor.
+        void SetRemoteCursor(const RmVnc::Rfb::CursorShape& cursor);
+
     private:
         void CopyFromFramebuffer(const RmVnc::Rfb::Rect& rect);
         void OnPaint(wxPaintEvent& event);
@@ -57,5 +60,7 @@ namespace RmVncUI
         wxPoint m_lastPointer = wxPoint(-1, -1);
         int m_wheelVertical = 0;
         int m_wheelHorizontal = 0;
+        RmVnc::Rfb::CursorShape m_remoteCursor;
+        bool m_hasRemoteCursor = false;
     };
 } // namespace RmVncUI

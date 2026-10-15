@@ -5,6 +5,7 @@
 
 #include <wx/dcclient.h>
 #include <wx/dcmemory.h>
+#include <wx/cursor.h>
 #include <wx/image.h>
 
 #include <algorithm>
@@ -61,6 +62,33 @@ namespace RmVncUI
         {
             ReleaseMouse();
         }
+    }
+
+    void VncCanvas::SetRemoteCursor(const RmVnc::Rfb::CursorShape& cursor)
+    {
+        m_remoteCursor = cursor;
+        m_hasRemoteCursor = true;
+        if (cursor.width <= 0 || cursor.height <= 0)
+        {
+            SetCursor(wxCursor(wxCURSOR_BLANK));
+            return;
+        }
+
+        wxImage image(cursor.width, cursor.height, false);
+        image.InitAlpha();
+        unsigned char* rgb = image.GetData();
+        unsigned char* alpha = image.GetAlpha();
+        for (size_t i = 0; i < cursor.argb.size(); ++i)
+        {
+            uint32_t pixel = cursor.argb[i];
+            rgb[i * 3 + 0] = static_cast<unsigned char>(pixel >> 16);
+            rgb[i * 3 + 1] = static_cast<unsigned char>(pixel >> 8);
+            rgb[i * 3 + 2] = static_cast<unsigned char>(pixel);
+            alpha[i] = static_cast<unsigned char>(pixel >> 24);
+        }
+        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, std::clamp(cursor.hotspotX, 0, cursor.width - 1));
+        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, std::clamp(cursor.hotspotY, 0, cursor.height - 1));
+        SetCursor(wxCursor(image));
     }
 
     wxPoint VncCanvas::ToDesktop(const wxPoint& windowPoint) const
