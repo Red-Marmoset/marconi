@@ -61,5 +61,6 @@ Desktop.ini
 *.swp
 *.swo
 
-# Stray MSVC PDB written to the cwd by some builds
-vc140.pdb
+# Python
+__pycache__/
+*.pyc
