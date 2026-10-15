@@ -35,6 +35,15 @@ namespace MarconiTest
                 }
             }
 
+            // After a resize the client repeats its SetPixelFormat (macOS may forget it when switching modes).
+            void ExpectPixelFormat()
+            {
+                CHECK(server.In().U8() == Rfb::ClientMessage::SetPixelFormat);
+                server.In().Skip(3);
+                Rfb::PixelFormat format = Rfb::PixelFormat::Read(server.In());
+                CHECK(format.bitsPerPixel == 32 && format.trueColour);
+            }
+
             // Reads the incremental FramebufferUpdateRequest the client sends after each update.
             void ExpectUpdateRequest(bool incremental, int width, int height)
             {
@@ -84,11 +93,14 @@ namespace MarconiTest
             update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
             RectHeader(update, 0, 0, 10, 7, Rfb::Encoding::DesktopSize);
             s.server.Send(update);
+            s.ExpectPixelFormat();
             s.ExpectUpdateRequest(false, 10, 7);
             s.ExpectUpdateRequest(true, 10, 7);
             CHECK(s.listener.WaitFor([&]() { return s.listener.resizedWidth == 10; }));
             CHECK(s.listener.resizedHeight == 7);
             CHECK(s.client.GetFramebuffer().GetWidth() == 10);
+            // A resized desktop starts black rather than keeping a corner of the old picture.
+            CHECK(s.client.GetFramebuffer().IsBlack());
         });
 
         RunTest("ExtendedDesktopSize resizes; a refused client request does not", []() {
@@ -102,6 +114,7 @@ namespace MarconiTest
             update.U32(1).U16(0).U16(0).U16(6).U16(9).U32(0);
             update.U32(2).U16(6).U16(0).U16(6).U16(9).U32(0);
             s.server.Send(update);
+            s.ExpectPixelFormat();
             s.ExpectUpdateRequest(false, 12, 9);
             s.ExpectUpdateRequest(true, 12, 9);
             CHECK(s.listener.resizedWidth == 12 && s.listener.resizedHeight == 9);

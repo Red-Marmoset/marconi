@@ -117,6 +117,7 @@ namespace Marconi
             void Send(const Bytes& data) override;
             void SendIfConnected(const Bytes& data);
             void Run(ConnectionOptions options);
+            void SendPixelFormat();
             void SendSetupMessages(const ConnectionOptions& options);
             void SendUpdateRequest(bool incremental);
             void MessageLoop(InStream& in);

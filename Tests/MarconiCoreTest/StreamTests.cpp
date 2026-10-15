@@ -108,7 +108,7 @@ namespace MarconiTest
 
             fb.Resize(5, 2);
             CHECK(fb.GetWidth() == 5 && fb.GetHeight() == 2);
-            CHECK(fb.GetPixel(1, 0) == 0xff && fb.GetPixel(4, 1) == 0);
+            CHECK(fb.IsBlack()); // old pixels belong to a different layout
         });
 
         RunTest("Rect union", []() {

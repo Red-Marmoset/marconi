@@ -14,14 +14,9 @@ namespace Marconi
         {
             width = std::max(width, 0);
             height = std::max(height, 0);
+            // Starts black: the old pixels belong to a different layout, and a Mac switching between its scaled
+            // and native modes would otherwise leave a misleading corner of the old picture on screen.
             std::vector<uint32_t> pixels(static_cast<size_t>(width) * height, 0);
-            // Keep the overlapping area so a resize doesn't flash black before the next update.
-            int copyWidth = std::min(width, m_width);
-            int copyHeight = std::min(height, m_height);
-            for (int y = 0; y < copyHeight; ++y)
-            {
-                std::memcpy(pixels.data() + static_cast<size_t>(y) * width, Row(y), copyWidth * sizeof(uint32_t));
-            }
             m_pixels.swap(pixels);
             m_width = width;
             m_height = height;

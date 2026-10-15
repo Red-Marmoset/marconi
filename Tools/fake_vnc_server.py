@@ -113,6 +113,11 @@ class Session:
                 self.pending_resize = None
                 rects.append(struct.pack(">HHHHi", 0, 0, self.width, self.height, -223))
                 self.full_update = True
+                self.silent = getattr(self, "silent_after_resize", False)
+            if getattr(self, "silent", False):
+                if rects:
+                    self.send(struct.pack(">BxH", 0, len(rects)) + b"".join(rects))
+                continue
             self.frame += 1
             if self.full_update:
                 rects.append(self.rect(0, 0, self.width, self.height))
@@ -174,9 +179,9 @@ def console(session):
             session.send(bytes([2]))
 
 
-def flipper(session, sizes, seconds):
+def flipper(session, sizes, seconds, once):
     index = 0
-    while session.alive:
+    while session.alive and not (once and index == 1):
         time.sleep(seconds)
         index = 1 - index
         print("resizing to %dx%d" % sizes[index], flush=True)
@@ -192,6 +197,9 @@ def main():
     parser.add_argument("--flip", default=None, metavar="WxH",
                         help="switch between --size and this size every --flip-every seconds (like a Mac locking)")
     parser.add_argument("--flip-every", type=float, default=3.0)
+    parser.add_argument("--flip-once", action="store_true", help="only switch size once per connection")
+    parser.add_argument("--silent-after-resize", action="store_true",
+                        help="like macOS at its lock screen: after a resize send no more pixels on that connection")
     args = parser.parse_args()
     width, height = (int(v) for v in args.size.split("x"))
 
@@ -214,7 +222,9 @@ def main():
             threading.Thread(target=console, args=(session,), daemon=True).start()
             if args.flip:
                 sizes = [(width, height), tuple(int(v) for v in args.flip.split("x"))]
-                threading.Thread(target=flipper, args=(session, sizes, args.flip_every), daemon=True).start()
+                threading.Thread(target=flipper, args=(session, sizes, args.flip_every, args.flip_once),
+                                 daemon=True).start()
+            session.silent_after_resize = args.silent_after_resize
             session.message_loop()
         except (ConnectionError, OSError) as error:
             print("session ended:", error, flush=True)

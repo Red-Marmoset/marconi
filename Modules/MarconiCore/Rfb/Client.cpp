@@ -173,12 +173,17 @@ namespace Marconi
             ++m_statRequests;
         }
 
-        void Client::SendSetupMessages(const ConnectionOptions& options)
+        void Client::SendPixelFormat()
         {
             OutBuffer pixelFormat;
             pixelFormat.U8(ClientMessage::SetPixelFormat).Padding(3);
             PixelFormat::Client().Write(pixelFormat);
             Send(pixelFormat.Data());
+        }
+
+        void Client::SendSetupMessages(const ConnectionOptions& options)
+        {
+            SendPixelFormat();
 
             m_decoders.clear();
             std::vector<int32_t> encodings;
@@ -438,6 +443,9 @@ namespace Marconi
             }
             if (resized)
             {
+                // macOS may forget our pixel format when it switches display modes; say it again (harmless
+                // elsewhere) before asking for the whole desktop.
+                SendPixelFormat();
                 SendUpdateRequest(false);
             }
         }

@@ -127,7 +127,16 @@ namespace MarconiUI
 
     void ViewerFrame::OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects)
     {
-        CallAfter([this, rects]() { m_canvas->UpdateRects(rects); });
+        CallAfter([this, rects]() {
+            m_canvas->UpdateRects(rects);
+            if (m_waitingForPicture)
+            {
+                m_waitingForPicture = false;
+                m_autoReconnects = 0;
+                m_pictureTimer.Stop();
+                UpdateStatus();
+            }
+        });
     }
 
     void ViewerFrame::OnDesktopResized(int width, int height)
@@ -136,7 +145,7 @@ namespace MarconiUI
             // The window keeps its size (Fit mode scales): a Mac switches size whenever it locks or unlocks, and
             // the window jumping around with it is disorienting. It was fitted to the desktop on connecting.
             m_canvas->SetDesktopSize(width, height);
-            UpdateStatus();
+            WaitForPicture();
             m_snapshotTimer.StartOnce(3000);
         });
     }
@@ -249,8 +258,7 @@ namespace MarconiUI
         UpdateStatus();
         m_canvas->SetFocus();
         SyncClipboardToServer();
-        m_pictureRetries = 0;
-        m_pictureTimer.Start(2000);
+        WaitForPicture();
         m_client.TakeTrafficStats(); // start counting from here
         m_statsTimer.Start(10000);
         m_clipboardChangeCount = GetClipboardChangeCount();
@@ -317,25 +325,47 @@ namespace MarconiUI
                  stats.updates, stats.rectangles, stats.requests, stats.pointerEvents, stats.keyEvents);
     }
 
+    void ViewerFrame::WaitForPicture()
+    {
+        // After connecting or a resize, until the server sends actual pixels.
+        m_waitingForPicture = true;
+        m_pictureRetries = 0;
+        m_pictureTimer.Start(2000);
+        UpdateStatus();
+    }
+
     void ViewerFrame::CheckForPicture()
     {
-        // macOS sometimes answers a connection made soon after the previous one with an empty or all-black desktop
-        // and then reports no changes. Asking for the whole desktop again brings the picture back.
-        constexpr int kMaxRetries = 5;
-        bool black;
-        {
-            Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
-            std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
-            black = framebuffer.IsBlack();
-        }
-        if (!m_connected || !black || m_pictureRetries >= kMaxRetries)
+        // macOS sometimes sends nothing but size changes when it switches display modes (e.g. at the lock screen)
+        // or right after a previous session ended. Ask for the whole desktop again; if that doesn't help, reconnect,
+        // since a fresh connection always gets a full picture.
+        constexpr int kMaxRetries = 4;
+        constexpr int kMaxAutoReconnects = 3;
+        if (!m_connected || !m_waitingForPicture)
         {
             m_pictureTimer.Stop();
             return;
         }
-        ++m_pictureRetries;
-        LOG_INFO("Viewer", "The desktop is still black, asking for it again (%d/%d)", m_pictureRetries, kMaxRetries);
-        m_client.RequestFullUpdate();
+        if (m_pictureRetries < kMaxRetries)
+        {
+            ++m_pictureRetries;
+            LOG_INFO("Viewer", "No picture from the server yet, asking for the whole desktop again (%d/%d)",
+                     m_pictureRetries, kMaxRetries);
+            m_client.RequestFullUpdate();
+            return;
+        }
+        m_pictureTimer.Stop();
+        if (m_autoReconnects >= kMaxAutoReconnects)
+        {
+            LOG_WARNING("Viewer", "Still no picture after %d reconnects; giving up", m_autoReconnects);
+            SetStatusText("The server isn't sending a picture. Try Refresh, or reconnect later.");
+            return;
+        }
+        ++m_autoReconnects;
+        LOG_INFO("Viewer", "Still no picture; reconnecting (%d/%d)", m_autoReconnects, kMaxAutoReconnects);
+        SetStatusText("The server stopped sending a picture; reconnecting...");
+        m_autoReconnecting = true;
+        m_client.Disconnect(); // OnDisconnected follows; HandleDisconnected reconnects
     }
 
     void ViewerFrame::HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info)
@@ -348,6 +378,17 @@ namespace MarconiUI
             }
         }
         LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
+        if (m_autoReconnecting)
+        {
+            m_autoReconnecting = false;
+            m_connected = false;
+            m_pictureTimer.Stop();
+            m_statsTimer.Stop();
+            m_snapshotTimer.Stop();
+            m_clipboardTimer.Stop();
+            Connect();
+            return;
+        }
         m_pictureTimer.Stop();
         m_statsTimer.Stop();
         m_snapshotTimer.Stop();
@@ -557,6 +598,10 @@ namespace MarconiUI
         }
         wxSize desktop = m_canvas->GetDesktopSize();
         wxString status = wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), desktop.x, desktop.y);
+        if (m_waitingForPicture)
+        {
+            status += " - waiting for the screen...";
+        }
         if (m_canvas->GetScaleMode() == ScaleMode::Fit)
         {
             status += wxString::Format(" - %d%%", static_cast<int>(m_canvas->GetScale() * 100.0 + 0.5));

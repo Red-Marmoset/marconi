@@ -31,14 +31,15 @@ namespace MarconiUI
         wxSize fieldSize = FromDIP(wxSize(260, -1));
         m_name = new wxTextCtrl(this, wxID_ANY, connection.name, wxDefaultPosition, fieldSize);
         m_name->SetHint("optional, e.g. Studio Mac");
-        addRow("Name:", m_name);
+        addRow("Shown in list as:", m_name);
         m_address = new wxTextCtrl(this, wxID_ANY, connection.address, wxDefaultPosition, fieldSize);
         m_address->SetHint("host, host:display or host::port");
         addRow("Address:", m_address);
         m_username = new wxTextCtrl(this, wxID_ANY, connection.username, wxDefaultPosition, fieldSize);
-        m_username->SetHint("only for Macs (account login)");
-        addRow("User name:", m_username);
+        m_username->SetHint("Macs: your account or full name");
+        addRow("Login name:", m_username);
         m_password = new wxTextCtrl(this, wxID_ANY, password, wxDefaultPosition, fieldSize, wxTE_PASSWORD);
+        m_password->SetHint("with a login name: that account's password");
         addRow("Password:", m_password);
         grid->AddSpacer(0);
         m_rememberPassword = new wxCheckBox(this, wxID_ANY, "Remember password in the system keychain");

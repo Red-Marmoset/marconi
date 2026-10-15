@@ -70,6 +70,7 @@ namespace MarconiUI
         void ToggleFullScreen();
         void SyncClipboardToServer();
         void SaveSettings();
+        void WaitForPicture();
         void CheckForPicture();
         void LogTraffic();
 
@@ -83,6 +84,9 @@ namespace MarconiUI
         bool m_connected = false;
         wxTimer m_pictureTimer;   // re-asks for the desktop if a fresh connection still shows nothing
         int m_pictureRetries = 0;
+        bool m_waitingForPicture = false; // no pixels since connecting or the last resize
+        int m_autoReconnects = 0;         // reconnects made because the server stopped sending pixels
+        bool m_autoReconnecting = false;
         wxTimer m_statsTimer;     // logs traffic every 10 seconds
         wxTimer m_snapshotTimer;  // saves the framebuffer to the log folder a little after a resize
         int m_snapshots = 0;
