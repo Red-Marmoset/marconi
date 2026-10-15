@@ -1,4 +1,6 @@
-# rmvnc
+# Marconi
+
+**M**ulti-protocol **A**ccess and **R**emote **CON**trol **I**nterface.
 
 A free, cross-platform VNC client for Windows, macOS and Linux, built on the una engine with a wxWidgets UI.
 
@@ -21,7 +23,7 @@ RealVNC, x11vnc, UltraVNC and others.
 
 ## Using it
 
-Run `rmvnc` to open the connection window. Type an address and press Enter, or pick a saved connection.
+Run `marconi` to open the connection window. Type an address and press Enter, or pick a saved connection.
 
 Addresses can be written as:
 
@@ -35,7 +37,7 @@ Addresses can be written as:
 
 From the command line:
 
-    rmvnc [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] host[:display]
+    marconi [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] host[:display]
 
 While connected, **F8** opens the menu, which still works in full screen. From it you can change scaling, switch
 full screen, view-only and clipboard sharing, send Ctrl+Alt+Del or F8, refresh, or disconnect.
@@ -47,9 +49,12 @@ Logs are written to the user data folder:
 
 | Platform | Log folder |
 |---|---|
-| Windows | `%LOCALAPPDATA%\rmvnc\logs` |
-| macOS | `~/Library/Application Support/rmvnc/logs` |
-| Linux | `~/.local/share/rmvnc/logs` |
+| Windows | `%LOCALAPPDATA%\marconi\logs` |
+| macOS | `~/Library/Application Support/marconi/logs` |
+| Linux | `~/.local/share/marconi/logs` |
+
+Marconi used to be called rmvnc. On first start it copies rmvnc's saved connections and passwords; the old ones are
+left in place.
 
 ## Building
 
@@ -58,14 +63,14 @@ You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildT
 **Windows.** Any PowerShell or cmd window works; the MSVC environment is set up automatically and needs
 toolset 14.44 or newer.
 
-    .\Build.ps1                       # Release app  -> Build\RmVnc\Release\RmVnc.exe
+    .\Build.ps1                       # Release app  -> Build\Marconi\Release\Marconi.exe
     .\Build.ps1 -Config Debug
-    .\Build.ps1 -Project Tests\RmVncCoreTest\Project.json -Config Debug
+    .\Build.ps1 -Project Tests\MarconiCoreTest\Project.json -Config Debug
 
 **macOS.** The first build compiles wxWidgets, which takes a while.
 
     ./Build.sh
-    ./Build.sh Tests/RmVncCoreTest/Project.json -config Debug
+    ./Build.sh Tests/MarconiCoreTest/Project.json -config Debug
 
 **Linux.** The first build compiles wxWidgets for GTK3. It needs these packages (Debian/Ubuntu names):
 
@@ -77,7 +82,7 @@ toolset 14.44 or newer.
 
 ## Testing
 
-`Tests/RmVncCoreTest` covers the protocol core:
+`Tests/MarconiCoreTest` covers the protocol core:
 
 - address parsing and text conversion;
 - streams;
@@ -91,18 +96,18 @@ The exit code is the number of failures.
 authentication and logs every key, pointer and clipboard event it receives:
 
     python Tools/fake_vnc_server.py --port 5999 --size 1024x768 [--cut-on-connect "text"]
-    rmvnc 127.0.0.1::5999
+    marconi 127.0.0.1::5999
 
 ## Layout
 
-- `Modules/RmVncCore`: the headless RFB client. It covers sockets, the stream, the handshake and authentication,
+- `Modules/MarconiCore`: the headless RFB client. It covers sockets, the stream, the handshake and authentication,
   decoders, the framebuffer and the client thread, and includes no wx headers.
-- `Modules/RmVncUI`: the wxWidgets app. It contains the connections window, the viewer window and canvas, key
+- `Modules/MarconiUI`: the wxWidgets app. It contains the connections window, the viewer window and canvas, key
   mapping, clipboard sync and the saved connections store.
-- `Tests/RmVncCoreTest`: core tests.
+- `Tests/MarconiCoreTest`: core tests.
 - `Tools/`: development helpers.
 
-rmvnc also uses the una engine's `Crypto` module, which provides DES, AES, MD5, Diffie-Hellman and random numbers
+Marconi also uses the una engine's `Crypto` module, which provides DES, AES, MD5, Diffie-Hellman and random numbers
 through each platform's own crypto library.
 
 ## Not yet supported

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Red Marmoset Studios Ltd.
-# Minimal RFB 3.8 test server for manual/visual testing of rmvnc without a real VNC server.
+# Minimal RFB 3.8 test server for manual/visual testing of Marconi without a real VNC server.
 #
 # Serves an animated test pattern using security type None and Raw encoding (plus CopyRect when the client
 # asks for it), and logs every client message (pointer, key, clipboard) so input handling can be checked.
 #
 #   python Tools/fake_vnc_server.py [--port 5999] [--size 1024x768]
-#   then connect rmvnc to 127.0.0.1::5999
+#   then connect Marconi to 127.0.0.1::5999
 #
 # Type "resize WxH" or "cut <text>" or "bell" on the server's stdin to exercise those messages, or pass
 # --cut-on-connect "text" to send clipboard text as soon as a client connects.
@@ -55,7 +55,7 @@ class Session:
         print("security choice:", self.recv_exact(1)[0])
         self.conn.sendall(struct.pack(">I", 0))
         print("shared:", self.recv_exact(1)[0])
-        name = b"rmvnc fake server"
+        name = b"Marconi fake server"
         pixel_format = struct.pack(">BBBBHHHBBBxxx", 32, 24, 0, 1, 255, 255, 255, 16, 8, 0)
         self.conn.sendall(struct.pack(">HH", self.width, self.height) + pixel_format + struct.pack(">I", len(name)) + name)
 

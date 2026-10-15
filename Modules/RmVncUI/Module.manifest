@@ -1,9 +1,0 @@
-{
-    "name": "RmVncUI",
-    "version": "0.1.0",
-    "type": "Engine",
-    "description": "wxWidgets front end for rmvnc",
-    "dependencies": ["RmVncCore", "Platform", "Log"],
-    "externalDependencies": ["wxwidgets"],
-    "platforms": ["Windows", "Linux", "macOS"]
-}

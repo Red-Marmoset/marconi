@@ -1,0 +1,9 @@
+{
+    "name": "MarconiUI",
+    "version": "0.1.0",
+    "type": "Engine",
+    "description": "wxWidgets front end for Marconi",
+    "dependencies": ["MarconiCore", "Platform", "Log"],
+    "externalDependencies": ["wxwidgets"],
+    "platforms": ["Windows", "Linux", "macOS"]
+}

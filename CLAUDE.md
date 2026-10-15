@@ -1,4 +1,4 @@
-# rmvnc
+# Marconi
 
 Cross-platform VNC client. It's an out-of-tree una project; the engine lives at `$UNA_ENGINE_PATH` (default
 `C:\code\engine`).
@@ -6,9 +6,9 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 ## Build and test
 
 - **App:** `.\Build.ps1 [-Config Debug] [-Clean]` (Windows) or `./Build.sh` (macOS/Linux). Output goes to
-  `Build/RmVnc/<Config>/`.
-- **Tests:** `.\Build.ps1 -Project Tests\RmVncCoreTest\Project.json -Config Debug -Clean`, then run
-  `Build\RmVncCoreTest\Debug\RmVncCoreTest.exe`. The exit code is the number of failures.
+  `Build/Marconi/<Config>/`.
+- **Tests:** `.\Build.ps1 -Project Tests\MarconiCoreTest\Project.json -Config Debug -Clean`, then run
+  `Build\MarconiCoreTest\Debug\MarconiCoreTest.exe`. The exit code is the number of failures.
 - **Building an engine test from here:** `-Project C:\code\engine\Tests\CryptoTest\Project.json` works too; output
   lands in this repo's `Build/`.
 - Header edits rebuild their includers (needs the engine's BuildTool from 3d0ce07 or later; rebuild BuildTool if it's older, otherwise use `-Clean` after touching a header).
@@ -19,7 +19,7 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 
 ## Architecture
 
-- `RmVncCore` has no wx headers. It uses wx's bundled zlib (`#include <zlib.h>`, symbols prefixed `wx_zlib_`),
+- `MarconiCore` has no wx headers. It uses wx's bundled zlib (`#include <zlib.h>`, symbols prefixed `wx_zlib_`),
   stb_image for JPEG, and the engine's `Crypto` module.
 - `Rfb::Client` runs the protocol on a worker thread.
   - Its `ClientListener` callbacks arrive on that thread; `ViewerFrame` passes them to the UI thread with

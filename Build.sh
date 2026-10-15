@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Build wrapper for macOS/Linux: sets UNA_ENGINE_PATH and invokes the engine's
-# BuildTool on a Project.json from the rmvnc root (so output lands in ./Build).
+# BuildTool on a Project.json from the Marconi root (so output lands in ./Build).
 #
 # Usage:
 #   ./Build.sh [Project.json] [BuildTool args...]
 #   ./Build.sh                                   # the app, Release
-#   ./Build.sh Tests/RmVncCoreTest/Project.json -config Debug
+#   ./Build.sh Tests/MarconiCoreTest/Project.json -config Debug
 
 set -e
 

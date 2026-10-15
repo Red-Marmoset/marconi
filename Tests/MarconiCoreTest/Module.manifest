@@ -1,0 +1,9 @@
+{
+    "name": "MarconiCoreTest",
+    "version": "0.1.0",
+    "type": "console",
+    "description": "Tests for the Marconi core: streams, handshake, decoders, client against a scripted fake server",
+    "dependencies": ["Test", "MarconiCore"],
+    "externalDependencies": ["wxwidgets", "stb"],
+    "platforms": ["Windows", "Linux", "macOS"]
+}

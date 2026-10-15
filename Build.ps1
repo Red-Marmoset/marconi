@@ -1,4 +1,4 @@
-# Build.ps1 - Build rmvnc (or one of its test projects) using the una engine's BuildTool.
+# Build.ps1 - Build Marconi (or one of its test projects) using the una engine's BuildTool.
 #
 # Mirrors the pattern from engine's BuildEditor.ps1: auto-detects vcvarsall.bat
 # so the script works from a plain Command Prompt / PowerShell window, not
@@ -6,7 +6,7 @@
 #
 # Usage:
 #   .\Build.ps1 [-Project <Project.json>] [-Config Release|Debug] [-Clean]
-#   e.g. .\Build.ps1 -Project Tests\RmVncCoreTest\Project.json -Config Debug
+#   e.g. .\Build.ps1 -Project Tests\MarconiCoreTest\Project.json -Config Debug
 # Any additional arguments are forwarded to BuildTool verbatim.
 
 param(
@@ -145,4 +145,4 @@ if ($rc -ne 0) {
     Write-Host "Build failed with exit code $rc." -ForegroundColor Red
     exit $rc
 }
-Write-Host "rmvnc build complete." -ForegroundColor Green
+Write-Host "Marconi build complete." -ForegroundColor Green

@@ -1,11 +1,11 @@
 {
-    "name": "RmVnc",
+    "name": "Marconi",
     "type": "windowed",
     "version": "0.1.0",
-    "description": "rmvnc - cross-platform VNC client",
+    "description": "Marconi - cross-platform VNC client",
     "modules": [
-        "RmVncCore",
-        "RmVncUI"
+        "MarconiCore",
+        "MarconiUI"
     ],
     "compiler": "msvc"
 }
