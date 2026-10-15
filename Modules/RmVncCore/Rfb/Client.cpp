@@ -241,7 +241,9 @@ namespace RmVnc
                     return true;
                 };
 
-                HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider);
+                // A user name means "log in with my account" on a Mac that also offers a VNC password.
+                HandshakeResult handshake =
+                    PerformHandshake(in, *this, options.shared, provider, !options.credentials.username.empty());
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
                 {
                     std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());

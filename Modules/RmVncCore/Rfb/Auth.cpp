@@ -74,9 +74,10 @@ namespace RmVnc
 
         const std::vector<uint8_t>& SupportedSecurityTypes()
         {
-            // Apple's account login is preferred over the (DES, 8 character) VNC password when both are offered.
-            static const std::vector<uint8_t> types = {SecurityType::None, SecurityType::AppleRemoteDesktop,
-                                                       SecurityType::VncAuth};
+            // The VNC password before Apple's account login: when a Mac offers both, the password is what users of
+            // other viewers expect to type (ChooseSecurityType can still prefer the account login).
+            static const std::vector<uint8_t> types = {SecurityType::None, SecurityType::VncAuth,
+                                                       SecurityType::AppleRemoteDesktop};
             return types;
         }
 

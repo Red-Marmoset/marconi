@@ -7,6 +7,7 @@
 
 #include <Log/Log.h>
 
+#include <algorithm>
 #include <cstdio>
 
 namespace RmVnc
@@ -50,7 +51,7 @@ namespace RmVnc
                 return minor;
             }
 
-            uint8_t NegotiateSecurityType(InStream& in, ByteSink& out, int minor)
+            uint8_t NegotiateSecurityType(InStream& in, ByteSink& out, int minor, bool preferAccountLogin)
             {
                 if (minor == 3)
                 {
@@ -80,7 +81,8 @@ namespace RmVnc
                 }
                 LOG_INFO("Rfb", "Server offers security types [%s]", offeredText.c_str());
 
-                uint8_t chosen = ChooseSecurityType(std::vector<uint8_t>(offered.begin(), offered.end()));
+                uint8_t chosen =
+                    ChooseSecurityType(std::vector<uint8_t>(offered.begin(), offered.end()), preferAccountLogin);
                 if (chosen == SecurityType::Invalid)
                 {
                     throw RfbError("The server requires an authentication method rmvnc doesn't support yet "
@@ -126,10 +128,15 @@ namespace RmVnc
             return true;
         }
 
-        uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered)
+        uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered, bool preferAccountLogin)
         {
-            // Most convenient first. Apple's account login comes before the VNC password, because macOS only
-            // offers the VNC password when "VNC viewers may control screen with password" is switched on.
+            auto isOffered = [&offered](uint8_t type) {
+                return std::find(offered.begin(), offered.end(), type) != offered.end();
+            };
+            if (preferAccountLogin && isOffered(SecurityType::AppleRemoteDesktop))
+            {
+                return SecurityType::AppleRemoteDesktop;
+            }
             for (uint8_t preferred : SupportedSecurityTypes())
             {
                 for (uint8_t type : offered)
@@ -143,11 +150,12 @@ namespace RmVnc
             return SecurityType::Invalid;
         }
 
-        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials)
+        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials,
+                                         bool preferAccountLogin)
         {
             HandshakeResult result;
             result.minor = NegotiateVersion(in, out, result);
-            result.securityType = NegotiateSecurityType(in, out, result.minor);
+            result.securityType = NegotiateSecurityType(in, out, result.minor, preferAccountLogin);
             LOG_INFO("Rfb", "Using security type %d", result.securityType);
 
             Authenticate(result.securityType, in, out, credentials);

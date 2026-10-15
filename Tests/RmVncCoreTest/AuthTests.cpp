@@ -147,7 +147,7 @@ namespace RmVncTest
             CHECK(threw);
         });
 
-        RunTest("Apple ARD against the fake server, preferred over VNC auth", []() {
+        RunTest("Apple ARD against the fake server, chosen when a user name is given", []() {
             FakeServer server;
             RecordingListener listener;
             listener.credentialsToGive = {"admin", "secret"};
@@ -155,6 +155,7 @@ namespace RmVncTest
             Rfb::ConnectionOptions options;
             options.host = "127.0.0.1";
             options.port = server.GetPort();
+            options.credentials.username = "admin";
             client.Connect(options);
             CHECK(server.AcceptClient());
             server.SendString("RFB 003.889\n");

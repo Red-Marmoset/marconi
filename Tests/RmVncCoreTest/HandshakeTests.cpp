@@ -54,6 +54,14 @@ namespace RmVncTest
                   Rfb::SecurityType::VncAuth);
             CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::VncAuth, Rfb::SecurityType::None}) ==
                   Rfb::SecurityType::None);
+            // A Mac offering both: the VNC password by default, the account login when asked for.
+            CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::AppleRemoteDesktop, Rfb::SecurityType::VncAuth}) ==
+                  Rfb::SecurityType::VncAuth);
+            CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::AppleRemoteDesktop, Rfb::SecurityType::VncAuth}, true) ==
+                  Rfb::SecurityType::AppleRemoteDesktop);
+            CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::AppleRemoteDesktop}) ==
+                  Rfb::SecurityType::AppleRemoteDesktop);
+            CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::VncAuth}, true) == Rfb::SecurityType::VncAuth);
             CHECK(Rfb::ChooseSecurityType({}) == Rfb::SecurityType::Invalid);
         });
 
