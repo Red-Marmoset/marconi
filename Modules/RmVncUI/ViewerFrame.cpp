@@ -3,6 +3,7 @@
 
 #include "ViewerFrame.h"
 
+#include "CredentialsDialog.h"
 #include "VncCanvas.h"
 
 #include <Log/Log.h>
@@ -27,23 +28,36 @@ namespace RmVncUI
         SetSizer(sizer);
 
         CreateStatusBar();
-        SetStatusText("Connecting to " + wxString::FromUTF8(RmVnc::FormatAddress(options.address)) + "...");
         SetClientSize(FromDIP(wxSize(800, 600)));
 
         Bind(wxEVT_CLOSE_WINDOW, &ViewerFrame::OnClose, this);
-
-        RmVnc::Rfb::ConnectionOptions connection;
-        connection.host = options.address.host;
-        connection.port = options.address.port;
-        connection.credentials = options.credentials;
-        m_client.Connect(connection);
+        Connect();
     }
 
     ViewerFrame::~ViewerFrame()
     {
         // Normally already done in OnClose; the Client must stop before this listener goes away.
-        m_closing = true;
+        {
+            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            m_closing = true;
+        }
+        m_credentialsChanged.notify_all();
         m_client.Disconnect();
+    }
+
+    wxString ViewerFrame::GetServerDisplayName() const
+    {
+        return m_desktopName.empty() ? wxString::FromUTF8(RmVnc::FormatAddress(m_options.address)) : m_desktopName;
+    }
+
+    void ViewerFrame::Connect()
+    {
+        SetStatusText("Connecting to " + wxString::FromUTF8(RmVnc::FormatAddress(m_options.address)) + "...");
+        RmVnc::Rfb::ConnectionOptions connection;
+        connection.host = m_options.address.host;
+        connection.port = m_options.address.port;
+        connection.credentials = m_options.credentials;
+        m_client.Connect(connection);
     }
 
     void ViewerFrame::OnConnected(const RmVnc::Rfb::ServerInit& serverInit)
@@ -69,40 +83,99 @@ namespace RmVncUI
         CallAfter([]() { wxBell(); });
     }
 
-    void ViewerFrame::OnDisconnected(const std::string& error)
+    void ViewerFrame::OnDisconnected(const RmVnc::Rfb::DisconnectInfo& info)
     {
-        CallAfter([this, error]() { HandleDisconnected(error); });
+        CallAfter([this, info]() { HandleDisconnected(info); });
+    }
+
+    bool ViewerFrame::OnCredentialsRequired(bool needUsername, RmVnc::Rfb::Credentials& credentials)
+    {
+        // Connection thread: ask the UI thread and wait for the answer (or for the window to close).
+        std::unique_lock<std::mutex> lock(m_credentialsMutex);
+        if (m_closing)
+        {
+            return false;
+        }
+        m_credentialsAnswered = false;
+        CallAfter([this, needUsername]() { AskForCredentials(needUsername); });
+        m_credentialsChanged.wait(lock, [this]() { return m_credentialsAnswered || m_closing; });
+        if (m_closing || !m_credentialsAccepted)
+        {
+            return false;
+        }
+        credentials = m_credentialsAnswer;
+        return true;
+    }
+
+    void ViewerFrame::AskForCredentials(bool needUsername)
+    {
+        SetStatusText("Waiting for credentials...");
+        CredentialsDialog dialog(this, GetServerDisplayName(), needUsername,
+                                 wxString::FromUTF8(m_options.credentials.username));
+        bool accepted = dialog.ShowModal() == wxID_OK;
+        {
+            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            m_credentialsAccepted = accepted;
+            m_credentialsAnswer.username = dialog.GetUsername().utf8_string();
+            m_credentialsAnswer.password = dialog.GetPassword().utf8_string();
+            m_credentialsAnswered = true;
+        }
+        m_credentialsChanged.notify_all();
+        if (accepted)
+        {
+            // Keep them for the rest of this window's life so reconnects don't ask again.
+            m_options.credentials = m_credentialsAnswer;
+            SetStatusText("Authenticating...");
+        }
     }
 
     void ViewerFrame::HandleConnected(const RmVnc::Rfb::ServerInit& serverInit)
     {
-        wxString name = wxString::FromUTF8(serverInit.name);
-        if (name.empty())
-        {
-            name = wxString::FromUTF8(RmVnc::FormatAddress(m_options.address));
-        }
-        SetTitle(name + " - rmvnc");
-        SetStatusText(wxString::Format("Connected to %s (%d x %d)", name, serverInit.width, serverInit.height));
+        m_desktopName = wxString::FromUTF8(serverInit.name);
+        SetTitle(GetServerDisplayName() + " - rmvnc");
+        SetStatusText(wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), serverInit.width,
+                                       serverInit.height));
         m_canvas->SetDesktopSize(serverInit.width, serverInit.height);
         FitToDesktop();
         m_canvas->SetFocus();
     }
 
-    void ViewerFrame::HandleDisconnected(const std::string& error)
+    void ViewerFrame::HandleDisconnected(const RmVnc::Rfb::DisconnectInfo& info)
     {
-        LOG_INFO("Viewer", "Disconnected (closing=%d): %s", m_closing ? 1 : 0, error.c_str());
-        if (m_closing)
         {
-            return;
+            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            if (m_closing)
+            {
+                return;
+            }
         }
-        if (error.empty())
+        LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
+        m_canvas->ReleaseInput();
+        if (info.error.empty())
         {
             Close(true);
             return;
         }
-        SetStatusText("Disconnected: " + wxString::FromUTF8(error));
-        wxMessageBox(wxString::FromUTF8(error), "Connection to " + wxString::FromUTF8(RmVnc::FormatAddress(m_options.address)),
-                     wxOK | wxICON_ERROR, this);
+
+        wxString caption = "Connection to " + GetServerDisplayName();
+        if (info.authenticationFailed)
+        {
+            SetStatusText("Authentication failed");
+            wxMessageDialog retry(this, wxString::FromUTF8(info.error) + "\n\nWould you like to try again?", caption,
+                                  wxYES_NO | wxICON_WARNING);
+            retry.SetYesNoLabels("Try Again", "Close");
+            if (retry.ShowModal() == wxID_YES)
+            {
+                m_options.credentials.password.clear(); // rejected: ask again
+                Connect();
+                return;
+            }
+            Close(true);
+            return;
+        }
+
+        SetStatusText("Disconnected: " + wxString::FromUTF8(info.error));
+        wxMessageBox(wxString::FromUTF8(info.error), caption, wxOK | wxICON_ERROR, this);
         Close(true);
     }
 
@@ -131,7 +204,12 @@ namespace RmVncUI
 
     void ViewerFrame::OnClose(wxCloseEvent& event)
     {
-        m_closing = true;
+        {
+            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            m_closing = true;
+        }
+        m_credentialsChanged.notify_all();
+        m_canvas->ReleaseInput();
         m_client.Disconnect();
         event.Skip(); // default handler destroys the frame
     }

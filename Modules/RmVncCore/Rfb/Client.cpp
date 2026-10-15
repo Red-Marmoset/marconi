@@ -172,7 +172,8 @@ namespace RmVnc
 
         void Client::Run(ConnectionOptions options)
         {
-            std::string error;
+            DisconnectInfo info;
+            std::string& error = info.error;
             try
             {
                 LOG_INFO("Rfb", "Connecting to %s:%u", options.host.c_str(), options.port);
@@ -212,9 +213,19 @@ namespace RmVnc
                 }
                 SendSetupMessages(options);
                 m_connected = true;
+                info.wasConnected = true;
                 m_listener.OnConnected(handshake.serverInit);
                 SendUpdateRequest(false);
                 MessageLoop(in);
+            }
+            catch (const AuthenticationCancelled&)
+            {
+                error.clear();
+            }
+            catch (const AuthenticationFailed& exception)
+            {
+                error = exception.what();
+                info.authenticationFailed = true;
             }
             catch (const std::exception& exception)
             {
@@ -230,6 +241,7 @@ namespace RmVnc
             if (m_stopping)
             {
                 error.clear();
+                info.authenticationFailed = false;
             }
             if (error.empty())
             {
@@ -239,7 +251,7 @@ namespace RmVnc
             {
                 LOG_WARNING("Rfb", "Disconnected: %s", error.c_str());
             }
-            m_listener.OnDisconnected(error);
+            m_listener.OnDisconnected(info);
         }
 
         void Client::MessageLoop(InStream& in)

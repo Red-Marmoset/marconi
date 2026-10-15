@@ -30,6 +30,13 @@ namespace RmVnc
             std::vector<int32_t> encodings; // preferred order; empty = rmvnc's default order
         };
 
+        struct DisconnectInfo
+        {
+            std::string error;                 // empty for a clean, locally requested or cancelled disconnect
+            bool authenticationFailed = false; // the server rejected the credentials; retrying may help
+            bool wasConnected = false;         // got as far as ServerInit
+        };
+
         // Callbacks arrive on the connection thread. UI implementations should marshal to the UI thread.
         class ClientListener
         {
@@ -42,8 +49,8 @@ namespace RmVnc
             virtual void OnDesktopResized(int /*width*/, int /*height*/) {}
             virtual void OnServerCutText(const std::string& /*latin1Text*/) {}
             virtual void OnBell() {}
-            // Exactly once per Connect(). `error` is empty when the disconnect was requested locally.
-            virtual void OnDisconnected(const std::string& /*error*/) {}
+            // Exactly once per Connect().
+            virtual void OnDisconnected(const DisconnectInfo& /*info*/) {}
             // Blocking request for credentials. Return false to cancel the connection.
             virtual bool OnCredentialsRequired(bool /*needUsername*/, Credentials& /*inOutCredentials*/)
             {

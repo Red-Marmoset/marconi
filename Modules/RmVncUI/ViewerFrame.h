@@ -8,6 +8,9 @@
 
 #include <wx/frame.h>
 
+#include <condition_variable>
+#include <mutex>
+
 namespace RmVncUI
 {
     class VncCanvas;
@@ -30,17 +33,29 @@ namespace RmVncUI
         void OnFramebufferUpdated(const std::vector<RmVnc::Rfb::Rect>& rects) override;
         void OnDesktopResized(int width, int height) override;
         void OnBell() override;
-        void OnDisconnected(const std::string& error) override;
+        void OnDisconnected(const RmVnc::Rfb::DisconnectInfo& info) override;
+        bool OnCredentialsRequired(bool needUsername, RmVnc::Rfb::Credentials& credentials) override;
 
         // UI thread
+        void Connect();
         void HandleConnected(const RmVnc::Rfb::ServerInit& serverInit);
-        void HandleDisconnected(const std::string& error);
+        void HandleDisconnected(const RmVnc::Rfb::DisconnectInfo& info);
+        void AskForCredentials(bool needUsername);
         void FitToDesktop();
         void OnClose(wxCloseEvent& event);
+        wxString GetServerDisplayName() const;
 
         ViewerOptions m_options;
         RmVnc::Rfb::Client m_client;
         VncCanvas* m_canvas = nullptr;
-        bool m_closing = false;
+        wxString m_desktopName;
+
+        // Hand-off between the connection thread (waiting for credentials) and the UI thread (asking the user).
+        std::mutex m_credentialsMutex;
+        std::condition_variable m_credentialsChanged;
+        bool m_credentialsAnswered = false;
+        bool m_credentialsAccepted = false;
+        RmVnc::Rfb::Credentials m_credentialsAnswer;
+        bool m_closing = false; // guarded by m_credentialsMutex
     };
 } // namespace RmVncUI

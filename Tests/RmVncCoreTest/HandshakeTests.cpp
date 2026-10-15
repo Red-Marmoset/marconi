@@ -50,6 +50,10 @@ namespace RmVncTest
             CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::None}) == Rfb::SecurityType::None);
             CHECK(Rfb::ChooseSecurityType({99, Rfb::SecurityType::None}) == Rfb::SecurityType::None);
             CHECK(Rfb::ChooseSecurityType({99, 100}) == Rfb::SecurityType::Invalid);
+            CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::VncAuth, Rfb::SecurityType::Tight}) ==
+                  Rfb::SecurityType::VncAuth);
+            CHECK(Rfb::ChooseSecurityType({Rfb::SecurityType::VncAuth, Rfb::SecurityType::None}) ==
+                  Rfb::SecurityType::None);
             CHECK(Rfb::ChooseSecurityType({}) == Rfb::SecurityType::Invalid);
         });
 

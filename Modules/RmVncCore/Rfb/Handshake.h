@@ -48,6 +48,13 @@ namespace RmVnc
             using RfbError::RfbError;
         };
 
+        // Thrown when the user declines to enter credentials; the connection ends without an error message.
+        class AuthenticationCancelled : public RfbError
+        {
+        public:
+            using RfbError::RfbError;
+        };
+
         // Parses "RFB xxx.yyy\n". Returns false if the banner isn't an RFB version string.
         bool ParseVersion(const std::string& banner, int& major, int& minor);
 

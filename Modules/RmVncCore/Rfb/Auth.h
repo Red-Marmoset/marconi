@@ -14,6 +14,9 @@ namespace RmVnc
         // Security types rmvnc implements, most preferred first.
         const std::vector<uint8_t>& SupportedSecurityTypes();
 
+        // VNC Authentication (type 2): DES-encrypts the 16 byte challenge with the password as key.
+        Bytes ComputeVncAuthResponse(const std::string& passwordUtf8, const Bytes& challenge);
+
         // Runs the security-type specific exchange (everything between choosing the type and SecurityResult).
         void Authenticate(uint8_t securityType, InStream& in, ByteSink& out, const CredentialsProvider& credentials);
     } // namespace Rfb

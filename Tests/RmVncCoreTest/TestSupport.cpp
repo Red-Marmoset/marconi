@@ -179,11 +179,12 @@ namespace RmVncTest
         changed.notify_all();
     }
 
-    void RecordingListener::OnDisconnected(const std::string& error)
+    void RecordingListener::OnDisconnected(const Rfb::DisconnectInfo& info)
     {
         std::lock_guard<std::mutex> lock(mutex);
         disconnected = true;
-        disconnectError = error;
+        disconnectError = info.error;
+        authenticationFailed = info.authenticationFailed;
         changed.notify_all();
     }
 

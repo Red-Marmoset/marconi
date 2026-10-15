@@ -64,7 +64,7 @@ namespace RmVncTest
         void OnDesktopResized(int width, int height) override;
         void OnServerCutText(const std::string& text) override;
         void OnBell() override;
-        void OnDisconnected(const std::string& error) override;
+        void OnDisconnected(const RmVnc::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(bool needUsername, RmVnc::Rfb::Credentials& credentials) override;
 
         // Waits until `predicate` (evaluated under the lock) holds. Returns false on timeout.
@@ -75,6 +75,7 @@ namespace RmVncTest
         bool connected = false;
         bool disconnected = false;
         std::string disconnectError;
+        bool authenticationFailed = false;
         RmVnc::Rfb::ServerInit serverInit;
         int updates = 0;
         int bells = 0;
@@ -92,6 +93,8 @@ namespace RmVncTest
     RmVnc::Rfb::Bytes HexBytes(const std::string& hex);
 
     void RunAddressTests();
+    void RunTextTests();
+    void RunAuthTests();
     void RunStreamTests();
     void RunHandshakeTests();
     void RunClientTests();

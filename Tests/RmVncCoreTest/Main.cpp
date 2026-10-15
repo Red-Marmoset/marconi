@@ -10,6 +10,8 @@ namespace Test
     int TestMain(const CommandLine::Parser&)
     {
         RmVncTest::RunAddressTests();
+        RmVncTest::RunTextTests();
+        RmVncTest::RunAuthTests();
         RmVncTest::RunStreamTests();
         RmVncTest::RunHandshakeTests();
         RmVncTest::RunClientTests();
