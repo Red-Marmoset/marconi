@@ -25,6 +25,7 @@
 #include <wx/utils.h>
 
 #include <algorithm>
+#include <chrono>
 #include <string>
 
 namespace MarconiUI
@@ -455,6 +456,15 @@ namespace MarconiUI
             ++m_pictureRetries;
             LOG_INFO("Viewer", "No picture from the server yet, asking for the whole desktop again (%d/%d)",
                      m_pictureRetries, kMaxRetries);
+            m_client.RequestFullUpdate();
+            return;
+        }
+        // Input sent during the reconnect would be lost (e.g. a password typed blind at the lock screen), and it
+        // still reaches the server while the picture is stuck. Wait for a pause before reconnecting.
+        constexpr std::chrono::seconds kQuietBeforeReconnect(3);
+        if (m_client.GetTimeSinceInput() < kQuietBeforeReconnect)
+        {
+            LOG_INFO("Viewer", "Still no picture, but the user is typing or using the mouse; reconnecting later");
             m_client.RequestFullUpdate();
             return;
         }

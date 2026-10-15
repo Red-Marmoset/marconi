@@ -118,6 +118,7 @@ namespace Marconi
                 .U16(static_cast<uint16_t>(std::max(y, 0)));
             SendIfConnected(message.Data());
             ++m_statPointerEvents;
+            m_lastInputTime = std::chrono::steady_clock::now().time_since_epoch().count();
         }
 
         void Client::SendKeyEvent(uint32_t keysym, bool down)
@@ -126,6 +127,7 @@ namespace Marconi
             message.U8(ClientMessage::KeyEvent).U8(down ? 1 : 0).Padding(2).U32(keysym);
             SendIfConnected(message.Data());
             ++m_statKeyEvents;
+            m_lastInputTime = std::chrono::steady_clock::now().time_since_epoch().count();
         }
 
         void Client::SendClientCutText(const std::string& latin1Text)
@@ -134,6 +136,12 @@ namespace Marconi
             message.U8(ClientMessage::ClientCutText).Padding(3).U32(static_cast<uint32_t>(latin1Text.size())).Append(latin1Text);
             SendIfConnected(message.Data());
             LOG_INFO("Rfb", "Sent our clipboard to the server (%zu characters)", latin1Text.size());
+        }
+
+        std::chrono::steady_clock::duration Client::GetTimeSinceInput() const
+        {
+            std::chrono::steady_clock::duration last(m_lastInputTime.load());
+            return std::chrono::steady_clock::now().time_since_epoch() - last;
         }
 
         TrafficStats Client::TakeTrafficStats()

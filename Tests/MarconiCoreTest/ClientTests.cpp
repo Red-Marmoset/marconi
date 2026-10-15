@@ -3,6 +3,7 @@
 
 #include "TestSupport.h"
 
+#include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Rfb/Messages.h>
 
 namespace MarconiTest
@@ -304,6 +305,18 @@ namespace MarconiTest
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
             CHECK(elapsed.count() < 2000);
             CHECK(listener.disconnected && listener.disconnectError.empty());
+        });
+
+        RunTest("Time since input tracks keys and pointer, even while disconnected", []() {
+            RecordingListener listener;
+            Rfb::Client client(listener);
+            CHECK(client.GetTimeSinceInput() > std::chrono::seconds(10)); // no input yet
+            client.SendKeyEvent(Keysym::Return, true); // a reconnect is exactly when keys arrive unconnected
+            CHECK(client.GetTimeSinceInput() < std::chrono::seconds(1));
+
+            Rfb::Client other(listener);
+            other.SendPointerEvent(5, 5, 1);
+            CHECK(other.GetTimeSinceInput() < std::chrono::seconds(1));
         });
     }
 } // namespace MarconiTest

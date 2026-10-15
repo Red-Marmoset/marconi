@@ -9,6 +9,7 @@
 #include <MarconiCore/Rfb/Handshake.h>
 
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -107,6 +108,9 @@ namespace Marconi
             void SendClientCutText(const std::string& latin1Text);
             void RequestFullUpdate();
 
+            // How long since the last key or pointer event was sent (or attempted). Any thread.
+            std::chrono::steady_clock::duration GetTimeSinceInput() const;
+
             // Returns the counts so far and starts again from zero. Any thread.
             TrafficStats TakeTrafficStats();
 
@@ -142,6 +146,7 @@ namespace Marconi
             std::atomic<int> m_statRequests{0};
             std::atomic<int> m_statPointerEvents{0};
             std::atomic<int> m_statKeyEvents{0};
+            std::atomic<std::chrono::steady_clock::rep> m_lastInputTime{0}; // steady_clock ticks
 
             std::thread m_thread;
             std::mutex m_socketMutex; // guards m_socket's handle against Shutdown() racing with assignment
