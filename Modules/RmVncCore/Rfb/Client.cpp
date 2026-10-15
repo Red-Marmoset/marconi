@@ -1,0 +1,353 @@
+// Copyright (c) 2026 Red Marmoset Studios Ltd.
+// VNC client connection: owns the socket and a worker thread that runs the RFB protocol
+
+#include <RmVncCore/Rfb/Client.h>
+
+#include <Log/Log.h>
+
+#include <algorithm>
+
+namespace RmVnc
+{
+    namespace Rfb
+    {
+        namespace
+        {
+            constexpr uint32_t kMaxCutTextLength = 16 * 1024 * 1024;
+        }
+
+        Client::Client(ClientListener& listener) : m_listener(listener)
+        {
+        }
+
+        Client::~Client()
+        {
+            Disconnect();
+        }
+
+        std::vector<int32_t> Client::GetDefaultEncodings()
+        {
+            std::vector<int32_t> encodings;
+            for (int32_t encoding : {Encoding::Tight, Encoding::Zrle, Encoding::Hextile, Encoding::Rre,
+                                     Encoding::CopyRect, Encoding::Raw})
+            {
+                if (CreateDecoder(encoding) != nullptr)
+                {
+                    encodings.push_back(encoding);
+                }
+            }
+            return encodings;
+        }
+
+        void Client::Connect(const ConnectionOptions& options)
+        {
+            Disconnect();
+            m_stopping = false;
+            m_thread = std::thread(&Client::Run, this, options);
+        }
+
+        void Client::Disconnect()
+        {
+            m_stopping = true;
+            {
+                std::lock_guard<std::mutex> lock(m_socketMutex);
+                m_socket.Shutdown();
+            }
+            if (m_thread.joinable())
+            {
+                if (m_thread.get_id() == std::this_thread::get_id())
+                {
+                    // Called from a listener callback: the thread finishes by itself once the socket is shut down.
+                    m_thread.detach();
+                    return;
+                }
+                m_thread.join();
+            }
+        }
+
+        void Client::Send(const Bytes& data)
+        {
+            std::lock_guard<std::mutex> lock(m_sendMutex);
+            if (!m_socket.SendAll(data.data(), data.size()))
+            {
+                throw RfbError("Connection lost while sending");
+            }
+        }
+
+        void Client::SendIfConnected(const Bytes& data)
+        {
+            if (!m_connected)
+            {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(m_sendMutex);
+            // A failure here is reported by the connection thread when its next read fails.
+            m_socket.SendAll(data.data(), data.size());
+        }
+
+        void Client::SendPointerEvent(int x, int y, uint8_t buttonMask)
+        {
+            OutBuffer message;
+            message.U8(ClientMessage::PointerEvent)
+                .U8(buttonMask)
+                .U16(static_cast<uint16_t>(std::max(x, 0)))
+                .U16(static_cast<uint16_t>(std::max(y, 0)));
+            SendIfConnected(message.Data());
+        }
+
+        void Client::SendKeyEvent(uint32_t keysym, bool down)
+        {
+            OutBuffer message;
+            message.U8(ClientMessage::KeyEvent).U8(down ? 1 : 0).Padding(2).U32(keysym);
+            SendIfConnected(message.Data());
+        }
+
+        void Client::SendClientCutText(const std::string& latin1Text)
+        {
+            OutBuffer message;
+            message.U8(ClientMessage::ClientCutText).Padding(3).U32(static_cast<uint32_t>(latin1Text.size())).Append(latin1Text);
+            SendIfConnected(message.Data());
+        }
+
+        void Client::RequestFullUpdate()
+        {
+            if (m_connected)
+            {
+                SendUpdateRequest(false);
+            }
+        }
+
+        void Client::SendUpdateRequest(bool incremental)
+        {
+            int width;
+            int height;
+            {
+                std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                width = m_framebuffer.GetWidth();
+                height = m_framebuffer.GetHeight();
+            }
+            OutBuffer message;
+            message.U8(ClientMessage::FramebufferUpdateRequest)
+                .U8(incremental ? 1 : 0)
+                .U16(0)
+                .U16(0)
+                .U16(static_cast<uint16_t>(width))
+                .U16(static_cast<uint16_t>(height));
+            Send(message.Data());
+        }
+
+        void Client::SendSetupMessages(const ConnectionOptions& options)
+        {
+            OutBuffer pixelFormat;
+            pixelFormat.U8(ClientMessage::SetPixelFormat).Padding(3);
+            PixelFormat::Client().Write(pixelFormat);
+            Send(pixelFormat.Data());
+
+            m_decoders.clear();
+            std::vector<int32_t> encodings;
+            for (int32_t encoding : options.encodings.empty() ? GetDefaultEncodings() : options.encodings)
+            {
+                if (std::unique_ptr<Decoder> decoder = CreateDecoder(encoding))
+                {
+                    m_decoders[encoding] = std::move(decoder);
+                    encodings.push_back(encoding);
+                }
+            }
+            if (m_decoders.find(Encoding::Raw) == m_decoders.end())
+            {
+                // Raw is mandatory for servers to support, and they may fall back to it regardless.
+                m_decoders[Encoding::Raw] = CreateDecoder(Encoding::Raw);
+                encodings.push_back(Encoding::Raw);
+            }
+            encodings.push_back(Encoding::DesktopSize);
+
+            OutBuffer setEncodings;
+            setEncodings.U8(ClientMessage::SetEncodings).Padding(1).U16(static_cast<uint16_t>(encodings.size()));
+            for (int32_t encoding : encodings)
+            {
+                setEncodings.S32(encoding);
+            }
+            Send(setEncodings.Data());
+        }
+
+        void Client::Run(ConnectionOptions options)
+        {
+            std::string error;
+            try
+            {
+                LOG_INFO("Rfb", "Connecting to %s:%u", options.host.c_str(), options.port);
+                Net::Socket socket;
+                if (!socket.Connect(options.host, options.port, options.connectTimeoutMs, error, &m_stopping))
+                {
+                    throw RfbError(error);
+                }
+                {
+                    std::lock_guard<std::mutex> lock(m_socketMutex);
+                    m_socket = std::move(socket);
+                    if (m_stopping)
+                    {
+                        m_socket.Shutdown();
+                    }
+                }
+
+                SocketSource source(m_socket);
+                InStream in(source);
+
+                Credentials credentials = options.credentials;
+                CredentialsProvider provider = [this, &credentials](bool needUsername, Credentials& out) {
+                    // Use what we were given first; ask the user when something is missing.
+                    bool complete = !credentials.password.empty() && (!needUsername || !credentials.username.empty());
+                    if (!complete && !m_listener.OnCredentialsRequired(needUsername, credentials))
+                    {
+                        return false;
+                    }
+                    out = credentials;
+                    return true;
+                };
+
+                HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider);
+                {
+                    std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                    m_framebuffer.Resize(handshake.serverInit.width, handshake.serverInit.height);
+                }
+                SendSetupMessages(options);
+                m_connected = true;
+                m_listener.OnConnected(handshake.serverInit);
+                SendUpdateRequest(false);
+                MessageLoop(in);
+            }
+            catch (const std::exception& exception)
+            {
+                error = exception.what();
+            }
+
+            m_connected = false;
+            {
+                std::lock_guard<std::mutex> sendLock(m_sendMutex);
+                std::lock_guard<std::mutex> socketLock(m_socketMutex);
+                m_socket.Close();
+            }
+            if (m_stopping)
+            {
+                error.clear();
+            }
+            if (error.empty())
+            {
+                LOG_INFO("Rfb", "Disconnected");
+            }
+            else
+            {
+                LOG_WARNING("Rfb", "Disconnected: %s", error.c_str());
+            }
+            m_listener.OnDisconnected(error);
+        }
+
+        void Client::MessageLoop(InStream& in)
+        {
+            for (;;)
+            {
+                uint8_t type = in.U8();
+                switch (type)
+                {
+                case ServerMessage::FramebufferUpdate:
+                    HandleFramebufferUpdate(in);
+                    SendUpdateRequest(true);
+                    break;
+                case ServerMessage::SetColourMapEntries:
+                {
+                    // We always ask for true colour, so a colour map is only ever informational.
+                    in.Skip(3);
+                    uint16_t count = in.U16();
+                    in.Skip(static_cast<size_t>(count) * 6);
+                    break;
+                }
+                case ServerMessage::Bell:
+                    m_listener.OnBell();
+                    break;
+                case ServerMessage::ServerCutText:
+                    HandleServerCutText(in);
+                    break;
+                default:
+                    throw RfbError("The server sent an unknown message type " + std::to_string(type));
+                }
+            }
+        }
+
+        void Client::HandleFramebufferUpdate(InStream& in)
+        {
+            in.Skip(1);
+            uint16_t count = in.U16();
+            std::vector<Rect> dirty;
+            bool resized = false;
+
+            // A count of 0xFFFF with LastRect means "until a LastRect rectangle".
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                Rect rect;
+                rect.x = in.U16();
+                rect.y = in.U16();
+                rect.width = in.U16();
+                rect.height = in.U16();
+                int32_t encoding = in.S32();
+
+                if (encoding == Encoding::LastRect)
+                {
+                    break;
+                }
+                if (encoding == Encoding::DesktopSize)
+                {
+                    {
+                        std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                        m_framebuffer.Resize(rect.width, rect.height);
+                    }
+                    resized = true;
+                    m_listener.OnDesktopResized(rect.width, rect.height);
+                    continue;
+                }
+
+                auto found = m_decoders.find(encoding);
+                if (found == m_decoders.end())
+                {
+                    throw RfbError("The server used an encoding we didn't ask for (" + std::to_string(encoding) + ")");
+                }
+                bool inside;
+                {
+                    std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                    inside = m_framebuffer.Contains(rect);
+                }
+                if (!inside)
+                {
+                    throw RfbError("The server sent a rectangle outside the desktop");
+                }
+                found->second->Decode(in, rect, m_framebuffer);
+                dirty.push_back(rect);
+            }
+
+            if (!dirty.empty())
+            {
+                m_listener.OnFramebufferUpdated(dirty);
+            }
+            if (resized)
+            {
+                SendUpdateRequest(false);
+            }
+        }
+
+        void Client::HandleServerCutText(InStream& in)
+        {
+            in.Skip(3);
+            int32_t length = in.S32();
+            if (length < 0)
+            {
+                // Extended clipboard pseudo-message; we don't advertise it, but skip it safely.
+                in.Skip(static_cast<size_t>(-static_cast<int64_t>(length)));
+                return;
+            }
+            if (static_cast<uint32_t>(length) > kMaxCutTextLength)
+            {
+                throw RfbError("The server sent an oversized clipboard update");
+            }
+            m_listener.OnServerCutText(in.ReadString(static_cast<size_t>(length)));
+        }
+    } // namespace Rfb
+} // namespace RmVnc

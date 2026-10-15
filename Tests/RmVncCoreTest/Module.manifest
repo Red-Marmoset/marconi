@@ -1,0 +1,8 @@
+{
+    "name": "RmVncCoreTest",
+    "version": "0.1.0",
+    "type": "console",
+    "description": "Tests for the rmvnc core: streams, handshake, decoders, client against a scripted fake server",
+    "dependencies": ["Test", "RmVncCore"],
+    "platforms": ["Windows", "Linux", "macOS"]
+}
