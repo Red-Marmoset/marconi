@@ -11,7 +11,7 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
   `Build\RmVncCoreTest\Debug\RmVncCoreTest.exe`. The exit code is the number of failures.
 - **Building an engine test from here:** `-Project C:\code\engine\Tests\CryptoTest\Project.json` works too; output
   lands in this repo's `Build/`.
-- Header edits rebuild their includers (needs the engine's BuildTool from 26d7d0b or later; rebuild BuildTool if it's older, otherwise use `-Clean` after touching a header).
+- Header edits rebuild their includers (needs the engine's BuildTool from 3d0ce07 or later; rebuild BuildTool if it's older, otherwise use `-Clean` after touching a header).
 - BuildTool compiles every .cpp under a module folder. Files with `_Windows`, `_Mac`, `_Apple`, `_Linux` or
   `_Posix` suffixes are only compiled on that platform.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server

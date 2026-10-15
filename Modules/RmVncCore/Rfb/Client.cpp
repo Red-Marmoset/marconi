@@ -250,6 +250,7 @@ namespace RmVnc
                     m_framebuffer.Resize(handshake.serverInit.width, handshake.serverInit.height);
                 }
                 SendSetupMessages(options);
+                m_updatesReceived = 0;
                 m_connected = true;
                 info.wasConnected = true;
                 m_listener.OnConnected(handshake.serverInit);
@@ -328,6 +329,7 @@ namespace RmVnc
             in.Skip(1);
             uint16_t count = in.U16();
             std::vector<Rect> dirty;
+            std::map<int32_t, int> encodingsUsed;
             bool resized = false;
 
             // A count of 0xFFFF with LastRect means "until a LastRect rectangle".
@@ -378,6 +380,23 @@ namespace RmVnc
                 }
                 found->second->Decode(in, rect, m_framebuffer);
                 dirty.push_back(rect);
+                ++encodingsUsed[encoding];
+            }
+
+            if (m_updatesReceived++ == 0)
+            {
+                std::string used;
+                for (const auto& [encoding, rects] : encodingsUsed)
+                {
+                    used += (used.empty() ? "" : ", ") + std::to_string(rects) + "x encoding " + std::to_string(encoding);
+                }
+                bool black;
+                {
+                    std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                    black = m_framebuffer.IsBlack();
+                }
+                LOG_INFO("Rfb", "First update: %zu rectangles (%s)%s", dirty.size(), used.empty() ? "none" : used.c_str(),
+                         black ? ", desktop is still all black" : "");
             }
 
             if (!dirty.empty())

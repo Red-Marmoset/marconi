@@ -67,6 +67,8 @@ namespace RmVncUI
             }
         });
         Bind(wxEVT_CLOSE_WINDOW, &ViewerFrame::OnClose, this);
+        m_pictureTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { CheckForPicture(); }, m_pictureTimer.GetId());
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
@@ -231,6 +233,29 @@ namespace RmVncUI
         UpdateStatus();
         m_canvas->SetFocus();
         SyncClipboardToServer();
+        m_pictureRetries = 0;
+        m_pictureTimer.Start(2000);
+    }
+
+    void ViewerFrame::CheckForPicture()
+    {
+        // macOS sometimes answers a connection made soon after the previous one with an empty or all-black desktop
+        // and then reports no changes. Asking for the whole desktop again brings the picture back.
+        constexpr int kMaxRetries = 5;
+        bool black;
+        {
+            RmVnc::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+            std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
+            black = framebuffer.IsBlack();
+        }
+        if (!m_connected || !black || m_pictureRetries >= kMaxRetries)
+        {
+            m_pictureTimer.Stop();
+            return;
+        }
+        ++m_pictureRetries;
+        LOG_INFO("Viewer", "The desktop is still black, asking for it again (%d/%d)", m_pictureRetries, kMaxRetries);
+        m_client.RequestFullUpdate();
     }
 
     void ViewerFrame::HandleDisconnected(const RmVnc::Rfb::DisconnectInfo& info)
@@ -243,6 +268,7 @@ namespace RmVncUI
             }
         }
         LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
+        m_pictureTimer.Stop();
         m_canvas->ReleaseInput();
         m_connected = false;
         UpdateControls();

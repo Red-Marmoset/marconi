@@ -116,6 +116,7 @@ namespace RmVnc
             ClientListener& m_listener;
             Framebuffer m_framebuffer;
             std::map<int32_t, std::unique_ptr<Decoder>> m_decoders;
+        int m_updatesReceived = 0; // connection thread only
 
             std::thread m_thread;
             std::mutex m_socketMutex; // guards m_socket's handle against Shutdown() racing with assignment

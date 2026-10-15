@@ -73,7 +73,7 @@ toolset 14.44 or newer.
                      libxxf86vm-dev libxtst-dev libsm-dev
     ./Build.sh
 
-> Incremental builds rely on BuildTool's header dependency tracking (engine commit 26d7d0b or later). With an older BuildTool, build with `-Clean` after editing a header.
+> Incremental builds rely on BuildTool's header dependency tracking (engine commit 3d0ce07 or later). With an older BuildTool, build with `-Clean` after editing a header.
 
 ## Testing
 

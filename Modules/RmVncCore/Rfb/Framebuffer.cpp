@@ -27,6 +27,18 @@ namespace RmVnc
             m_height = height;
         }
 
+        bool Framebuffer::IsBlack() const
+        {
+            for (uint32_t pixel : m_pixels)
+            {
+                if ((pixel & 0x00FFFFFFu) != 0)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         bool Framebuffer::Contains(const Rect& rect) const
         {
             return rect.x >= 0 && rect.y >= 0 && rect.width >= 0 && rect.height >= 0 && rect.Right() <= m_width &&
