@@ -5,6 +5,8 @@
 
 #include "VncCanvas.h"
 
+#include <Log/Log.h>
+
 #include <wx/display.h>
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
@@ -88,6 +90,7 @@ namespace RmVncUI
 
     void ViewerFrame::HandleDisconnected(const std::string& error)
     {
+        LOG_INFO("Viewer", "Disconnected (closing=%d): %s", m_closing ? 1 : 0, error.c_str());
         if (m_closing)
         {
             return;

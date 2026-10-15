@@ -7,9 +7,14 @@
 #include "ViewerFrame.h"
 
 #include <RmVncCore/Address.h>
+#include <RmVncCore/Version.h>
+
+#include <Log/Log.h>
 
 #include <wx/config.h>
+#include <wx/filename.h>
 #include <wx/msgdlg.h>
+#include <wx/stdpaths.h>
 
 namespace RmVncUI
 {
@@ -21,6 +26,12 @@ namespace RmVncUI
 
         // wxRegConfig on Windows, wxFileConfig (XDG / ~/Library/Preferences) elsewhere.
         wxConfigBase::Set(wxConfigBase::Create());
+
+        // Logs go to <user local data>/logs (e.g. %LOCALAPPDATA%/rmvnc/logs, ~/Library/Application Support/rmvnc/logs).
+        wxString logDir = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs";
+        wxFileName::Mkdir(logDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+        Log::InitializeFileLogging(logDir.utf8_string(), "rmvnc");
+        LOG_INFO("App", "rmvnc %s starting", RmVnc::GetVersionString());
 
         // "rmvnc host[:display]" connects straight away.
         if (argc > 1)
@@ -43,8 +54,17 @@ namespace RmVncUI
         return true;
     }
 
+    void RmVncApp::OnUnhandledException()
+    {
+        LOG_WARNING("App", "Unhandled exception in event handler");
+        Log::FlushLogFile();
+        wxApp::OnUnhandledException();
+    }
+
     int RmVncApp::OnExit()
     {
+        LOG_INFO("App", "Exiting");
+        Log::ShutdownFileLogging();
         delete wxConfigBase::Set(nullptr);
         return wxApp::OnExit();
     }

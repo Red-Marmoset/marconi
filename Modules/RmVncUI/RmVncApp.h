@@ -12,6 +12,7 @@ namespace RmVncUI
     public:
         bool OnInit() override;
         int OnExit() override;
+        void OnUnhandledException() override;
     };
 } // namespace RmVncUI
 

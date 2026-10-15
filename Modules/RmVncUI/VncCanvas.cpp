@@ -8,6 +8,7 @@
 #include <wx/image.h>
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace RmVncUI
 {
@@ -18,11 +19,161 @@ namespace RmVncUI
 
     VncCanvas::VncCanvas(wxWindow* parent, RmVnc::Rfb::Client& client)
         : wxScrolledCanvas(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxWANTS_CHARS | wxFULL_REPAINT_ON_RESIZE),
-          m_client(client)
+          m_client(client),
+          m_keys([&client](uint32_t keysym, bool down) { client.SendKeyEvent(keysym, down); })
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         SetScrollRate(16, 16);
         Bind(wxEVT_PAINT, &VncCanvas::OnPaint, this);
+
+        for (const wxEventTypeTag<wxMouseEvent>& type : {wxEVT_LEFT_DOWN, wxEVT_LEFT_UP, wxEVT_LEFT_DCLICK, wxEVT_MIDDLE_DOWN, wxEVT_MIDDLE_UP,
+                                 wxEVT_MIDDLE_DCLICK, wxEVT_RIGHT_DOWN, wxEVT_RIGHT_UP, wxEVT_RIGHT_DCLICK, wxEVT_MOTION})
+        {
+            Bind(type, &VncCanvas::OnMouse, this);
+        }
+        // Binding the wheel here also stops wxScrolledCanvas using it for our scrollbars: it drives the remote desktop.
+        Bind(wxEVT_MOUSEWHEEL, &VncCanvas::OnMouseWheel, this);
+        Bind(wxEVT_MOUSE_CAPTURE_LOST, &VncCanvas::OnCaptureLost, this);
+        Bind(wxEVT_KEY_DOWN, &VncCanvas::OnKeyDown, this);
+        Bind(wxEVT_KEY_UP, &VncCanvas::OnKeyUp, this);
+        Bind(wxEVT_CHAR, &VncCanvas::OnChar, this);
+        Bind(wxEVT_KILL_FOCUS, &VncCanvas::OnKillFocus, this);
+    }
+
+    void VncCanvas::SetViewOnly(bool viewOnly)
+    {
+        if (viewOnly && !m_viewOnly)
+        {
+            ReleaseInput();
+        }
+        m_viewOnly = viewOnly;
+    }
+
+    void VncCanvas::ReleaseInput()
+    {
+        m_keys.ReleaseAll();
+        if (m_buttons != 0 && m_lastPointer.x >= 0)
+        {
+            m_client.SendPointerEvent(m_lastPointer.x, m_lastPointer.y, 0);
+        }
+        m_buttons = 0;
+        if (HasCapture())
+        {
+            ReleaseMouse();
+        }
+    }
+
+    wxPoint VncCanvas::ToDesktop(const wxPoint& windowPoint) const
+    {
+        wxPoint point = CalcUnscrolledPosition(windowPoint);
+        point.x = std::clamp(point.x, 0, std::max(m_desktopSize.x - 1, 0));
+        point.y = std::clamp(point.y, 0, std::max(m_desktopSize.y - 1, 0));
+        return point;
+    }
+
+    void VncCanvas::SendPointer(const wxPoint& windowPoint)
+    {
+        m_lastPointer = ToDesktop(windowPoint);
+        m_client.SendPointerEvent(m_lastPointer.x, m_lastPointer.y, m_buttons);
+    }
+
+    void VncCanvas::OnMouse(wxMouseEvent& event)
+    {
+        if (event.ButtonDown() || event.ButtonDClick())
+        {
+            SetFocus();
+        }
+        if (m_viewOnly)
+        {
+            return;
+        }
+
+        // RFB button mask: bit 0 left, bit 1 middle, bit 2 right.
+        uint8_t buttons = 0;
+        buttons |= event.LeftIsDown() ? 1 : 0;
+        buttons |= event.MiddleIsDown() ? 2 : 0;
+        buttons |= event.RightIsDown() ? 4 : 0;
+
+        // Keep receiving a drag that leaves the window, so the release still reaches the server.
+        if (buttons != 0 && !HasCapture())
+        {
+            CaptureMouse();
+        }
+        else if (buttons == 0 && HasCapture())
+        {
+            ReleaseMouse();
+        }
+
+        wxPoint desktop = ToDesktop(event.GetPosition());
+        if (buttons == m_buttons && desktop == m_lastPointer)
+        {
+            return;
+        }
+        m_buttons = buttons;
+        SendPointer(event.GetPosition());
+    }
+
+    void VncCanvas::OnMouseWheel(wxMouseEvent& event)
+    {
+        if (m_viewOnly)
+        {
+            return;
+        }
+        // Accumulate so high-resolution wheels and trackpads send one click per notch worth of movement.
+        bool horizontal = event.GetWheelAxis() == wxMOUSE_WHEEL_HORIZONTAL;
+        int& accumulated = horizontal ? m_wheelHorizontal : m_wheelVertical;
+        accumulated += event.GetWheelRotation();
+        int delta = std::max(event.GetWheelDelta(), 1);
+        while (std::abs(accumulated) >= delta)
+        {
+            bool positive = accumulated > 0;
+            accumulated += positive ? -delta : delta;
+            // Buttons 4/5 are wheel up/down, 6/7 wheel left/right. A positive horizontal rotation is rightwards.
+            uint8_t bit = horizontal ? (positive ? 64 : 32) : (positive ? 8 : 16);
+            m_buttons |= bit;
+            SendPointer(event.GetPosition());
+            m_buttons &= static_cast<uint8_t>(~bit);
+            SendPointer(event.GetPosition());
+        }
+    }
+
+    void VncCanvas::OnCaptureLost(wxMouseCaptureLostEvent&)
+    {
+        if (m_buttons != 0 && m_lastPointer.x >= 0)
+        {
+            m_client.SendPointerEvent(m_lastPointer.x, m_lastPointer.y, 0);
+        }
+        m_buttons = 0;
+    }
+
+    void VncCanvas::OnKeyDown(wxKeyEvent& event)
+    {
+        if (m_viewOnly || !m_keys.OnKeyDown(event))
+        {
+            event.Skip(); // let wxEVT_CHAR deliver the produced character
+        }
+    }
+
+    void VncCanvas::OnKeyUp(wxKeyEvent& event)
+    {
+        if (!m_viewOnly)
+        {
+            m_keys.OnKeyUp(event);
+        }
+    }
+
+    void VncCanvas::OnChar(wxKeyEvent& event)
+    {
+        if (!m_viewOnly)
+        {
+            m_keys.OnChar(event);
+        }
+    }
+
+    void VncCanvas::OnKillFocus(wxFocusEvent& event)
+    {
+        ReleaseInput();
+        event.Skip();
     }
 
     void VncCanvas::SetDesktopSize(int width, int height)

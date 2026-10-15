@@ -5,7 +5,7 @@ Cross-platform VNC client. Out-of-tree una project; engine lives at `$UNA_ENGINE
 ## Build
 - App: `.\Build.ps1 [-Config Debug]` (Windows) / `./Build.sh` (macOS/Linux). Output `Build/RmVnc/<Config>/`.
 - Tests: `.\Build.ps1 -Project Tests\<Name>\Project.json -Config Debug`, then run `Build\<Name>\Debug\<Name>.exe`; exit code = failure count.
-- **Gotcha:** BuildTool's module cache doesn't notice header changes in a *dependency* module (e.g. editing `RmVncCore/Net/Socket.h` won't rebuild the cached test/UI objects that include it). Build with `-Clean` after changing a header that other modules include, or you get silent class-layout mismatches.
+- **Gotcha:** BuildTool records no header dependencies for MSVC builds (`.una/*.cache.json` shows `dependencies: []`), so editing any header does NOT recompile the .cpp files that include it, in the same module or others. Stale objects give silent class-layout mismatches (heap corruption, garbage reads). Always build with `-Clean` after touching a header.
 - BuildTool compiles every .cpp under a module folder; `_Windows`/`_Mac`/`_Apple`/`_Linux`/`_Posix` suffixes are platform-filtered.
 
 ## Conventions (follow engine CODING_STANDARDS.md)
