@@ -12,6 +12,7 @@
 
 #include <Log/Log.h>
 
+#include <wx/arrstr.h>
 #include <wx/cmdline.h>
 #include <wx/config.h>
 #include <wx/filename.h>
@@ -59,6 +60,15 @@ namespace MarconiUI
              wxCMD_LINE_VAL_NUMBER, 0},
             {wxCMD_LINE_OPTION, nullptr, "quit-after", "headless: seconds before closing (default 60)",
              wxCMD_LINE_VAL_NUMBER, 0},
+            {wxCMD_LINE_OPTION, nullptr, "encodings",
+             "headless diagnostics: comma-separated encodings to send exactly (e.g. 0,-223)", wxCMD_LINE_VAL_STRING,
+             wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "no-pixel-format-resend",
+             "headless diagnostics: don't repeat SetPixelFormat after a resize", wxCMD_LINE_VAL_NONE,
+             wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "no-recovery",
+             "headless diagnostics: never re-request the desktop or reconnect when no picture arrives",
+             wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_PARAM, nullptr, nullptr, "host[:display] | host::port", wxCMD_LINE_VAL_STRING,
              wxCMD_LINE_PARAM_OPTIONAL},
             wxCMD_LINE_DESC_END,
@@ -124,6 +134,20 @@ namespace MarconiUI
                     {
                         options.quitAfterSeconds = static_cast<int>(seconds);
                     }
+                    wxString encodings;
+                    if (parser.Found("encodings", &encodings))
+                    {
+                        for (wxString token : wxSplit(encodings, ','))
+                        {
+                            long encoding = 0;
+                            if (token.Trim().Trim(false).ToLong(&encoding))
+                            {
+                                options.encodings.push_back(static_cast<int32_t>(encoding));
+                            }
+                        }
+                    }
+                    options.resendPixelFormatOnResize = !parser.Found("no-pixel-format-resend");
+                    options.recovery = !parser.Found("no-recovery");
                 }
                 ViewerFrame* viewer = new ViewerFrame(options);
                 if (!headless)

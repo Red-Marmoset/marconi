@@ -31,6 +31,10 @@ namespace Marconi
             std::vector<int32_t> encodings; // preferred order; empty = Marconi's default order
             int compressLevel = 2;           // Tight/ZRLE zlib level hint 0-9, or -1 to let the server choose
             int qualityLevel = 8;            // Tight JPEG quality 0-9, or -1 for lossless only (no JPEG)
+            // Diagnostics: send `encodings` exactly as given (pseudo-encodings included, nothing added).
+            bool exactEncodings = false;
+            // Repeat SetPixelFormat after the server resizes the desktop.
+            bool resendPixelFormatOnResize = true;
         };
 
         // Cursor image for local rendering: ARGB pixels (alpha 0 or 255), hotspot in pixels. Empty = hidden.
@@ -123,6 +127,7 @@ namespace Marconi
             void Run(ConnectionOptions options);
             void SendPixelFormat();
             void SendSetupMessages(const ConnectionOptions& options);
+            void SendEncodings(const std::vector<int32_t>& encodings);
             void SendUpdateRequest(bool incremental);
             void MessageLoop(InStream& in);
             void HandleFramebufferUpdate(InStream& in);
@@ -141,6 +146,7 @@ namespace Marconi
             static constexpr int kDetailedUpdates = 3;
             int m_detailedUpdates = 0; // connection thread only: how many more updates to log in detail
             bool m_appleServer = false; // connection thread only: macOS Screen Sharing (RFB 3.889)
+            bool m_resendPixelFormatOnResize = true; // connection thread only
             std::atomic<int> m_statUpdates{0};
             std::atomic<int> m_statRectangles{0};
             std::atomic<int> m_statRequests{0};

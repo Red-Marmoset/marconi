@@ -192,6 +192,7 @@ namespace Marconi
 
         void Client::SendSetupMessages(const ConnectionOptions& options)
         {
+            m_resendPixelFormatOnResize = options.resendPixelFormatOnResize;
             SendPixelFormat();
 
             m_decoders.clear();
@@ -210,6 +211,11 @@ namespace Marconi
                 m_decoders[Encoding::Raw] = CreateDecoder(Encoding::Raw);
                 encodings.push_back(Encoding::Raw);
             }
+            if (options.exactEncodings)
+            {
+                SendEncodings(options.encodings);
+                return;
+            }
             if (m_decoders.count(Encoding::Tight) != 0 || m_decoders.count(Encoding::Zrle) != 0)
             {
                 if (options.compressLevel >= 0 && options.compressLevel <= 9)
@@ -225,7 +231,11 @@ namespace Marconi
             encodings.push_back(Encoding::DesktopSize);
             encodings.push_back(Encoding::Cursor);
             encodings.push_back(Encoding::LastRect);
+            SendEncodings(encodings);
+        }
 
+        void Client::SendEncodings(const std::vector<int32_t>& encodings)
+        {
             OutBuffer setEncodings;
             setEncodings.U8(ClientMessage::SetEncodings).Padding(1).U16(static_cast<uint16_t>(encodings.size()));
             for (int32_t encoding : encodings)
@@ -233,6 +243,12 @@ namespace Marconi
                 setEncodings.S32(encoding);
             }
             Send(setEncodings.Data());
+            std::string list;
+            for (int32_t encoding : encodings)
+            {
+                list += (list.empty() ? "" : ", ") + std::to_string(encoding);
+            }
+            LOG_INFO("Rfb", "Asked for encodings [%s]", list.c_str());
         }
 
         void Client::Run(ConnectionOptions options)
@@ -469,7 +485,10 @@ namespace Marconi
             {
                 // macOS may forget our pixel format when it switches display modes; say it again (harmless
                 // elsewhere) before asking for the whole desktop.
-                SendPixelFormat();
+                if (m_resendPixelFormatOnResize)
+                {
+                    SendPixelFormat();
+                }
                 SendUpdateRequest(false);
             }
         }

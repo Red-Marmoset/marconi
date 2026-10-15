@@ -20,6 +20,7 @@ class wxToolBar;
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <vector>
 
 namespace MarconiUI
 {
@@ -38,6 +39,11 @@ namespace MarconiUI
         bool headless = false;
         int snapshotEverySeconds = 5;
         int quitAfterSeconds = 60;
+
+        // Diagnostics (headless experiments against misbehaving servers).
+        std::vector<int32_t> encodings;        // sent exactly as given, pseudo-encodings included; empty = defaults
+        bool resendPixelFormatOnResize = true; // repeat SetPixelFormat after a resize
+        bool recovery = true;                  // re-request or reconnect when no picture arrives
     };
 
     struct SavedConnection;

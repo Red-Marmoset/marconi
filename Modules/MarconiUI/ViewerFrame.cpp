@@ -219,6 +219,9 @@ namespace MarconiUI
         connection.host = m_options.address.host;
         connection.port = m_options.address.port;
         connection.credentials = m_options.credentials;
+        connection.encodings = m_options.encodings;
+        connection.exactEncodings = !m_options.encodings.empty();
+        connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
         m_client.Connect(connection);
     }
 
@@ -446,7 +449,7 @@ namespace MarconiUI
         // since a fresh connection always gets a full picture.
         constexpr int kMaxRetries = 4;
         constexpr int kMaxAutoReconnects = 3;
-        if (!m_connected || !m_waitingForPicture)
+        if (!m_connected || !m_waitingForPicture || !m_options.recovery)
         {
             m_pictureTimer.Stop();
             return;
