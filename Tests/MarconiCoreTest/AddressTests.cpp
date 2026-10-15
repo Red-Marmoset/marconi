@@ -33,6 +33,21 @@ namespace MarconiTest
 
     void RunAddressTests()
     {
+        RunTest("user@host addresses", []() {
+            Address a;
+            std::string error;
+            CHECK(ParseAddress("alice@studio-mac.local", a, error));
+            CHECK(a.username == "alice" && a.host == "studio-mac.local" && a.port == 5900);
+            CHECK(FormatAddress(a) == "alice@studio-mac.local");
+            CHECK(ParseAddress("vnc://Jane Doe@[fe80::1]:5901", a, error));
+            CHECK(a.username == "Jane Doe" && a.host == "fe80::1" && a.port == 5901);
+            CHECK(FormatAddress(a) == "Jane Doe@[fe80::1]::5901");
+            CHECK(ParseAddress("me@host:1", a, error) && a.port == 5901);
+            CHECK(!ParseAddress("@host", a, error));
+            CHECK(!ParseAddress("me@", a, error));
+            CHECK(ParseAddress("host", a, error) && a.username.empty());
+        });
+
         RunTest("ParseAddress", []() {
             CHECK(Parses("myhost", "myhost", 5900));
             CHECK(Parses("  myhost.local  ", "myhost.local", 5900));

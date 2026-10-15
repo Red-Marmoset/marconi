@@ -69,6 +69,7 @@ namespace MarconiUI
         void SyncClipboardToServer();
         void SaveSettings();
         void CheckForPicture();
+        void LogTraffic();
 
         ViewerOptions m_options;
         Marconi::Rfb::Client m_client;
@@ -80,6 +81,7 @@ namespace MarconiUI
         bool m_connected = false;
         wxTimer m_pictureTimer;   // re-asks for the desktop if a fresh connection still shows nothing
         int m_pictureRetries = 0;
+        wxTimer m_statsTimer; // logs traffic every 10 seconds
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in
 
         // Hand-off between the connection thread (waiting for credentials) and the UI thread (asking the user).

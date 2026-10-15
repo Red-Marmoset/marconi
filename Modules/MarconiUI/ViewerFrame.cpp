@@ -44,6 +44,10 @@ namespace MarconiUI
           m_options(options),
           m_client(*this)
     {
+        if (m_options.credentials.username.empty())
+        {
+            m_options.credentials.username = m_options.address.username;
+        }
         SetIcons(GetAppIcons());
         m_canvas = new VncCanvas(this, m_client);
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
@@ -69,6 +73,8 @@ namespace MarconiUI
         Bind(wxEVT_CLOSE_WINDOW, &ViewerFrame::OnClose, this);
         m_pictureTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { CheckForPicture(); }, m_pictureTimer.GetId());
+        m_statsTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { LogTraffic(); }, m_statsTimer.GetId());
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
@@ -235,6 +241,16 @@ namespace MarconiUI
         SyncClipboardToServer();
         m_pictureRetries = 0;
         m_pictureTimer.Start(2000);
+        m_client.TakeTrafficStats(); // start counting from here
+        m_statsTimer.Start(10000);
+    }
+
+    void ViewerFrame::LogTraffic()
+    {
+        // Shows whether the server keeps sending pictures, e.g. when the view freezes.
+        Marconi::Rfb::TrafficStats stats = m_client.TakeTrafficStats();
+        LOG_INFO("Viewer", "Last 10s: %d updates with %d rectangles, %d requests, %d pointer and %d key events sent",
+                 stats.updates, stats.rectangles, stats.requests, stats.pointerEvents, stats.keyEvents);
     }
 
     void ViewerFrame::CheckForPicture()
@@ -269,6 +285,7 @@ namespace MarconiUI
         }
         LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
         m_pictureTimer.Stop();
+        m_statsTimer.Stop();
         m_canvas->ReleaseInput();
         m_connected = false;
         UpdateControls();

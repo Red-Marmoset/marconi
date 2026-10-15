@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Parsing of user-typed VNC addresses ("host", "host:display", "host::port", "[ipv6]:display")
+// Parsing of user-typed VNC addresses ("host", "user@host", "host:display", "host::port", "[ipv6]:display")
 
 #include <MarconiCore/Address.h>
 
@@ -87,6 +87,23 @@ namespace Marconi
         }
 
         Address address;
+        size_t at = text.rfind('@');
+        if (at != std::string::npos)
+        {
+            address.username = text.substr(0, at);
+            text = text.substr(at + 1);
+            if (address.username.empty())
+            {
+                error = "Enter a user name before the '@'";
+                return false;
+            }
+            if (text.empty())
+            {
+                error = "Enter a computer name or address after the '@'";
+                return false;
+            }
+        }
+
         std::string suffix;
         if (text[0] == '[')
         {
@@ -145,7 +162,8 @@ namespace Marconi
     std::string FormatAddress(const Address& address)
     {
         bool ipv6 = address.host.find(':') != std::string::npos;
-        std::string host = ipv6 ? "[" + address.host + "]" : address.host;
+        std::string host = (address.username.empty() ? "" : address.username + "@") +
+                           (ipv6 ? "[" + address.host + "]" : address.host);
         if (address.port == 5900)
         {
             return host;

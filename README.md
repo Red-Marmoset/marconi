@@ -34,6 +34,7 @@ Addresses can be written as:
 | `host::5901` | port 5901 |
 | `[fe80::1]:1` | an IPv6 address with a display number |
 | `vnc://host:5901` | URL form, where the number is a port |
+| `name@host` | any of the above, logging in with the account `name` (Mac account login) |
 
 From the command line:
 

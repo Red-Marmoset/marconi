@@ -72,6 +72,16 @@ namespace Marconi
             }
         };
 
+        // Counts since the last TakeTrafficStats().
+        struct TrafficStats
+        {
+            int updates = 0;
+            int rectangles = 0;
+            int requests = 0;
+            int pointerEvents = 0;
+            int keyEvents = 0;
+        };
+
         class Client : private ByteSink
         {
         public:
@@ -97,6 +107,9 @@ namespace Marconi
             void SendClientCutText(const std::string& latin1Text);
             void RequestFullUpdate();
 
+            // Returns the counts so far and starts again from zero. Any thread.
+            TrafficStats TakeTrafficStats();
+
             // The encodings advertised by default, most preferred first (only those with decoders).
             static std::vector<int32_t> GetDefaultEncodings();
 
@@ -116,7 +129,12 @@ namespace Marconi
             ClientListener& m_listener;
             Framebuffer m_framebuffer;
             std::map<int32_t, std::unique_ptr<Decoder>> m_decoders;
-        int m_updatesReceived = 0; // connection thread only
+            int m_updatesReceived = 0; // connection thread only
+            std::atomic<int> m_statUpdates{0};
+            std::atomic<int> m_statRectangles{0};
+            std::atomic<int> m_statRequests{0};
+            std::atomic<int> m_statPointerEvents{0};
+            std::atomic<int> m_statKeyEvents{0};
 
             std::thread m_thread;
             std::mutex m_socketMutex; // guards m_socket's handle against Shutdown() racing with assignment

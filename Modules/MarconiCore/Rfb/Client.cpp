@@ -116,6 +116,7 @@ namespace Marconi
                 .U16(static_cast<uint16_t>(std::max(x, 0)))
                 .U16(static_cast<uint16_t>(std::max(y, 0)));
             SendIfConnected(message.Data());
+            ++m_statPointerEvents;
         }
 
         void Client::SendKeyEvent(uint32_t keysym, bool down)
@@ -123,6 +124,7 @@ namespace Marconi
             OutBuffer message;
             message.U8(ClientMessage::KeyEvent).U8(down ? 1 : 0).Padding(2).U32(keysym);
             SendIfConnected(message.Data());
+            ++m_statKeyEvents;
         }
 
         void Client::SendClientCutText(const std::string& latin1Text)
@@ -130,6 +132,18 @@ namespace Marconi
             OutBuffer message;
             message.U8(ClientMessage::ClientCutText).Padding(3).U32(static_cast<uint32_t>(latin1Text.size())).Append(latin1Text);
             SendIfConnected(message.Data());
+            LOG_INFO("Rfb", "Sent our clipboard to the server (%zu characters)", latin1Text.size());
+        }
+
+        TrafficStats Client::TakeTrafficStats()
+        {
+            TrafficStats stats;
+            stats.updates = m_statUpdates.exchange(0);
+            stats.rectangles = m_statRectangles.exchange(0);
+            stats.requests = m_statRequests.exchange(0);
+            stats.pointerEvents = m_statPointerEvents.exchange(0);
+            stats.keyEvents = m_statKeyEvents.exchange(0);
+            return stats;
         }
 
         void Client::RequestFullUpdate()
@@ -143,6 +157,7 @@ namespace Marconi
                 height = m_framebuffer.GetHeight();
             }
             SendIfConnected(BuildUpdateRequest(false, width, height));
+            ++m_statRequests;
         }
 
         void Client::SendUpdateRequest(bool incremental)
@@ -155,6 +170,7 @@ namespace Marconi
                 height = m_framebuffer.GetHeight();
             }
             Send(BuildUpdateRequest(incremental, width, height));
+            ++m_statRequests;
         }
 
         void Client::SendSetupMessages(const ConnectionOptions& options)
@@ -382,6 +398,8 @@ namespace Marconi
                 dirty.push_back(rect);
                 ++encodingsUsed[encoding];
             }
+            ++m_statUpdates;
+            m_statRectangles += static_cast<int>(dirty.size());
 
             if (m_updatesReceived++ == 0)
             {
@@ -478,6 +496,7 @@ namespace Marconi
             if (length < 0)
             {
                 // Extended clipboard pseudo-message; we don't advertise it, but skip it safely.
+                LOG_INFO("Rfb", "The server sent an extended clipboard message, which we don't support");
                 in.Skip(static_cast<size_t>(-static_cast<int64_t>(length)));
                 return;
             }
@@ -485,6 +504,7 @@ namespace Marconi
             {
                 throw RfbError("The server sent an oversized clipboard update");
             }
+            LOG_INFO("Rfb", "The server sent its clipboard (%d characters)", length);
             m_listener.OnServerCutText(in.ReadString(static_cast<size_t>(length)));
         }
     } // namespace Rfb
