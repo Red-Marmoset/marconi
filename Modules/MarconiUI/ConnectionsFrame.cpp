@@ -148,21 +148,11 @@ namespace MarconiUI
     {
         ViewerOptions options;
         std::string error;
-        if (!Marconi::ParseAddress(connection.address.utf8_string(), options.address, error))
+        if (!ViewerOptionsFromSaved(connection, m_store, options, error))
         {
             wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
             return;
         }
-        options.savedId = connection.id;
-        options.credentials.username = connection.username.utf8_string();
-        wxString password;
-        if (connection.rememberPassword && m_store.LoadPassword(connection.id, password))
-        {
-            options.credentials.password = password.utf8_string();
-        }
-        options.scaleMode = connection.scaleMode;
-        options.viewOnly = connection.viewOnly;
-        options.clipboard = connection.clipboard;
         m_store.MarkUsed(connection.id);
         (new ViewerFrame(options))->Show();
         Reload(connection.id);

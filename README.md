@@ -40,6 +40,13 @@ From the command line:
 
     marconi [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] host[:display]
 
+Open a saved connection with `--saved NAME` (its name, address or id), using its keychain password.
+
+**Headless mode** (testing and automation) runs a connection without a window or dialogs. It logs and saves what
+the viewer would show as PNGs in the log folder, then exits:
+
+    marconi --saved "Studio Mac" --headless --view-only --snapshot-every 5 --quit-after 60
+
 While connected, **F8** opens the menu, which still works in full screen. From it you can change scaling, switch
 full screen, view-only and clipboard sharing, send Ctrl+Alt+Del or F8, refresh, or disconnect.
 

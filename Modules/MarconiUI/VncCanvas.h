@@ -9,6 +9,8 @@
 #include <MarconiCore/Rfb/Client.h>
 
 #include <wx/bitmap.h>
+#include <wx/image.h>
+#include <wx/region.h>
 #include <wx/scrolwin.h>
 
 #include <functional>
@@ -27,10 +29,16 @@ namespace MarconiUI
     public:
         VncCanvas(wxWindow* parent, Marconi::Rfb::Client& client);
 
-        // UI thread only. Recreates the backing bitmap at the new desktop size.
+        // UI thread only. The server's desktop changed size. Once a picture has been shown, it stays on screen
+        // (scaled) until the server has sent the whole desktop at the new size, so partial or black pictures are
+        // never shown.
         void SetDesktopSize(int width, int height);
         // UI thread only. Copies the changed areas from the framebuffer and repaints them.
         void UpdateRects(const std::vector<Marconi::Rfb::Rect>& rects);
+        // False while an older picture is shown because the new size isn't complete yet.
+        bool IsShowingCurrentPicture() const { return !m_pending; }
+        // The picture currently shown, at desktop resolution (invalid before the first one).
+        wxImage GetShownPicture() const { return m_backing.IsOk() ? m_backing.ConvertToImage() : wxImage(); }
 
         wxSize GetDesktopSize() const { return m_desktopSize; }
 
@@ -53,6 +61,7 @@ namespace MarconiUI
         void SetMenuKeyHandler(std::function<void()> handler) { m_menuKeyHandler = std::move(handler); }
 
     private:
+        void ApplyDesktopSize(int width, int height);
         void UpdateLayout();
         void ApplyCursor();
         void CopyFromFramebuffer(const Marconi::Rfb::Rect& rect);
@@ -74,7 +83,11 @@ namespace MarconiUI
 
         Marconi::Rfb::Client& m_client;
         wxBitmap m_backing;
-        wxSize m_desktopSize;
+        wxSize m_desktopSize; // size of the picture shown (the server's, unless a resize is pending)
+        bool m_hasPicture = false;
+        bool m_pending = false;  // the server has a new size whose picture isn't complete yet
+        wxSize m_pendingSize;
+        wxRegion m_coverage;     // what the server has sent since the resize
 
         ScaleMode m_scaleMode = ScaleMode::Fit;
         double m_scale = 1.0;

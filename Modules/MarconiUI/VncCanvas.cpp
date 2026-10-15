@@ -49,6 +49,22 @@ namespace MarconiUI
 
     void VncCanvas::SetDesktopSize(int width, int height)
     {
+        if (m_hasPicture && width > 0 && height > 0)
+        {
+            // A Mac switching display modes sends partial pictures, or nothing, at the new size for a while; keep
+            // the last complete picture until the new one covers the whole desktop.
+            m_pending = true;
+            m_pendingSize = wxSize(width, height);
+            m_coverage.Clear();
+            return;
+        }
+        ApplyDesktopSize(width, height);
+    }
+
+    void VncCanvas::ApplyDesktopSize(int width, int height)
+    {
+        m_pending = false;
+        m_coverage.Clear();
         m_desktopSize = wxSize(width, height);
         if (width > 0 && height > 0)
         {
@@ -118,8 +134,16 @@ namespace MarconiUI
             point.x = static_cast<int>(std::floor((windowPoint.x - m_offset.x) / m_scale));
             point.y = static_cast<int>(std::floor((windowPoint.y - m_offset.y) / m_scale));
         }
-        point.x = std::clamp(point.x, 0, std::max(m_desktopSize.x - 1, 0));
-        point.y = std::clamp(point.y, 0, std::max(m_desktopSize.y - 1, 0));
+        wxSize target = m_desktopSize;
+        if (m_pending && m_desktopSize.x > 0 && m_desktopSize.y > 0)
+        {
+            // An older picture is on screen: send positions in the server's current size.
+            target = m_pendingSize;
+            point.x = static_cast<int>(static_cast<long long>(point.x) * target.x / m_desktopSize.x);
+            point.y = static_cast<int>(static_cast<long long>(point.y) * target.y / m_desktopSize.y);
+        }
+        point.x = std::clamp(point.x, 0, std::max(target.x - 1, 0));
+        point.y = std::clamp(point.y, 0, std::max(target.y - 1, 0));
         return point;
     }
 
@@ -139,6 +163,22 @@ namespace MarconiUI
 
     void VncCanvas::UpdateRects(const std::vector<Marconi::Rfb::Rect>& rects)
     {
+        if (m_pending)
+        {
+            for (const Marconi::Rfb::Rect& rect : rects)
+            {
+                m_coverage.Union(wxRect(rect.x, rect.y, rect.width, rect.height));
+            }
+            // wxRegion::Contains(rect) reports partial overlap as inside on Windows, so check what's missing.
+            wxRegion missing{wxRect(m_pendingSize)};
+            missing.Subtract(m_coverage);
+            if (missing.IsEmpty())
+            {
+                ApplyDesktopSize(m_pendingSize.x, m_pendingSize.y); // copies the whole framebuffer
+            }
+            return;
+        }
+        m_hasPicture = m_hasPicture || !rects.empty();
         for (const Marconi::Rfb::Rect& rect : rects)
         {
             CopyFromFramebuffer(rect);

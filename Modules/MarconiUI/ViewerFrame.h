@@ -10,6 +10,7 @@
 #include <MarconiCore/Rfb/Client.h>
 
 #include <wx/frame.h>
+#include <wx/image.h>
 #include <wx/timer.h>
 
 class wxMenu;
@@ -17,6 +18,8 @@ class wxToolBar;
 
 #include <condition_variable>
 #include <mutex>
+#include <thread>
+#include <vector>
 
 namespace MarconiUI
 {
@@ -29,7 +32,21 @@ namespace MarconiUI
         bool fullScreen = false;
         bool clipboard = true;
         wxString savedId; // the saved connection this window was opened from, if any
+
+        // Headless (testing and automation): no window and no dialogs. Saves the picture the viewer would show
+        // to the log folder every `snapshotEverySeconds`, and closes after `quitAfterSeconds`.
+        bool headless = false;
+        int snapshotEverySeconds = 5;
+        int quitAfterSeconds = 60;
     };
+
+    struct SavedConnection;
+    class ConnectionStore;
+
+    // Viewer options for a saved connection, including its keychain password. False (with `error`) if its address
+    // can't be parsed.
+    bool ViewerOptionsFromSaved(const SavedConnection& connection, ConnectionStore& store, ViewerOptions& out,
+                                std::string& error);
 
     class ViewerFrame : public wxFrame, private Marconi::Rfb::ClientListener
     {
@@ -55,6 +72,9 @@ namespace MarconiUI
         void AskForCredentials(Marconi::Rfb::CredentialsKind kind);
         void SaveSnapshot();
         void WatchClipboard();
+        void SaveHeadlessSnapshot();
+        void SavePngInBackground(const wxImage& image, const wxString& path);
+        void StopTimers();
         void FitToDesktop();
         void OnClose(wxCloseEvent& event);
         wxString GetServerDisplayName() const;
@@ -90,6 +110,10 @@ namespace MarconiUI
         wxTimer m_statsTimer;     // logs traffic every 10 seconds
         wxTimer m_snapshotTimer;  // saves the framebuffer to the log folder a little after a resize
         int m_snapshots = 0;
+        wxTimer m_headlessSnapshotTimer;
+        wxTimer m_quitTimer;
+        int m_headlessSnapshots = 0;
+        std::vector<std::thread> m_saveThreads; // PNG encoders, joined on destruction
         wxTimer m_clipboardTimer; // sends local clipboard changes while connected
         long m_clipboardChangeCount = -1;
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in

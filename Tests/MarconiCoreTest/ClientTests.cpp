@@ -17,7 +17,7 @@ namespace MarconiTest
             RecordingListener listener;
             Rfb::Client client{listener};
 
-            ConnectedSession(int width, int height)
+            ConnectedSession(int width, int height, const std::string& banner = "RFB 003.008\n")
             {
                 Rfb::ConnectionOptions options;
                 options.host = "127.0.0.1";
@@ -27,7 +27,7 @@ namespace MarconiTest
                 {
                     throw std::runtime_error("client never connected");
                 }
-                server.HandshakeNone("RFB 003.008\n", width, height, "session");
+                server.HandshakeNone(banner, width, height, "session");
                 server.ReadClientSetup();
                 if (!listener.WaitFor([&]() { return listener.connected; }))
                 {
@@ -85,6 +85,48 @@ namespace MarconiTest
             CHECK(fb.GetPixel(1, 2) == 0x00778899u);
             CHECK(fb.GetPixel(2, 2) == 0x00aabbccu); // padding byte is masked off
             CHECK(fb.GetPixel(0, 0) == 0);
+        });
+
+        RunTest("macOS's mislabelled half-size rectangle is laid out at the real width", []() {
+            ConnectedSession s(640, 480, "RFB 003.889\n");
+            // Labelled 322x242 (half the desktop plus 2) but really consecutive 640 pixel rows.
+            const int count = 322 * 242;
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+            RectHeader(update, 0, 0, 322, 242, Rfb::Encoding::Raw);
+            for (int i = 0; i < count; ++i)
+            {
+                uint32_t pixel = static_cast<uint32_t>(i + 1);
+                update.Append(&pixel, 4);
+            }
+            s.server.Send(update);
+            s.ExpectUpdateRequest(true, 640, 480);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.updates > 0; }));
+            Rfb::Framebuffer& fb = s.client.GetFramebuffer();
+            std::lock_guard<std::mutex> lock(fb.GetMutex());
+            const int rows = count / 640; // 121
+            CHECK(fb.GetPixel(0, 0) == 1 && fb.GetPixel(639, 0) == 640);
+            CHECK(fb.GetPixel(0, 1) == 641);
+            CHECK(fb.GetPixel(639, rows - 1) == static_cast<uint32_t>(rows * 640));
+            CHECK(fb.GetPixel(0, rows) == 0); // nothing below the rows sent
+        });
+
+        RunTest("The same rectangle from a non-Apple server is drawn as labelled", []() {
+            ConnectedSession s(640, 480);
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+            RectHeader(update, 0, 0, 322, 242, Rfb::Encoding::Raw);
+            for (int i = 0; i < 322 * 242; ++i)
+            {
+                uint32_t pixel = static_cast<uint32_t>(i + 1);
+                update.Append(&pixel, 4);
+            }
+            s.server.Send(update);
+            s.ExpectUpdateRequest(true, 640, 480);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.updates > 0; }));
+            Rfb::Framebuffer& fb = s.client.GetFramebuffer();
+            std::lock_guard<std::mutex> lock(fb.GetMutex());
+            CHECK(fb.GetPixel(321, 0) == 322 && fb.GetPixel(0, 1) == 323);
         });
 
         RunTest("DesktopSize resizes and requests a full update", []() {

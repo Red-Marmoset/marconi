@@ -126,12 +126,15 @@ namespace Marconi
             void HandleCursor(InStream& in, const Rect& rect);
             void HandleExtendedDesktopSize(InStream& in, const Rect& rect);
             void ResizeFramebuffer(int width, int height);
+            bool IsAppleMislabelledRect(const Rect& rect);
+            Rect DecodeAppleMislabelledRect(Decoder& decoder, InStream& in, const Rect& rect);
 
             ClientListener& m_listener;
             Framebuffer m_framebuffer;
             std::map<int32_t, std::unique_ptr<Decoder>> m_decoders;
             static constexpr int kDetailedUpdates = 3;
             int m_detailedUpdates = 0; // connection thread only: how many more updates to log in detail
+            bool m_appleServer = false; // connection thread only: macOS Screen Sharing (RFB 3.889)
             std::atomic<int> m_statUpdates{0};
             std::atomic<int> m_statRectangles{0};
             std::atomic<int> m_statRequests{0};

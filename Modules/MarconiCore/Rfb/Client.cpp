@@ -6,6 +6,7 @@
 #include <Log/Log.h>
 
 #include <algorithm>
+#include <cstring>
 
 namespace Marconi
 {
@@ -266,6 +267,7 @@ namespace Marconi
 
                 HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider);
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
+                m_appleServer = handshake.serverMajor == 3 && handshake.serverMinor == 889;
                 {
                     std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
                     m_framebuffer.Resize(handshake.serverInit.width, handshake.serverInit.height);
@@ -405,6 +407,11 @@ namespace Marconi
                 {
                     throw RfbError("The server sent a rectangle outside the desktop");
                 }
+                if (IsAppleMislabelledRect(rect))
+                {
+                    dirty.push_back(DecodeAppleMislabelledRect(*found->second, in, rect));
+                    continue;
+                }
                 found->second->Decode(in, rect, m_framebuffer);
                 dirty.push_back(rect);
             }
@@ -448,6 +455,44 @@ namespace Marconi
                 SendPixelFormat();
                 SendUpdateRequest(false);
             }
+        }
+
+        bool Client::IsAppleMislabelledRect(const Rect& rect)
+        {
+            // macOS (RFB 3.889) on a Retina display, while switching between its scaled and native modes, sends a
+            // rectangle labelled with the scaled size plus a 2 pixel border (e.g. 1922x1082 on a 3840x2160 desktop),
+            // but fills it with consecutive rows of the full-resolution screen. Drawn as labelled it comes out
+            // sheared, with its halves swapped.
+            if (!m_appleServer || rect.x != 0 || rect.y != 0)
+            {
+                return false;
+            }
+            std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+            int width = m_framebuffer.GetWidth();
+            int height = m_framebuffer.GetHeight();
+            return width >= 640 && height >= 480 && width % 2 == 0 && height % 2 == 0 &&
+                   rect.width == width / 2 + 2 && rect.height == height / 2 + 2;
+        }
+
+        Rect Client::DecodeAppleMislabelledRect(Decoder& decoder, InStream& in, const Rect& rect)
+        {
+            // Decode as labelled into a scratch image, then lay the pixel stream out at the desktop's real width.
+            Framebuffer scratch;
+            scratch.Resize(rect.width, rect.height);
+            decoder.Decode(in, {0, 0, rect.width, rect.height}, scratch);
+
+            std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+            const int width = m_framebuffer.GetWidth();
+            const size_t pixels = static_cast<size_t>(rect.width) * rect.height; // scratch rows are contiguous
+            const int rows = std::min(static_cast<int>(pixels / width), m_framebuffer.GetHeight());
+            for (int y = 0; y < rows; ++y)
+            {
+                std::memcpy(m_framebuffer.Row(y), scratch.Row(0) + static_cast<size_t>(y) * width,
+                            static_cast<size_t>(width) * sizeof(uint32_t));
+            }
+            LOG_INFO("Rfb", "Repaired a mislabelled %dx%d rectangle from macOS into the top %d rows", rect.width,
+                     rect.height, rows);
+            return {0, 0, width, rows};
         }
 
         void Client::ResizeFramebuffer(int width, int height)

@@ -14,6 +14,7 @@
 #include <Log/Log.h>
 
 #include <wx/datetime.h>
+#include <wx/app.h>
 #include <wx/display.h>
 #include <wx/image.h>
 #include <wx/stdpaths.h>
@@ -24,6 +25,7 @@
 #include <wx/utils.h>
 
 #include <algorithm>
+#include <string>
 
 namespace MarconiUI
 {
@@ -90,11 +92,103 @@ namespace MarconiUI
             CallAfter([this]() { UpdateStatus(); }); // after the canvas has recomputed its scale
         });
         UpdateControls();
+        if (m_options.headless)
+        {
+            LOG_INFO("Viewer", "Headless: snapshot every %ds, quitting after %ds", m_options.snapshotEverySeconds,
+                     m_options.quitAfterSeconds);
+            m_headlessSnapshotTimer.SetOwner(this);
+            Bind(wxEVT_TIMER, [this](wxTimerEvent&) { SaveHeadlessSnapshot(); }, m_headlessSnapshotTimer.GetId());
+            m_headlessSnapshotTimer.Start(std::max(m_options.snapshotEverySeconds, 1) * 1000);
+            m_quitTimer.SetOwner(this);
+            Bind(wxEVT_TIMER, [this](wxTimerEvent&) {
+                LOG_INFO("Viewer", "Headless session finished");
+                Close(true);
+            }, m_quitTimer.GetId());
+            m_quitTimer.StartOnce(std::max(m_options.quitAfterSeconds, 1) * 1000);
+        }
         Connect();
+    }
+
+    bool ViewerOptionsFromSaved(const SavedConnection& connection, ConnectionStore& store, ViewerOptions& out,
+                                std::string& error)
+    {
+        ViewerOptions options;
+        if (!Marconi::ParseAddress(connection.address.utf8_string(), options.address, error))
+        {
+            return false;
+        }
+        options.savedId = connection.id;
+        options.credentials.username = connection.username.utf8_string();
+        wxString password;
+        if (connection.rememberPassword && store.LoadPassword(connection.id, password))
+        {
+            options.credentials.password = password.utf8_string();
+        }
+        options.scaleMode = connection.scaleMode;
+        options.viewOnly = connection.viewOnly;
+        options.clipboard = connection.clipboard;
+        out = options;
+        return true;
+    }
+
+    void ViewerFrame::SaveHeadlessSnapshot()
+    {
+        // What a viewer window would be showing right now, plus how that relates to the server's desktop.
+        wxImage image = m_canvas->GetShownPicture();
+        if (!image.IsOk())
+        {
+            LOG_INFO("Viewer", "Headless snapshot: nothing shown yet");
+            return;
+        }
+        int serverWidth;
+        int serverHeight;
+        {
+            Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+            std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
+            serverWidth = framebuffer.GetWidth();
+            serverHeight = framebuffer.GetHeight();
+        }
+        ++m_headlessSnapshots;
+        wxString path = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs" + wxFILE_SEP_PATH +
+                        wxDateTime::Now().Format("headless_%Y-%m-%d_%H-%M-%S_") +
+                        wxString::Format("%03d.png", m_headlessSnapshots);
+        LOG_INFO("Viewer", "Headless snapshot %s: showing %dx%d (%s), server desktop %dx%d", path.utf8_string().c_str(),
+                 image.GetWidth(), image.GetHeight(),
+                 m_canvas->IsShowingCurrentPicture() ? "current" : "previous picture, new one incomplete", serverWidth,
+                 serverHeight);
+        SavePngInBackground(image, path);
+    }
+
+    void ViewerFrame::SavePngInBackground(const wxImage& image, const wxString& path)
+    {
+        // Encoding a 4K PNG takes seconds; doing it here would stall the viewer. The thread gets its own deep copy
+        // (wxImage's reference counting isn't thread-safe) and is joined when the window goes away.
+        wxImage copy = image.Copy();
+        copy.SetOption(wxIMAGE_OPTION_PNG_COMPRESSION_LEVEL, 1);
+        m_saveThreads.emplace_back([copy, path]() mutable {
+            if (!copy.SaveFile(path, wxBITMAP_TYPE_PNG))
+            {
+                LOG_WARNING("Viewer", "Could not save %s", path.utf8_string().c_str());
+            }
+        });
+    }
+
+    void ViewerFrame::StopTimers()
+    {
+        m_pictureTimer.Stop();
+        m_statsTimer.Stop();
+        m_snapshotTimer.Stop();
+        m_clipboardTimer.Stop();
+        m_headlessSnapshotTimer.Stop();
+        m_quitTimer.Stop();
     }
 
     ViewerFrame::~ViewerFrame()
     {
+        for (std::thread& thread : m_saveThreads)
+        {
+            thread.join();
+        }
         // Normally already done in OnClose; the Client must stop before this listener goes away.
         {
             std::lock_guard<std::mutex> lock(m_credentialsMutex);
@@ -129,7 +223,7 @@ namespace MarconiUI
     {
         CallAfter([this, rects]() {
             m_canvas->UpdateRects(rects);
-            if (m_waitingForPicture)
+            if (m_waitingForPicture && m_canvas->IsShowingCurrentPicture())
             {
                 m_waitingForPicture = false;
                 m_autoReconnects = 0;
@@ -181,6 +275,11 @@ namespace MarconiUI
     bool ViewerFrame::OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials)
     {
         // Connection thread: ask the UI thread and wait for the answer (or for the window to close).
+        if (m_options.headless)
+        {
+            LOG_WARNING("Viewer", "Headless: the server wants credentials that aren't saved for this connection");
+            return false;
+        }
         std::unique_lock<std::mutex> lock(m_credentialsMutex);
         if (m_closing)
         {
@@ -311,10 +410,8 @@ namespace MarconiUI
         wxString path = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs" + wxFILE_SEP_PATH +
                         wxDateTime::Now().Format("snapshot_%Y-%m-%d_%H-%M-%S_") +
                         wxString::Format("%dx%d.png", image.GetWidth(), image.GetHeight());
-        if (image.SaveFile(path, wxBITMAP_TYPE_PNG))
-        {
-            LOG_INFO("Viewer", "Saved a snapshot of the desktop to %s", path.utf8_string().c_str());
-        }
+        LOG_INFO("Viewer", "Saving a snapshot of the desktop to %s", path.utf8_string().c_str());
+        SavePngInBackground(image, path);
     }
 
     void ViewerFrame::LogTraffic()
@@ -396,7 +493,7 @@ namespace MarconiUI
         m_canvas->ReleaseInput();
         m_connected = false;
         UpdateControls();
-        if (info.error.empty())
+        if (info.error.empty() || m_options.headless)
         {
             Close(true);
             return;
@@ -630,14 +727,23 @@ namespace MarconiUI
 
     void ViewerFrame::OnClose(wxCloseEvent& event)
     {
-        SaveSettings();
+        if (!m_options.headless)
+        {
+            SaveSettings(); // a headless run must not change the user's saved settings
+        }
         {
             std::lock_guard<std::mutex> lock(m_credentialsMutex);
             m_closing = true;
         }
         m_credentialsChanged.notify_all();
+        StopTimers();
         m_canvas->ReleaseInput();
         m_client.Disconnect();
         event.Skip(); // default handler destroys the frame
+        if (m_options.headless)
+        {
+            // A hidden frame isn't always deleted promptly (pending deletes wait for idle time), so end the app.
+            wxTheApp->ExitMainLoop();
+        }
     }
 } // namespace MarconiUI

@@ -50,6 +50,15 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "view-only", "don't send keyboard or mouse input", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "fullscreen", "start full screen", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "no-clipboard", "don't share the clipboard", wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_OPTION, nullptr, "saved", "open a saved connection (by name, address or id)",
+             wxCMD_LINE_VAL_STRING, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "headless",
+             "no window or dialogs: log and save snapshots to the log folder (testing, automation)",
+             wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_OPTION, nullptr, "snapshot-every", "headless: seconds between snapshots (default 5)",
+             wxCMD_LINE_VAL_NUMBER, 0},
+            {wxCMD_LINE_OPTION, nullptr, "quit-after", "headless: seconds before closing (default 60)",
+             wxCMD_LINE_VAL_NUMBER, 0},
             {wxCMD_LINE_PARAM, nullptr, nullptr, "host[:display] | host::port", wxCMD_LINE_VAL_STRING,
              wxCMD_LINE_PARAM_OPTIONAL},
             wxCMD_LINE_DESC_END,
@@ -59,25 +68,81 @@ namespace MarconiUI
         {
             return false; // help shown or bad arguments (wx reports them)
         }
-        if (parser.GetParamCount() > 0)
+        const bool headless = parser.Found("headless");
+        wxString savedName;
+        const bool fromSaved = parser.Found("saved", &savedName);
+        if (parser.GetParamCount() > 0 || fromSaved)
         {
             ViewerOptions options;
             std::string error;
             wxString scale;
+            bool ok = false;
             if (parser.Found("scale", &scale) && scale != "fit" && scale != "100")
             {
                 error = "--scale must be 'fit' or '100'";
             }
-            else if (Marconi::ParseAddress(parser.GetParam(0).utf8_string(), options.address, error))
+            else if (fromSaved)
             {
-                options.scaleMode = scale == "100" ? ScaleMode::Actual : ScaleMode::Fit;
-                options.viewOnly = parser.Found("view-only");
+                ConnectionStore store;
+                ok = false;
+                error = "No saved connection called '" + savedName.utf8_string() + "'";
+                for (const SavedConnection& connection : store.LoadAll())
+                {
+                    if (connection.id == savedName || connection.name.CmpNoCase(savedName) == 0 ||
+                        connection.address.CmpNoCase(savedName) == 0)
+                    {
+                        ok = ViewerOptionsFromSaved(connection, store, options, error);
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                ok = Marconi::ParseAddress(parser.GetParam(0).utf8_string(), options.address, error);
+            }
+            if (ok)
+            {
+                // Command-line switches override a saved connection's settings.
+                if (!scale.empty())
+                {
+                    options.scaleMode = scale == "100" ? ScaleMode::Actual : ScaleMode::Fit;
+                }
+                options.viewOnly = options.viewOnly || parser.Found("view-only");
                 options.fullScreen = parser.Found("fullscreen");
-                options.clipboard = !parser.Found("no-clipboard");
-                (new ViewerFrame(options))->Show();
+                options.clipboard = options.clipboard && !parser.Found("no-clipboard");
+                if (headless)
+                {
+                    long seconds = 0;
+                    options.headless = true;
+                    options.clipboard = false; // never touch the user's clipboard from a headless run
+                    options.fullScreen = false;
+                    if (parser.Found("snapshot-every", &seconds))
+                    {
+                        options.snapshotEverySeconds = static_cast<int>(seconds);
+                    }
+                    if (parser.Found("quit-after", &seconds))
+                    {
+                        options.quitAfterSeconds = static_cast<int>(seconds);
+                    }
+                }
+                ViewerFrame* viewer = new ViewerFrame(options);
+                if (!headless)
+                {
+                    viewer->Show();
+                }
                 return true;
             }
+            if (headless)
+            {
+                LOG_WARNING("App", "Headless: %s", error.c_str());
+                return false;
+            }
             wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING);
+        }
+        else if (headless)
+        {
+            LOG_WARNING("App", "Headless needs an address or --saved");
+            return false;
         }
 
         ConnectionsFrame* frame = new ConnectionsFrame();
