@@ -172,6 +172,14 @@ namespace RmVncUI
 
     void ViewerFrame::AskForCredentials(bool needUsername)
     {
+        {
+            // The window may have started closing after this was queued; nobody is waiting any more.
+            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            if (m_closing)
+            {
+                return;
+            }
+        }
         SetStatusText("Waiting for credentials...");
         bool offerRemember = !m_options.savedId.empty() && ConnectionStore::IsKeychainAvailable();
         CredentialsDialog dialog(this, GetServerDisplayName(), needUsername,

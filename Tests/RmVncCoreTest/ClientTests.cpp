@@ -141,6 +141,27 @@ namespace RmVncTest
             CHECK(c.argb[9] == 0x00ffffffu);  // row 1 hidden
         });
 
+        RunTest("Implausible desktop size is refused", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+            RectHeader(update, 0, 0, 60000, 60000, Rfb::Encoding::DesktopSize);
+            s.server.Send(update);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.disconnected; }));
+            CHECK(s.listener.disconnectError.find("implausibly large") != std::string::npos);
+        });
+
+        RunTest("Refresh after the connection dropped doesn't throw", []() {
+            ConnectedSession s(4, 3);
+            s.server.Close();
+            for (int i = 0; i < 20; ++i)
+            {
+                s.client.RequestFullUpdate(); // must never throw, connected or not
+            }
+            CHECK(s.listener.WaitFor([&]() { return s.listener.disconnected; }));
+            s.client.RequestFullUpdate();
+        });
+
         RunTest("Bell, colour map and server cut text", []() {
             ConnectedSession s(4, 3);
             Rfb::OutBuffer messages;

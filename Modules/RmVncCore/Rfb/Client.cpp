@@ -14,6 +14,29 @@ namespace RmVnc
         namespace
         {
             constexpr uint32_t kMaxCutTextLength = 16 * 1024 * 1024;
+            // Refuse absurd desktops from broken or hostile servers (16k x 16k is already 1 GiB of pixels).
+            constexpr int kMaxDesktopSide = 16384;
+
+            void CheckDesktopSize(int width, int height)
+            {
+                if (width > kMaxDesktopSide || height > kMaxDesktopSide)
+                {
+                    throw RfbError("The server reported an implausibly large desktop (" + std::to_string(width) + " x " +
+                                   std::to_string(height) + ")");
+                }
+            }
+
+            Bytes BuildUpdateRequest(bool incremental, int width, int height)
+            {
+                OutBuffer message;
+                message.U8(ClientMessage::FramebufferUpdateRequest)
+                    .U8(incremental ? 1 : 0)
+                    .U16(0)
+                    .U16(0)
+                    .U16(static_cast<uint16_t>(width))
+                    .U16(static_cast<uint16_t>(height));
+                return message.Data();
+            }
         }
 
         Client::Client(ClientListener& listener) : m_listener(listener)
@@ -111,10 +134,15 @@ namespace RmVnc
 
         void Client::RequestFullUpdate()
         {
-            if (m_connected)
+            // UI thread: must not throw, so use the non-throwing send.
+            int width;
+            int height;
             {
-                SendUpdateRequest(false);
+                std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                width = m_framebuffer.GetWidth();
+                height = m_framebuffer.GetHeight();
             }
+            SendIfConnected(BuildUpdateRequest(false, width, height));
         }
 
         void Client::SendUpdateRequest(bool incremental)
@@ -126,14 +154,7 @@ namespace RmVnc
                 width = m_framebuffer.GetWidth();
                 height = m_framebuffer.GetHeight();
             }
-            OutBuffer message;
-            message.U8(ClientMessage::FramebufferUpdateRequest)
-                .U8(incremental ? 1 : 0)
-                .U16(0)
-                .U16(0)
-                .U16(static_cast<uint16_t>(width))
-                .U16(static_cast<uint16_t>(height));
-            Send(message.Data());
+            Send(BuildUpdateRequest(incremental, width, height));
         }
 
         void Client::SendSetupMessages(const ConnectionOptions& options)
@@ -221,6 +242,7 @@ namespace RmVnc
                 };
 
                 HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider);
+                CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
                 {
                     std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
                     m_framebuffer.Resize(handshake.serverInit.width, handshake.serverInit.height);
@@ -368,6 +390,7 @@ namespace RmVnc
 
         void Client::ResizeFramebuffer(int width, int height)
         {
+            CheckDesktopSize(width, height);
             {
                 std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
                 if (width == m_framebuffer.GetWidth() && height == m_framebuffer.GetHeight())

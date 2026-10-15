@@ -113,13 +113,21 @@ namespace RmVncTest
         RunTest("Apple ARD response decrypts to the credentials", []() {
             Crypto::DhKeyPair server;
             CHECK(Crypto::DhGenerateKeyPair(kArdPrime, {0, 2}, server));
-            Rfb::Credentials credentials{"sem", "hunter2-\xc3\xa9"}; // non-ASCII is sent as Latin-1
+            Rfb::Credentials credentials{"sem", "hunter2-\xc3\xa9"}; // non-ASCII is sent as UTF-8
             Rfb::Bytes response = Rfb::ComputeArdResponse({0, 2}, kArdPrime, server.publicKey, credentials);
             std::string username;
             std::string password;
             CHECK(DecryptArd(server, response, username, password));
             CHECK(username == "sem");
-            CHECK(password == "hunter2-\xe9");
+            CHECK(password == "hunter2-\xc3\xa9");
+
+            // Long names are cut at 63 bytes without splitting a UTF-8 character.
+            std::string longName(62, 'a');
+            longName += "\xc3\xa9"; // 64 bytes: the two-byte character doesn't fit
+            Rfb::Bytes truncated =
+                Rfb::ComputeArdResponse({0, 2}, kArdPrime, server.publicKey, {longName, "x"});
+            CHECK(DecryptArd(server, truncated, username, password));
+            CHECK(username == std::string(62, 'a'));
 
             // Two responses differ (fresh DH keys and random padding) but both decrypt.
             Rfb::Bytes again = Rfb::ComputeArdResponse({0, 2}, kArdPrime, server.publicKey, credentials);

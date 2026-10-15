@@ -25,6 +25,21 @@ namespace RmVnc
                 return result;
             }
 
+            // At most `maxBytes` bytes, without splitting a multi-byte UTF-8 sequence.
+            std::string TruncateUtf8(const std::string& text, size_t maxBytes)
+            {
+                if (text.size() <= maxBytes)
+                {
+                    return text;
+                }
+                size_t length = maxBytes;
+                while (length > 0 && (static_cast<uint8_t>(text[length]) & 0xC0) == 0x80)
+                {
+                    --length;
+                }
+                return text.substr(0, length);
+            }
+
             Credentials RequestCredentials(const CredentialsProvider& provider, bool needUsername)
             {
                 Credentials credentials;
@@ -102,14 +117,14 @@ namespace RmVnc
             uint8_t key[16];
             Crypto::Md5(secret.data(), secret.size(), key);
 
-            // 64 bytes of username then 64 of password, each NUL terminated; the rest is random padding.
+            // 64 bytes of username then 64 of password, UTF-8 and NUL terminated; the rest is random padding.
             uint8_t plain[128];
             if (!Crypto::RandomBytes(plain, sizeof(plain)))
             {
                 throw RfbError("Could not generate random data");
             }
-            std::string username = Utf8ToLatin1(credentials.username).substr(0, 63);
-            std::string password = Utf8ToLatin1(credentials.password).substr(0, 63);
+            std::string username = TruncateUtf8(credentials.username, 63);
+            std::string password = TruncateUtf8(credentials.password, 63);
             std::memcpy(plain, username.c_str(), username.size() + 1);
             std::memcpy(plain + 64, password.c_str(), password.size() + 1);
 

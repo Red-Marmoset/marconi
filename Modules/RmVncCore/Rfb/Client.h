@@ -83,7 +83,9 @@ namespace RmVnc
 
             // Starts connecting on a background thread. Any previous connection is closed first.
             void Connect(const ConnectionOptions& options);
-            // Closes the connection and waits for the connection thread to finish.
+            // Closes the connection and waits for the connection thread to finish. If called from a listener
+            // callback (i.e. on the connection thread) it can't wait, so the thread is detached and finishes by
+            // itself: the Client must then outlive it, and Connect() must not be called until OnDisconnected.
             void Disconnect();
             bool IsConnected() const { return m_connected.load(); }
 
