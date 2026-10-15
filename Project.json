@@ -1,0 +1,11 @@
+{
+    "name": "RmVnc",
+    "type": "windowed",
+    "version": "0.1.0",
+    "description": "rmvnc - cross-platform VNC client",
+    "modules": [
+        "RmVncCore",
+        "RmVncUI"
+    ],
+    "compiler": "msvc"
+}
