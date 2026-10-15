@@ -8,7 +8,8 @@
 #   python Tools/fake_vnc_server.py [--port 5999] [--size 1024x768]
 #   then connect rmvnc to 127.0.0.1::5999
 #
-# Type "resize WxH" or "cut <text>" or "bell" on the server's stdin to exercise those messages.
+# Type "resize WxH" or "cut <text>" or "bell" on the server's stdin to exercise those messages, or pass
+# --cut-on-connect "text" to send clipboard text as soon as a client connects.
 
 import argparse
 import socket
@@ -155,6 +156,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=5999)
     parser.add_argument("--size", default="1024x768")
+    parser.add_argument("--cut-on-connect", default=None, help="send this text as ServerCutText after the handshake")
     args = parser.parse_args()
     width, height = (int(v) for v in args.size.split("x"))
 
@@ -170,6 +172,9 @@ def main():
         session = Session(conn, width, height)
         try:
             session.handshake()
+            if args.cut_on_connect:
+                text = args.cut_on_connect.encode("latin-1", "replace")
+                session.send(struct.pack(">Bxxxi", 3, len(text)) + text)
             threading.Thread(target=session.updater, daemon=True).start()
             threading.Thread(target=console, args=(session,), daemon=True).start()
             session.message_loop()

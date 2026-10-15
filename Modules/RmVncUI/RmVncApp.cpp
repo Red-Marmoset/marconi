@@ -40,6 +40,7 @@ namespace RmVncUI
             {wxCMD_LINE_OPTION, nullptr, "scale", "fit (default) or 100", wxCMD_LINE_VAL_STRING, 0},
             {wxCMD_LINE_SWITCH, nullptr, "view-only", "don't send keyboard or mouse input", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "fullscreen", "start full screen", wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "no-clipboard", "don't share the clipboard", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_PARAM, nullptr, nullptr, "host[:display] | host::port", wxCMD_LINE_VAL_STRING,
              wxCMD_LINE_PARAM_OPTIONAL},
             wxCMD_LINE_DESC_END,
@@ -63,6 +64,7 @@ namespace RmVncUI
                 options.scaleMode = scale == "100" ? ScaleMode::Actual : ScaleMode::Fit;
                 options.viewOnly = parser.Found("view-only");
                 options.fullScreen = parser.Found("fullscreen");
+                options.clipboard = !parser.Found("no-clipboard");
                 (new ViewerFrame(options))->Show();
                 return true;
             }

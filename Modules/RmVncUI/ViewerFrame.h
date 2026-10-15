@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "ClipboardSync.h"
 #include "VncCanvas.h"
 
 #include <RmVncCore/Address.h>
@@ -25,6 +26,7 @@ namespace RmVncUI
         ScaleMode scaleMode = ScaleMode::Fit;
         bool viewOnly = false;
         bool fullScreen = false;
+        bool clipboard = true;
     };
 
     class ViewerFrame : public wxFrame, private RmVnc::Rfb::ClientListener
@@ -40,6 +42,7 @@ namespace RmVncUI
         void OnDesktopResized(int width, int height) override;
         void OnBell() override;
         void OnCursorShape(const RmVnc::Rfb::CursorShape& cursor) override;
+        void OnServerCutText(const std::string& latin1Text) override;
         void OnDisconnected(const RmVnc::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(bool needUsername, RmVnc::Rfb::Credentials& credentials) override;
 
@@ -61,9 +64,11 @@ namespace RmVncUI
         void UpdateStatus();
         void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
         void ToggleFullScreen();
+        void SyncClipboardToServer();
 
         ViewerOptions m_options;
         RmVnc::Rfb::Client m_client;
+        ClipboardSync m_clipboard{m_client};
         VncCanvas* m_canvas = nullptr;
         wxToolBar* m_toolBar = nullptr;
         wxString m_desktopName;

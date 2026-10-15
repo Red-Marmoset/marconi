@@ -29,6 +29,7 @@ namespace RmVncUI
             ID_SCALE_ACTUAL,
             ID_FULL_SCREEN,
             ID_VIEW_ONLY,
+            ID_CLIPBOARD,
             ID_SEND_CTRL_ALT_DEL,
             ID_SEND_F8,
             ID_REFRESH,
@@ -53,6 +54,15 @@ namespace RmVncUI
         m_canvas->SetMenuKeyHandler([this]() { ShowMenu(); });
         m_canvas->SetScaleMode(options.scaleMode);
         m_canvas->SetViewOnly(options.viewOnly);
+        m_clipboard.SetEnabled(options.clipboard);
+        Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
+            event.Skip();
+            if (event.GetActive())
+            {
+                // Someone who copied something locally is probably about to paste it remotely.
+                CallAfter([this]() { SyncClipboardToServer(); });
+            }
+        });
         Bind(wxEVT_CLOSE_WINDOW, &ViewerFrame::OnClose, this);
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
@@ -82,6 +92,7 @@ namespace RmVncUI
 
     void ViewerFrame::Connect()
     {
+        m_clipboard.Reset();
         SetStatusText("Connecting to " + wxString::FromUTF8(RmVnc::FormatAddress(m_options.address)) + "...");
         RmVnc::Rfb::ConnectionOptions connection;
         connection.host = m_options.address.host;
@@ -112,6 +123,19 @@ namespace RmVncUI
     void ViewerFrame::OnCursorShape(const RmVnc::Rfb::CursorShape& cursor)
     {
         CallAfter([this, cursor]() { m_canvas->SetRemoteCursor(cursor); });
+    }
+
+    void ViewerFrame::OnServerCutText(const std::string& latin1Text)
+    {
+        CallAfter([this, latin1Text]() { m_clipboard.OnServerText(latin1Text); });
+    }
+
+    void ViewerFrame::SyncClipboardToServer()
+    {
+        if (m_connected && !m_canvas->IsViewOnly())
+        {
+            m_clipboard.SendIfChanged();
+        }
     }
 
     void ViewerFrame::OnBell()
@@ -179,6 +203,7 @@ namespace RmVncUI
         UpdateControls();
         UpdateStatus();
         m_canvas->SetFocus();
+        SyncClipboardToServer();
     }
 
     void ViewerFrame::HandleDisconnected(const RmVnc::Rfb::DisconnectInfo& info)
@@ -253,6 +278,8 @@ namespace RmVncUI
         m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap, "Full screen (F8 opens the menu)");
         m_toolBar->AddCheckTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, wxNullBitmap,
                                 "Watch without sending mouse or keyboard input");
+        m_toolBar->AddCheckTool(ID_CLIPBOARD, "Clipboard", wxNullBitmap, wxNullBitmap,
+                                "Share copied text with the remote computer");
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+Del", wxNullBitmap, "Send Ctrl+Alt+Del");
         m_toolBar->AddTool(ID_REFRESH, "Refresh", wxNullBitmap, "Ask the server for a full screen update");
@@ -268,6 +295,7 @@ namespace RmVncUI
         menu->AppendRadioItem(ID_SCALE_ACTUAL, "&Actual Size (100%)");
         menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
         menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
+        menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
         menu->AppendSeparator();
         menu->Append(ID_SEND_CTRL_ALT_DEL, "Send Ctrl+Alt+&Del");
         menu->Append(ID_SEND_F8, "Send F&8");
@@ -279,6 +307,7 @@ namespace RmVncUI
         menu->Check(fit ? ID_SCALE_FIT : ID_SCALE_ACTUAL, true);
         menu->Check(ID_FULL_SCREEN, IsFullScreen());
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
+        menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
         for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_REFRESH})
         {
             menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
@@ -312,6 +341,14 @@ namespace RmVncUI
         case ID_VIEW_ONLY:
             m_canvas->SetViewOnly(!m_canvas->IsViewOnly());
             break;
+        case ID_CLIPBOARD:
+            m_clipboard.SetEnabled(!m_clipboard.IsEnabled());
+            if (m_clipboard.IsEnabled())
+            {
+                m_clipboard.Reset();
+                SyncClipboardToServer();
+            }
+            break;
         case ID_SEND_CTRL_ALT_DEL:
             SendKeyCombination({RmVnc::Keysym::Control_L, RmVnc::Keysym::Alt_L, RmVnc::Keysym::Delete});
             break;
@@ -330,6 +367,7 @@ namespace RmVncUI
         UpdateControls();
         UpdateStatus();
         m_canvas->SetFocus();
+        SyncClipboardToServer();
     }
 
     void ViewerFrame::SendKeyCombination(std::initializer_list<uint32_t> keysyms)
@@ -363,6 +401,7 @@ namespace RmVncUI
     {
         m_toolBar->ToggleTool(ID_SCALE_FIT, m_canvas->GetScaleMode() == ScaleMode::Fit);
         m_toolBar->ToggleTool(ID_VIEW_ONLY, m_canvas->IsViewOnly());
+        m_toolBar->ToggleTool(ID_CLIPBOARD, m_clipboard.IsEnabled());
         m_toolBar->EnableTool(ID_SEND_CTRL_ALT_DEL, m_connected && !m_canvas->IsViewOnly());
         m_toolBar->EnableTool(ID_REFRESH, m_connected);
     }
