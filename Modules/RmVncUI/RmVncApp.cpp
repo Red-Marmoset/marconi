@@ -25,6 +25,10 @@ namespace RmVncUI
         SetAppName("rmvnc");
         SetVendorName("Red Marmoset Studios");
 
+#if defined(__WXGTK__)
+        // ~/.config/rmvnc and ~/.local/share/rmvnc rather than wx's traditional ~/.rmvnc.
+        wxStandardPaths::Get().SetFileLayout(wxStandardPaths::FileLayout_XDG);
+#endif
         // wxRegConfig on Windows, wxFileConfig (XDG / ~/Library/Preferences) elsewhere.
         wxConfigBase::Set(wxConfigBase::Create());
 

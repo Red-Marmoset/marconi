@@ -3,6 +3,7 @@
 
 #include "ViewerFrame.h"
 
+#include "AppIcon.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
 #include "VncCanvas.h"
@@ -43,6 +44,7 @@ namespace RmVncUI
           m_options(options),
           m_client(*this)
     {
+        SetIcons(GetAppIcons());
         m_canvas = new VncCanvas(this, m_client);
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
         sizer->Add(m_canvas, 1, wxEXPAND);
@@ -260,7 +262,14 @@ namespace RmVncUI
         }
 
         SetStatusText("Disconnected: " + wxString::FromUTF8(info.error));
-        wxMessageBox(wxString::FromUTF8(info.error), caption, wxOK | wxICON_ERROR, this);
+        wxString message = info.wasConnected ? "The connection was lost:\n\n" : "Could not connect:\n\n";
+        wxMessageDialog retry(this, message + wxString::FromUTF8(info.error), caption, wxYES_NO | wxICON_ERROR);
+        retry.SetYesNoLabels(info.wasConnected ? "Reconnect" : "Try Again", "Close");
+        if (retry.ShowModal() == wxID_YES)
+        {
+            Connect();
+            return;
+        }
         Close(true);
     }
 

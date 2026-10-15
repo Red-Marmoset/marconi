@@ -3,6 +3,7 @@
 
 #include "ConnectionsFrame.h"
 
+#include "AppIcon.h"
 #include "ConnectionDialog.h"
 #include "ViewerFrame.h"
 
@@ -41,6 +42,7 @@ namespace RmVncUI
 
     ConnectionsFrame::ConnectionsFrame() : wxFrame(nullptr, wxID_ANY, "rmvnc")
     {
+        SetIcons(GetAppIcons());
         wxPanel* panel = new wxPanel(this);
         const int border = FromDIP(12);
         const int gap = FromDIP(8);
