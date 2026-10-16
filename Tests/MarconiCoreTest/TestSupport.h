@@ -128,4 +128,5 @@ namespace MarconiTest
     void RunVeNCryptTests();
     void RunRandomInputTests();
     void RunLocalKeysTests();
+    void RunFilesTests();
 } // namespace MarconiTest
