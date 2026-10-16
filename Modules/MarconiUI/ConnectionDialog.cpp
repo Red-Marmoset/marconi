@@ -2,6 +2,7 @@
 // Add / edit a saved connection
 
 #include "ConnectionDialog.h"
+#include "Appearance.h"
 
 #include <MarconiCore/Address.h>
 
@@ -45,7 +46,7 @@ namespace MarconiUI
         m_rememberPassword = new wxCheckBox(this, wxID_ANY, "Remember password in the system keychain");
         m_rememberPassword->SetValue(connection.rememberPassword);
         grid->Add(m_rememberPassword);
-        outer->Add(grid, 0, wxEXPAND | wxALL, FromDIP(12));
+        outer->Add(grid, 0, wxEXPAND | wxALL, FromDIP(20));
 
         wxStaticBoxSizer* view = new wxStaticBoxSizer(wxVERTICAL, this, "Viewer");
         wxBoxSizer* scaleRow = new wxBoxSizer(wxHORIZONTAL);
@@ -62,10 +63,11 @@ namespace MarconiUI
         m_clipboard = new wxCheckBox(view->GetStaticBox(), wxID_ANY, "Share the clipboard");
         m_clipboard->SetValue(connection.clipboard);
         view->Add(m_clipboard, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
-        outer->Add(view, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(12));
+        outer->Add(view, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(20));
 
-        outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(12));
+        outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(20));
         SetSizerAndFit(outer);
+        StyleWindow(this);
         CentreOnParent();
 
         if (!ConnectionStore::IsKeychainAvailable())

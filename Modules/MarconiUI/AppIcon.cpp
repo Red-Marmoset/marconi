@@ -17,7 +17,7 @@ namespace MarconiUI
 {
     namespace
     {
-        // A monitor showing a smaller window with a pointer: "a screen inside a screen".
+        // Signal: a mirrored M with two circular connection terminals.
         wxIcon DrawIcon(int size)
         {
             wxImage image(size, size);
@@ -30,34 +30,28 @@ namespace MarconiUI
                 if (gc)
                 {
                     const double s = size / 32.0;
-                    // Bezel.
+                    const wxColour crimson(178, 34, 52);
+                    wxGraphicsPenInfo stroke(crimson, 4.0 * s);
+                    stroke.Cap(wxCAP_ROUND).Join(wxJOIN_ROUND);
+                    gc->SetPen(gc->CreatePen(stroke));
+                    gc->SetBrush(*wxTRANSPARENT_BRUSH);
+
+                    // Every point is mirrored around x = 16; peaks and terminals share their y coordinates.
+                    wxGraphicsPath signal = gc->CreatePath();
+                    signal.MoveToPoint(5 * s, 23 * s);
+                    signal.AddLineToPoint(10.5 * s, 9 * s);
+                    signal.AddLineToPoint(16 * s, 20 * s);
+                    signal.AddLineToPoint(21.5 * s, 9 * s);
+                    signal.AddLineToPoint(27 * s, 23 * s);
+                    gc->StrokePath(signal);
+
                     gc->SetPen(*wxTRANSPARENT_PEN);
-                    gc->SetBrush(wxBrush(wxColour(178, 34, 52)));
-                    gc->DrawRoundedRectangle(1 * s, 3 * s, 30 * s, 21 * s, 3 * s);
-                    // Stand.
-                    gc->DrawRectangle(13 * s, 24 * s, 6 * s, 3 * s);
-                    gc->DrawRoundedRectangle(8 * s, 27 * s, 16 * s, 3 * s, 1.5 * s);
-                    // Screen.
-                    gc->SetBrush(wxBrush(wxColour(32, 36, 44)));
-                    gc->DrawRectangle(3 * s, 5 * s, 26 * s, 17 * s);
-                    // Remote window.
-                    gc->SetBrush(wxBrush(wxColour(236, 240, 245)));
-                    gc->DrawRoundedRectangle(7 * s, 8 * s, 18 * s, 11 * s, 1.5 * s);
-                    gc->SetBrush(wxBrush(wxColour(178, 34, 52)));
-                    gc->DrawRectangle(7 * s, 8 * s, 18 * s, 2.5 * s);
-                    // Pointer.
-                    wxGraphicsPath pointer = gc->CreatePath();
-                    pointer.MoveToPoint(17 * s, 12 * s);
-                    pointer.AddLineToPoint(17 * s, 21 * s);
-                    pointer.AddLineToPoint(19.5 * s, 18.5 * s);
-                    pointer.AddLineToPoint(22.5 * s, 20.5 * s);
-                    pointer.AddLineToPoint(23.5 * s, 19 * s);
-                    pointer.AddLineToPoint(20.5 * s, 17 * s);
-                    pointer.AddLineToPoint(23.5 * s, 15.5 * s);
-                    pointer.CloseSubpath();
-                    gc->SetPen(wxPen(wxColour(32, 36, 44), std::max(1.0, s)));
-                    gc->SetBrush(*wxWHITE_BRUSH);
-                    gc->DrawPath(pointer);
+                    gc->SetBrush(wxBrush(crimson));
+                    const double radius = 3 * s;
+                    for (double x : {5.0, 27.0})
+                    {
+                        gc->DrawEllipse(x * s - radius, 23 * s - radius, 2 * radius, 2 * radius);
+                    }
                 }
             }
             wxIcon icon;
@@ -70,7 +64,7 @@ namespace MarconiUI
     {
         static wxIconBundle icons = []() {
             wxIconBundle bundle;
-            for (int size : {16, 20, 24, 32, 48, 64, 128, 256})
+            for (int size : {16, 20, 24, 32, 48, 64, 96, 128, 256})
             {
                 bundle.AddIcon(DrawIcon(size));
             }

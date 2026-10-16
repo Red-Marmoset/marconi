@@ -3,6 +3,7 @@
 
 #include "MarconiApp.h"
 
+#include "Appearance.h"
 #include "ConnectionStore.h"
 #include "ConnectionsFrame.h"
 #include "ViewerFrame.h"
@@ -35,6 +36,7 @@ namespace MarconiUI
 #endif
         // wxRegConfig on Windows, wxFileConfig (XDG / ~/Library/Preferences) elsewhere.
         wxConfigBase::Set(wxConfigBase::Create());
+        InitializeAppearance(); // Native wx appearance must be selected before creating any window.
         wxImage::AddHandler(new wxPNGHandler); // diagnostic snapshots
 
         // Logs go to <user local data>/logs (e.g. %LOCALAPPDATA%/marconi/logs, ~/Library/Application Support/marconi/logs).
