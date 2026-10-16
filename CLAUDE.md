@@ -18,7 +18,8 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
   `Modules/MarconiCore/BuildVersion.h` (gitignored), included by `Version.cpp` and `MarconiUI/Marconi.rc`. Building
   without the scripts fails because it's missing.
 - **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
-  `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local.
+  `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local. Its branding bitmaps (`Installer/Art/`) come from
+  `python Tools/make_installer_art.py`; rerun it after changing the icon, accent colour or fonts.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
   logs every input event it receives.
 
