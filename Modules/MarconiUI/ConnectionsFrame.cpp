@@ -15,6 +15,7 @@
 #include <wx/button.h>
 #include <wx/choice.h>
 #include <wx/dialog.h>
+#include <wx/dcbuffer.h>
 #include <wx/imaglist.h>
 #include <wx/config.h>
 #include <wx/statline.h>
@@ -35,6 +36,50 @@ namespace MarconiUI
 {
     namespace
     {
+        // Keep the native single-line edit at its preferred height, then centre it inside the field.
+        wxPanel* CreateTextField(wxWindow* parent, wxTextCtrl*& text, const wxSize& size, const wxString& hintText, long style = 0)
+        {
+            wxPanel* field = new wxPanel(parent, wxID_ANY, wxDefaultPosition, parent->FromDIP(size),
+                                         wxTAB_TRAVERSAL | wxBORDER_NONE);
+            field->SetName("MarconiTextField");
+            field->SetBackgroundStyle(wxBG_STYLE_PAINT);
+            text = new wxTextCtrl(field, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+                                  wxBORDER_NONE | style);
+            wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
+            row->Add(text, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, field->FromDIP(10));
+            field->SetSizer(row);
+            // Native Windows cue banners keep their system colour during live theme changes.
+            wxStaticText* hint = new wxStaticText(field, wxID_ANY, hintText);
+            hint->SetName("MarconiFieldHint");
+            const auto updateHint = [field, text, hint]() {
+                hint->SetPosition(wxPoint(field->FromDIP(10),
+                    (field->GetClientSize().y - hint->GetBestSize().y) / 2));
+                hint->Show(text->IsEmpty() && !text->HasFocus());
+                hint->Raise();
+            };
+            hint->Bind(wxEVT_LEFT_DOWN, [text](wxMouseEvent&) { text->SetFocus(); });
+            text->Bind(wxEVT_TEXT, [updateHint](wxCommandEvent& event) { updateHint(); event.Skip(); });
+            field->Bind(wxEVT_SIZE, [updateHint](wxSizeEvent& event) { updateHint(); event.Skip(); });
+            field->Bind(wxEVT_PAINT, [field, text](wxPaintEvent&) {
+                const ThemePalette palette = GetThemePalette();
+                wxAutoBufferedPaintDC dc(field);
+                dc.SetBackground(wxBrush(palette.background));
+                dc.Clear();
+                dc.SetPen(wxPen(text->HasFocus() ? palette.accent : palette.border));
+                dc.SetBrush(wxBrush(palette.surface));
+                const wxSize bounds = field->GetClientSize();
+                dc.DrawRoundedRectangle(0, 0, bounds.x, bounds.y, field->FromDIP(4));
+            });
+            text->Bind(wxEVT_SET_FOCUS, [field, updateHint](wxFocusEvent& event) {
+                updateHint(); field->Refresh(); event.Skip();
+            });
+            text->Bind(wxEVT_KILL_FOCUS, [field, hint, text](wxFocusEvent& event) {
+                hint->Show(text->IsEmpty()); field->Refresh(); event.Skip();
+            });
+            field->Bind(wxEVT_LEFT_DOWN, [text](wxMouseEvent&) { text->SetFocus(); });
+            return field;
+        }
+
         wxString FormatLastUsed(const wxDateTime& when)
         {
             if (!when.IsValid())
@@ -88,7 +133,10 @@ namespace MarconiUI
             return control;
         };
         auto divider = [&]() {
-            outer->Add(new wxStaticLine(panel), 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+            wxPanel* line = new wxPanel(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 1)));
+            line->SetName("MarconiDivider");
+            line->DisableFocusFromKeyboard();
+            outer->Add(line, 0, wxEXPAND | wxLEFT | wxRIGHT, border);
         };
 
         wxBoxSizer* brand = new wxBoxSizer(wxHORIZONTAL);
@@ -109,12 +157,11 @@ namespace MarconiUI
 
         outer->Add(label("Quick connect", true), 0, wxLEFT | wxRIGHT | wxTOP, border);
         wxBoxSizer* quick = new wxBoxSizer(wxHORIZONTAL);
-        m_address = new wxTextCtrl(panel, wxID_ANY, wxEmptyString, wxDefaultPosition,
-                                  FromDIP(wxSize(-1, 38)), wxTE_PROCESS_ENTER);
+        wxPanel* addressField = CreateTextField(panel, m_address, wxSize(-1, 38),
+                                                    "studio-mac.local or 192.168.1.20", wxTE_PROCESS_ENTER);
         m_address->SetName("Remote address");
-        m_address->SetHint("studio-mac.local or 192.168.1.20");
         wxButton* quickConnect = button("Connect", true);
-        quick->Add(m_address, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
+        quick->Add(addressField, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
         quick->Add(quickConnect, 0, wxALIGN_CENTER_VERTICAL);
         wxBoxSizer* quickInset = new wxBoxSizer(wxVERTICAL);
         quickInset->Add(quick, 0, wxEXPAND | wxTOP, gap);
@@ -128,14 +175,48 @@ namespace MarconiUI
 
         wxBoxSizer* savedHeading = new wxBoxSizer(wxHORIZONTAL);
         savedHeading->Add(label("Saved connections", true), 1, wxALIGN_CENTER_VERTICAL);
-        m_search = new wxTextCtrl(panel, wxID_ANY, wxEmptyString, wxDefaultPosition, FromDIP(wxSize(250, 34)));
-        m_search->SetHint("Search connections...");
+        wxPanel* searchField = CreateTextField(panel, m_search, wxSize(250, 34), "Search connections...");
         m_search->SetName("Search saved connections");
-        savedHeading->Add(m_search, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, gap);
+        savedHeading->Add(searchField, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, gap);
         outer->Add(savedHeading, 0, wxEXPAND | wxALL, border);
 
+        // Native Windows header backgrounds retain their startup theme. Keep this strip in wx so
+        // both colours change immediately, while retaining the native list for rows and selection.
+        wxPanel* tableHeader = new wxPanel(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 36)));
+        tableHeader->SetName("MarconiTableHeader");
+        tableHeader->DisableFocusFromKeyboard();
+        tableHeader->SetBackgroundStyle(wxBG_STYLE_PAINT);
+        std::vector<wxStaticText*> headings;
+        for (const wxString& name : {wxString("Name"), wxString("Address"), wxString("Last used")})
+        {
+            wxStaticText* heading = new wxStaticText(tableHeader, wxID_ANY, name);
+            heading->SetName("MarconiHeaderLabel");
+            heading->SetFont(heading->GetFont().Bold());
+            headings.push_back(heading);
+        }
+        tableHeader->Bind(wxEVT_SIZE, [tableHeader, headings](wxSizeEvent& event) {
+            const wxSize bounds = tableHeader->GetClientSize();
+            const int starts[] = {0, bounds.x * 32 / 100, bounds.x * 74 / 100};
+            for (int i = 0; i < 3; ++i)
+            {
+                headings[i]->SetPosition(wxPoint(starts[i] + tableHeader->FromDIP(7),
+                    (bounds.y - headings[i]->GetBestSize().y) / 2));
+            }
+            event.Skip();
+        });
+        tableHeader->Bind(wxEVT_PAINT, [tableHeader](wxPaintEvent&) {
+            const ThemePalette palette = GetThemePalette();
+            wxAutoBufferedPaintDC dc(tableHeader);
+            dc.SetBackground(wxBrush(palette.surface));
+            dc.Clear();
+            dc.SetPen(wxPen(palette.border));
+            dc.SetBrush(*wxTRANSPARENT_BRUSH);
+            dc.DrawRectangle(tableHeader->GetClientRect());
+        });
+        outer->Add(tableHeader, 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+
         m_list = new wxListView(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(650, 180)),
-                                wxLC_REPORT | wxLC_SINGLE_SEL | wxBORDER_SIMPLE);
+                                wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_NO_HEADER | wxBORDER_SIMPLE);
         m_list->SetName("Saved connections");
         m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(205));
         m_list->AppendColumn("Address", wxLIST_FORMAT_LEFT, FromDIP(280));
@@ -191,7 +272,7 @@ namespace MarconiUI
         SetMinClientSize(FromDIP(wxSize(720, 800)));
         Centre();
         settings->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { ShowSettings(); });
-        m_search->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { Reload(); });
+        m_search->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { Reload(); event.Skip(); });
         Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
             event.Skip();
             ApplyAppearance();
