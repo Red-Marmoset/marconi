@@ -22,8 +22,8 @@ It works with:
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
 - Send Ctrl+Alt+Del to a Windows computer.
-- Connect with encryption on macOS and Linux when the other computer asks for it, and tell you, in the bar at the
-  bottom of the window, whether the connection is encrypted.
+- Connect with encryption when the other computer offers it, and tell you, in the bar at the bottom of the window,
+  whether the connection is encrypted.
 
 ## Before you start: set up the other computer
 
@@ -105,11 +105,10 @@ On Windows, a few parts (menus and the title bar) only change colour after you r
 ## Is the connection private?
 
 Only when the other computer offers encryption. Servers such as TigerVNC and UltraVNC can be set up to encrypt the
-connection (a method called VeNCrypt, using TLS, the same encryption as secure websites). On macOS and Linux,
-Marconi uses it whenever a server offers it with a certificate. The first time, it shows you the server's certificate
-and asks whether to trust it; it remembers your answer with the saved connection, and warns you if the certificate
-ever changes. The bar at the bottom of the window then says **encrypted**. The Windows version can't make encrypted
-connections yet.
+connection (a method called VeNCrypt, using TLS, the same encryption as secure websites). Marconi uses it whenever
+a server offers it with a certificate. The first time, it shows you the server's certificate and asks whether to
+trust it; it remembers your answer with the saved connection, and warns you if the certificate ever changes. The
+bar at the bottom of the window then says **encrypted**.
 
 Some servers offer encryption without a certificate (TigerVNC calls it "TLSVnc"). Marconi can't make that kind of
 connection, so it connects without encryption instead, and says so.
@@ -164,8 +163,7 @@ On macOS and Linux these files can only be read by your own account.
 
 ## Not available yet
 
-- **Encrypted connections on Windows**, and encryption without a certificate anywhere. See "Is the connection
-  private?" above.
+- **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.
 - **Remote Desktop and SSH** connections (recognised, but not supported yet).
 - Copying text in some languages and symbols with servers that don't support the newer clipboard messages (Macs,
   TightVNC): with those, the clipboard only carries Western European characters, and Marconi says so when some
@@ -324,10 +322,9 @@ self-signed certificate, or anonymous TLS), then serves one frame and waits for 
   and `CreateTlsStream`, with `TlsOptions` carrying the host name, whether the server is anonymous and a callback
   asked when this computer doesn't trust the certificate. `Net/Tls.cpp` adapts the engine's `Crypto::TlsClient`
   to it.
-- The engine's `Crypto` module provides `TlsClient` on mbedTLS (which it already builds for SSH) on macOS and
-  Linux, with `Tests/CryptoTest` running it against a loopback TLS server. On Windows it reports itself as
-  unavailable: the mbedTLS sources aren't built there (libssh2 uses Windows' own cryptography), so either Schannel
-  or building mbedTLS on Windows too is the remaining step.
+- The engine's `Crypto` module provides `TlsClient` on mbedTLS on every platform (it was already built for SSH on
+  macOS and Linux; Windows builds it for TLS alone, libssh2 there keeps Windows' own cryptography), with
+  `Tests/CryptoTest` running it against a loopback TLS server.
 - `Rfb::Handshake` and `Rfb::Auth` negotiate VeNCrypt (type 19, version 0.2) and prefer it whenever a build can
   encrypt, choosing a subtype with a certificate over anonymous TLS and never the unencrypted Plain subtype. mbedTLS
   has no anonymous suites, so when a server offers only the anonymous subtypes the handshake reports
@@ -338,9 +335,9 @@ self-signed certificate, or anonymous TLS), then serves one frame and waits for 
 - `Tools/TlsStream_OpenSSL.cpp` is the reference implementation the mbedTLS one follows (memory buffers and one
   mutex, released while waiting for the network). It is not part of the build.
 
-Certificate trust comes from the system's certificate bundle (`/etc/ssl/certs/ca-certificates.crt` and the usual
-alternatives, `/etc/ssl/cert.pem` on macOS); VNC servers almost always use self-signed certificates, so the trust
-question and the remembered fingerprint are the normal path.
+Certificate trust comes from Windows' root store, or the system's certificate bundle elsewhere
+(`/etc/ssl/certs/ca-certificates.crt` and the usual alternatives, `/etc/ssl/cert.pem` on macOS); VNC servers almost
+always use self-signed certificates, so the trust question and the remembered fingerprint are the normal path.
 
 ## Layout
 

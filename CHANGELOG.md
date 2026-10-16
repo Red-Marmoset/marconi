@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.4.1
+
+- Encrypted connections on Windows too.
+
 ## 0.4.0
 
 - Screenshots of the other computer's screen: save as PNG or copy, with or without the mouse pointer.
