@@ -57,6 +57,9 @@ namespace MarconiUI
 
         // Called by the panes: copy `paths` from one side into the other side's folder.
         void CopyBetweenSides(bool fromRemote, const std::vector<std::string>& paths);
+        // Remote files dragged out to Explorer or Finder: downloads them to a temporary folder (blocking) and
+        // returns the local copies, which the drop then copies to where the user dropped them.
+        std::vector<std::string> DownloadForDrag(const std::vector<std::string>& remotePaths);
 
     private:
         enum class State
@@ -100,5 +103,6 @@ namespace MarconiUI
         wxListView* m_transfers = nullptr;
         std::map<int, long> m_transferRows; // status id -> row
         std::map<int, FilePane*> m_refreshWhenDone;
+        std::vector<std::string> m_dragFolders; // temporary copies for drags out; removed when the panel goes
     };
 } // namespace MarconiUI

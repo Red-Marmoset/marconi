@@ -18,6 +18,7 @@ It works with:
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
   Credential Manager, the macOS Keychain, or your Linux desktop's keyring).
 - Find computers on your home or office network by itself.
+- Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
 - Send Ctrl+Alt+Del to a Windows computer.
 - Tell you, in the bar at the bottom of the window, whether the connection is encrypted.
@@ -70,6 +71,20 @@ Press **F8** to open Marconi's menu, even in full screen. From it you can:
 - turn view-only and clipboard sharing on or off;
 - send Ctrl+Alt+Del (or F8 itself) to the other computer;
 - refresh the picture, or disconnect.
+
+## Copying files
+
+Press **F10**, or click **Files** on the toolbar, to open the file panel: this computer on the left, the other
+computer on the right. Copy files by dragging them between the two sides, from your desktop onto the right side, or
+from the right side onto your desktop. You can also select files and click **Upload** or **Download**. Files dropped
+onto the other computer's screen are copied to its Desktop.
+
+- **A Mac:** turn on *System Settings > General > Sharing > Remote Login* as well as Screen Sharing. Marconi uses the
+  same account. The first time, it shows the Mac's security fingerprint and asks whether to trust it.
+- **Windows with TightVNC:** nothing more to set up; files travel over the same connection. The first time you drop
+  files on its screen, Marconi asks which folder they should go to.
+
+If a file with the same name is already there, Marconi asks whether to replace it, keep both, or skip it.
 
 ## Appearance and settings
 
@@ -135,7 +150,6 @@ On macOS and Linux these files can only be read by your own account.
 
 - **Encrypted connections.** See "Is the connection private?" above.
 - **Remote Desktop and SSH** connections (recognised, but not supported yet).
-- **File transfer.**
 - Copying text in some languages and symbols (the clipboard only carries Western European characters for now).
 - VNC passwords containing characters outside Western European languages. The VNC password check only carries
   those, so such a password won't work with Marconi. A Mac account login accepts any characters.

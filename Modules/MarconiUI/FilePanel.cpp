@@ -22,8 +22,12 @@
 #include <wx/textctrl.h>
 #include <wx/textdlg.h>
 
+#include <wx/stdpaths.h>
+#include <wx/utils.h>
+
 #include <algorithm>
 #include <chrono>
+#include <random>
 
 namespace MarconiUI
 {
@@ -62,6 +66,52 @@ namespace MarconiUI
             }
             return wxString();
         }
+    } // namespace
+
+    namespace
+    {
+        // Remote files being dragged out of the panel. Nothing is downloaded until the drop target asks for the
+        // files (when the user lets go), so a drag that ends back in the panel, or nowhere, costs nothing.
+        class RemoteFilesData : public wxFileDataObject
+        {
+        public:
+            RemoteFilesData(FilePanel& panel, std::vector<std::string> remotePaths)
+                : m_panel(panel),
+                  m_remotePaths(std::move(remotePaths))
+            {
+            }
+
+            size_t GetDataSize() const override
+            {
+                Prepare();
+                return wxFileDataObject::GetDataSize();
+            }
+
+            bool GetDataHere(void* buffer) const override
+            {
+                Prepare();
+                return wxFileDataObject::GetDataHere(buffer);
+            }
+
+        private:
+            void Prepare() const
+            {
+                if (m_prepared)
+                {
+                    return;
+                }
+                m_prepared = true;
+                auto* self = const_cast<RemoteFilesData*>(this);
+                for (const std::string& path : m_panel.DownloadForDrag(m_remotePaths))
+                {
+                    self->AddFile(wxString::FromUTF8(path));
+                }
+            }
+
+            FilePanel& m_panel;
+            std::vector<std::string> m_remotePaths;
+            mutable bool m_prepared = false;
+        };
     } // namespace
 
     // One side: a heading, the folder path, Up and Refresh, and the folder's contents.
@@ -321,6 +371,11 @@ namespace MarconiUI
                 }
                 data->Add(files);
             }
+            else
+            {
+                // Remote files dropped on Explorer or Finder are downloaded when the user lets go.
+                data->Add(new RemoteFilesData(m_owner, paths));
+            }
             wxDropSource source(*data, this);
             source.DoDragDrop(wxDrag_CopyOnly);
             delete data;
@@ -532,6 +587,55 @@ namespace MarconiUI
         Shutdown();
     }
 
+    std::vector<std::string> FilePanel::DownloadForDrag(const std::vector<std::string>& remotePaths)
+    {
+        std::vector<std::string> copies;
+        Marconi::Files::FileSource* remote = GetRemote();
+        if (remote == nullptr || remotePaths.empty())
+        {
+            return copies;
+        }
+        std::random_device random;
+        wxString folder = wxStandardPaths::Get().GetTempDir() + wxFILE_SEP_PATH + "Marconi drag " +
+                          wxString::Format("%08x", static_cast<unsigned>(random()));
+        if (!wxFileName::Mkdir(folder, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL))
+        {
+            return copies;
+        }
+        folder.Replace("\\", "/");
+        std::string destination = folder.utf8_string();
+        m_dragFolders.push_back(destination);
+
+        // Copy on a worker as usual, but wait here: the drop can't finish until the files exist.
+        wxBusyCursor busy;
+        SetMessage(wxString::Format("Downloading %zu item%s", remotePaths.size(), remotePaths.size() == 1 ? "" : "s") +
+                   wxString::FromUTF8("\xE2\x80\xA6"));
+        {
+            Marconi::Files::TransferQueue queue(
+                [this](const Marconi::Files::TransferStatus& status) {
+                    if (!m_closing)
+                    {
+                        CallAfter([this, status]() { ShowStatus(status); });
+                    }
+                },
+                [](const std::string&) { return Marconi::Files::ConflictAnswer{Marconi::Files::Conflict::Replace, true}; });
+            queue.Add(*remote, remotePaths, m_local, destination);
+            queue.WaitUntilIdle();
+        }
+        SetMessage("");
+        for (const std::string& path : remotePaths)
+        {
+            std::string copy = Marconi::Files::JoinPath(destination, Marconi::Files::FileName(path));
+            Marconi::Files::FileEntry entry;
+            std::string error;
+            if (m_local.Stat(copy, entry, error))
+            {
+                copies.push_back(copy);
+            }
+        }
+        return copies;
+    }
+
     void FilePanel::Shutdown()
     {
         m_closing = true;
@@ -541,6 +645,12 @@ namespace MarconiUI
         }
         m_queue.reset(); // cancels and waits for the copy in progress
         JoinWorker();
+        // The temporary copies made for drags out: Explorer or Finder has copied them by now.
+        for (const std::string& folder : m_dragFolders)
+        {
+            wxFileName::Rmdir(wxString::FromUTF8(folder), wxPATH_RMDIR_RECURSIVE);
+        }
+        m_dragFolders.clear();
     }
 
     void FilePanel::JoinWorker()

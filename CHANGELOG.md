@@ -5,9 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.3.0
+
 - Copies files to and from Macs with Remote Login on: F10 opens the file panel.
 - Files dropped on the remote screen are copied to the remote Desktop.
 - Copies files with TightVNC servers too, over the same connection.
+- Remote files can be dragged out to the desktop or a folder.
 - Shows whether the connection is encrypted.
 - Says so when a server requires an encrypted connection.
 - Settings can delete all saved data; so can the Windows uninstaller.
