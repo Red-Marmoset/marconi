@@ -393,6 +393,11 @@ namespace Marconi
             return true;
         }
 
+        bool Socket::WaitReadable(int timeoutMs) const
+        {
+            return IsOpen() && WaitFor(m_handle, true, timeoutMs) > 0;
+        }
+
         ptrdiff_t Socket::Receive(void* buffer, size_t length)
         {
             int chunk = static_cast<int>(std::min<size_t>(length, INT_MAX));

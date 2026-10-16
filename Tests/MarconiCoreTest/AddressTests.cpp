@@ -115,8 +115,8 @@ namespace MarconiTest
             CHECK(FormatAddress({"host", 3390, "me", Protocol::Rdp}) == "rdp://me@host:3390");
             CHECK(FormatAddress({"::1"}) == "[::1]");
             CHECK(FormatAddress({"::1", 6000}) == "[::1]::6000");
-            for (const char* text : {"host", "host:1", "host::2222", "vnc://h", "vnc://h:6000", "rdp://u@h", "ssh://h:22",
-                                     "[fe80::1]:3", "a@[::1]::6000"})
+            for (const char* text : {"host", "host:1", "host::2222", "vnc://h", "vnc://h:6000", "rdp://u@h",
+                                     "ssh://h:22", "[fe80::1]:3", "a@[::1]::6000"})
             {
                 CHECK(RoundTrips(text));
             }

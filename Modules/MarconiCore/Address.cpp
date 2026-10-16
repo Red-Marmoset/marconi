@@ -54,7 +54,8 @@ namespace Marconi
 
         // `suffix` is what followed the host: "", ":N" or "::N". `urlForm` treats ":N" as a port; otherwise a small
         // ":N" is a VNC display number.
-        bool ApplySuffix(const std::string& suffix, bool urlForm, uint16_t& port, Protocol& protocol, std::string& error)
+        bool ApplySuffix(const std::string& suffix, bool urlForm, uint16_t& port, Protocol& protocol,
+                         std::string& error)
         {
             if (suffix.empty())
             {

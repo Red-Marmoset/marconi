@@ -47,6 +47,9 @@ namespace Marconi
             // -1 on error.
             ptrdiff_t Receive(void* buffer, size_t length);
 
+            // True when Receive won't block (data or end of stream is waiting), false after `timeoutMs`.
+            bool WaitReadable(int timeoutMs) const;
+
             // Shuts down both directions and wakes any thread blocked in Receive (within ~100ms; a blocked recv()
             // isn't reliably woken by shutdown() on Windows, so Receive polls). Safe to call from another thread.
             void Shutdown();
