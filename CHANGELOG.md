@@ -15,8 +15,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Chooses the protocol automatically: probes VNC, Remote Desktop and SSH, and remembers what it found.
 - Says when a machine only offers Remote Desktop or SSH, which aren't supported yet.
 - Added `vnc://`, `rdp://` and `ssh://` addresses; `host::port` now means whatever answers on that port.
-- Added "On this network", listing machines found with mDNS.
-- Connects faster to hosts with several addresses (Happy Eyeballs).
+- Added "On this network", listing machines that announce themselves on the local network.
+- Connects faster to machines with several addresses, when one of them doesn't answer.
 - Doesn't auto-reconnect while you're typing.
 - The connections window fits short and scaled screens.
 - Added hidden diagnostic switches, including `--discover`.
