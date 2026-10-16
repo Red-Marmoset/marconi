@@ -75,6 +75,24 @@ namespace MarconiTest
             return fs::exists(ToPath(path));
         }
 
+        // This computer's files, counting how often folders are listed and files looked up.
+        class CountingFiles : public Files::LocalFiles
+        {
+        public:
+            bool List(const std::string& folder, std::vector<Files::FileEntry>& out, std::string& error) override
+            {
+                ++lists;
+                return LocalFiles::List(folder, out, error);
+            }
+            bool Stat(const std::string& path, Files::FileEntry& out, std::string& error) override
+            {
+                ++stats;
+                return LocalFiles::Stat(path, out, error);
+            }
+            std::atomic<int> lists{0};
+            std::atomic<int> stats{0};
+        };
+
         // Collects statuses and answers conflicts with a fixed reply, counting how often it was asked.
         struct Recorder
         {
@@ -259,6 +277,106 @@ namespace MarconiTest
             }
             CHECK(recorder.Final(id) == Files::TransferState::Cancelled);
             CHECK(!Exists(to.Path() + "/big.bin"));
+        });
+
+        RunTest("TransferQueue keeps the original when a Replace is cancelled", []() {
+            TempFolder from;
+            TempFolder to;
+            WriteFile(from.Path() + "/doc.txt", std::string(32 * 1024 * 1024, 'n'));
+            WriteFile(to.Path() + "/doc.txt", "old");
+            Files::LocalFiles local;
+            Recorder recorder;
+            Files::TransferQueue* queuePointer = nullptr;
+            {
+                Files::TransferQueue queue(recorder.Status(), [&queuePointer](const std::string&) {
+                    queuePointer->Cancel(); // the user cancels just as the replacement starts
+                    return Files::ConflictAnswer{Files::Conflict::Replace, false};
+                });
+                queuePointer = &queue;
+                queue.Add(local, {from.Path() + "/doc.txt"}, local, to.Path());
+                queue.WaitUntilIdle();
+            }
+            CHECK(ReadFile(to.Path() + "/doc.txt") == "old");
+            std::vector<Files::FileEntry> left;
+            std::string error;
+            local.List(to.Path(), left, error);
+            CHECK(left.size() == 1); // no half-written replacement left behind
+        });
+
+        RunTest("TransferQueue replaces a file once the new copy is complete", []() {
+            TempFolder from;
+            TempFolder to;
+            WriteFile(from.Path() + "/doc.txt", "new");
+            WriteFile(to.Path() + "/doc.txt", "old and longer");
+            Files::LocalFiles local;
+            Recorder recorder;
+            recorder.answer = {Files::Conflict::Replace, false};
+            {
+                Files::TransferQueue queue(recorder.Status(), recorder.Conflict());
+                queue.Add(local, {from.Path() + "/doc.txt"}, local, to.Path());
+                queue.WaitUntilIdle();
+            }
+            CHECK(ReadFile(to.Path() + "/doc.txt") == "new");
+        });
+
+        RunTest("TransferQueue lists each folder once, not once per file", []() {
+            TempFolder from;
+            TempFolder to;
+            fs::create_directories(ToPath(from.Path() + "/many"));
+            for (int i = 0; i < 20; ++i)
+            {
+                WriteFile(from.Path() + "/many/f" + std::to_string(i) + ".txt", "x");
+            }
+            CountingFiles source;
+            CountingFiles destination;
+            Recorder recorder;
+            {
+                Files::TransferQueue queue(recorder.Status(), recorder.Conflict());
+                queue.Add(source, {from.Path() + "/many"}, destination, to.Path());
+                queue.WaitUntilIdle();
+            }
+            CHECK(ReadFile(to.Path() + "/many/f19.txt") == "x");
+            CHECK(source.stats <= 2);      // the folder itself, not every file in it
+            CHECK(source.lists <= 2);      // measuring and copying
+            CHECK(destination.stats <= 3); // the destination folder, not every file
+        });
+
+        RunTest("Transfer ids are unique across queues", []() {
+            TempFolder from;
+            TempFolder to;
+            WriteFile(from.Path() + "/a.txt", "a");
+            Files::LocalFiles local;
+            Recorder first;
+            Recorder second;
+            first.answer = second.answer = {Files::Conflict::KeepBoth, true};
+            Files::TransferQueue one(first.Status(), first.Conflict());
+            Files::TransferQueue two(second.Status(), second.Conflict());
+            int a = one.Add(local, {from.Path() + "/a.txt"}, local, to.Path())[0];
+            int b = two.Add(local, {from.Path() + "/a.txt"}, local, to.Path())[0];
+            CHECK(a != b);
+            one.WaitUntilIdle();
+            two.WaitUntilIdle();
+        });
+
+        RunTest("A new copy doesn't undo Cancel All for the copy before it", []() {
+            TempFolder from;
+            TempFolder to;
+            WriteFile(from.Path() + "/big.bin", std::string(64 * 1024 * 1024, 'b'));
+            WriteFile(from.Path() + "/small.txt", "s");
+            Files::LocalFiles local;
+            Recorder recorder;
+            int big = 0;
+            int small = 0;
+            {
+                Files::TransferQueue queue(recorder.Status(), recorder.Conflict());
+                big = queue.Add(local, {from.Path() + "/big.bin"}, local, to.Path())[0];
+                queue.Cancel();
+                small = queue.Add(local, {from.Path() + "/small.txt"}, local, to.Path())[0];
+                queue.WaitUntilIdle();
+            }
+            CHECK(recorder.Final(big) == Files::TransferState::Cancelled);
+            CHECK(!Exists(to.Path() + "/big.bin"));
+            CHECK(recorder.Final(small) == Files::TransferState::Done);
         });
 
         RunTest("TransferQueue reports a missing source as failed and carries on", []() {

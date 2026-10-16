@@ -13,6 +13,8 @@ namespace Marconi
         {
             constexpr size_t kChunk = 256 * 1024;
             constexpr auto kStatusInterval = std::chrono::milliseconds(100);
+            // Shared by every queue, so two queues reporting to the same transfer list never reuse an id.
+            std::atomic<int> g_nextId{1};
         } // namespace
 
         TransferQueue::TransferQueue(StatusFunction status, ConflictFunction conflict)
@@ -44,7 +46,7 @@ namespace Marconi
                 for (const std::string& path : paths)
                 {
                     Item item;
-                    item.id = m_nextId++;
+                    item.id = g_nextId++;
                     item.batch = batch;
                     item.from = &from;
                     item.path = path;
@@ -139,7 +141,10 @@ namespace Marconi
             status.total = MeasureTree(*item.from, item.path, entry);
             m_status(status);
 
-            bool copied = CopyTree(item, item.path, item.destinationFolder, status);
+            // What's already in the destination folder, from one listing (looking up each name separately is
+            // slow on servers that can only list whole folders, such as TightVNC).
+            std::set<std::string> existing = ListNames(*item.to, item.destinationFolder);
+            bool copied = CopyTree(item, item.path, entry, item.destinationFolder, existing, status);
             if (m_cancel)
             {
                 status.state = TransferState::Cancelled;
@@ -153,6 +158,21 @@ namespace Marconi
                 status.state = TransferState::Failed;
             }
             m_status(status);
+        }
+
+        std::set<std::string> TransferQueue::ListNames(FileSource& source, const std::string& folder)
+        {
+            std::set<std::string> names;
+            std::vector<FileEntry> entries;
+            std::string ignored;
+            if (source.List(folder, entries, ignored))
+            {
+                for (const FileEntry& entry : entries)
+                {
+                    names.insert(entry.name);
+                }
+            }
+            return names;
         }
 
         uint64_t TransferQueue::MeasureTree(FileSource& source, const std::string& path, const FileEntry& entry)
@@ -179,13 +199,12 @@ namespace Marconi
         }
 
         std::string TransferQueue::ResolveConflict(const Item& item, const std::string& folder,
-                                                   const std::string& name, bool& outOverwrite)
+                                                   const std::string& name, const std::set<std::string>& existing,
+                                                   bool& outReplace)
         {
-            outOverwrite = false;
+            outReplace = false;
             std::string destination = JoinPath(folder, name);
-            FileEntry existing;
-            std::string ignored;
-            if (!item.to->Stat(destination, existing, ignored))
+            if (existing.count(name) == 0)
             {
                 return destination; // nothing there
             }
@@ -206,36 +225,30 @@ namespace Marconi
             switch (answer.choice)
             {
                 case Conflict::Replace:
-                    outOverwrite = true;
+                    outReplace = true;
                     return destination;
                 case Conflict::Skip:
                     return "";
                 case Conflict::KeepBoth:
                     break;
             }
-            return JoinPath(folder, KeepBothName(name, [&](const std::string& candidate) {
-                                FileEntry taken;
-                                std::string unused;
-                                return item.to->Stat(JoinPath(folder, candidate), taken, unused);
+            return JoinPath(folder, KeepBothName(name, [&existing](const std::string& candidate) {
+                                return existing.count(candidate) != 0;
                             }));
         }
 
-        bool TransferQueue::CopyTree(const Item& item, const std::string& sourcePath,
-                                     const std::string& destinationFolder, TransferStatus& status)
+        bool TransferQueue::CopyTree(const Item& item, const std::string& sourcePath, const FileEntry& entry,
+                                     const std::string& destinationFolder, const std::set<std::string>& existing,
+                                     TransferStatus& status)
         {
             if (m_cancel)
             {
                 return false;
             }
-            FileEntry entry;
-            if (!item.from->Stat(sourcePath, entry, status.error))
-            {
-                return false;
-            }
             if (!entry.isFolder)
             {
-                bool overwrite = false;
-                std::string destination = ResolveConflict(item, destinationFolder, entry.name, overwrite);
+                bool replace = false;
+                std::string destination = ResolveConflict(item, destinationFolder, entry.name, existing, replace);
                 if (destination.empty())
                 {
                     status.done += entry.size;
@@ -245,23 +258,25 @@ namespace Marconi
                     }
                     return true;
                 }
-                return CopyFile(item, sourcePath, destination, overwrite, status);
+                return CopyFile(item, sourcePath, destination, replace, status);
             }
 
             // A folder: merge into an existing folder of the same name, otherwise make it.
             std::string folder = JoinPath(destinationFolder, entry.name);
-            FileEntry existing;
-            std::string ignored;
-            if (!item.to->Stat(folder, existing, ignored))
+            std::set<std::string> inside;
+            if (existing.count(entry.name) != 0)
             {
-                if (!item.to->MakeFolder(folder, status.error))
+                FileEntry there;
+                std::string ignored;
+                if (item.to->Stat(folder, there, ignored) && !there.isFolder)
                 {
+                    status.error = folder + " exists and is not a folder";
                     return false;
                 }
+                inside = ListNames(*item.to, folder);
             }
-            else if (!existing.isFolder)
+            else if (!item.to->MakeFolder(folder, status.error))
             {
-                status.error = folder + " exists and isn't a folder";
                 return false;
             }
             std::vector<FileEntry> children;
@@ -271,7 +286,7 @@ namespace Marconi
             }
             for (const FileEntry& child : children)
             {
-                if (!CopyTree(item, JoinPath(sourcePath, child.name), folder, status))
+                if (!CopyTree(item, JoinPath(sourcePath, child.name), child, folder, inside, status))
                 {
                     return false;
                 }
@@ -280,14 +295,17 @@ namespace Marconi
         }
 
         bool TransferQueue::CopyFile(const Item& item, const std::string& sourcePath,
-                                     const std::string& destinationPath, bool overwrite, TransferStatus& status)
+                                     const std::string& destinationPath, bool replace, TransferStatus& status)
         {
+            // A replacement goes to a temporary name first, so cancelling or a failure never costs the original.
+            const std::string writePath = replace ? destinationPath + ".marconi-part" : destinationPath;
             std::unique_ptr<FileReader> reader = item.from->OpenRead(sourcePath, status.error);
             if (!reader)
             {
                 return false;
             }
-            std::unique_ptr<FileWriter> writer = item.to->OpenWrite(destinationPath, overwrite, status.error);
+            // The destination was checked from its folder's listing, so there's no need to ask again here.
+            std::unique_ptr<FileWriter> writer = item.to->OpenWrite(writePath, true, status.error);
             if (!writer)
             {
                 return false;
@@ -334,13 +352,21 @@ namespace Marconi
                 status.error = finishError;
                 ok = false;
             }
+            std::string ignored;
             if (!ok)
             {
-                // Never leave half a file behind, whether cancelled or failed.
-                std::string ignored;
-                item.to->Remove(destinationPath, ignored);
+                item.to->Remove(writePath, ignored); // never leave half a file behind
+                return false;
             }
-            return ok;
+            if (replace)
+            {
+                if (!item.to->Remove(destinationPath, status.error) ||
+                    !item.to->Rename(writePath, destinationPath, status.error))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
     } // namespace Files
 } // namespace Marconi

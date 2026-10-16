@@ -716,6 +716,8 @@ namespace MarconiUI
         if (connection.address != oldAddress)
         {
             connection.detected.clear(); // a different machine, or a different protocol: probe again
+            connection.sshHostKey.clear();
+            connection.dropFolder.clear();
         }
         m_store.Save(connection);
         if (connection.rememberPassword && !dialog.GetPassword().empty())

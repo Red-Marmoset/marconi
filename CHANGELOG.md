@@ -5,6 +5,14 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.3.2
+
+- Cancelling or failing a "Replace" no longer loses the original file.
+- Copying from TightVNC servers can no longer mix up two files.
+- Copying folders with TightVNC servers is much faster.
+- A computer whose security fingerprint changed can be trusted again.
+- Closing a window during a copy no longer hangs.
+
 ## 0.3.1
 
 - Fixed an error alert when the other computer hides its mouse pointer.

@@ -271,6 +271,14 @@ namespace MarconiUI
     ViewerFrame::~ViewerFrame()
     {
         m_aui.UnInit(); // before the panes it manages are destroyed
+        if (m_tightFiles)
+        {
+            m_tightFiles->Close();
+        }
+        if (m_files != nullptr)
+        {
+            m_files->Shutdown(); // its copies use m_tightFiles and the client, which go before it does
+        }
         StopProbe();
         for (std::thread& thread : m_saveThreads)
         {
@@ -1173,6 +1181,10 @@ namespace MarconiUI
         {
             event.Veto();
             return;
+        }
+        if (m_tightFiles)
+        {
+            m_tightFiles->Close();
         }
         if (m_files != nullptr)
         {

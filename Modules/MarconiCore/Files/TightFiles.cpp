@@ -30,10 +30,11 @@ namespace Marconi
             {
             public:
                 explicit TightReader(TightFiles& files) : m_files(files) {}
+                ~TightReader() override { m_files.EndDownload(); }
 
                 ptrdiff_t Read(void* buffer, size_t size, std::string& error) override
                 {
-                    if (m_offset == m_buffer.size())
+                    while (m_offset == m_buffer.size())
                     {
                         if (m_ended)
                         {
@@ -52,10 +53,6 @@ namespace Marconi
                         }
                         m_buffer = std::move(reply.data);
                         m_offset = 0;
-                        if (m_buffer.empty())
-                        {
-                            return Read(buffer, size, error);
-                        }
                     }
                     size_t count = std::min(size, m_buffer.size() - m_offset);
                     std::copy(m_buffer.begin() + static_cast<ptrdiff_t>(m_offset),
@@ -111,13 +108,33 @@ namespace Marconi
 
         TightFiles::TightFiles(SendFunction send) : m_send(std::move(send)) {}
 
+        namespace
+        {
+            // Each request's reply has the next id; downloads can also end; any request can fail.
+            bool Answers(uint32_t expected, uint32_t reply)
+            {
+                return reply == expected || reply == Ft::LastRequestFailedReply ||
+                       (expected == Ft::DownloadDataReply && reply == Ft::DownloadEndReply);
+            }
+        } // namespace
+
         void TightFiles::OnReply(const Ft::Reply& reply)
         {
             {
                 std::lock_guard<std::mutex> lock(m_replyMutex);
+                if (m_expected == 0 || !Answers(m_expected, reply.id) || m_reply)
+                {
+                    return; // a late reply to a request that gave up waiting: not this request's answer
+                }
                 m_reply = reply;
             }
             m_replied.notify_all();
+        }
+
+        void TightFiles::EndDownload()
+        {
+            std::lock_guard<std::mutex> lock(m_replyMutex);
+            m_downloading = false;
         }
 
         void TightFiles::Close()
@@ -147,6 +164,11 @@ namespace Marconi
                     return false;
                 }
                 m_reply.reset();
+                uint32_t requestId = request.size() >= 4 ? static_cast<uint32_t>(request[0]) << 24 |
+                                                               static_cast<uint32_t>(request[1]) << 16 |
+                                                               static_cast<uint32_t>(request[2]) << 8 | request[3]
+                                                         : 0;
+                m_expected = requestId + 1;
             }
             if (!m_send(request))
             {
@@ -154,8 +176,12 @@ namespace Marconi
                 return false;
             }
             std::unique_lock<std::mutex> lock(m_replyMutex);
-            if (!m_replied.wait_for(lock, kReplyTimeout, [this]() { return m_reply.has_value() || m_closed; }))
+            bool answered = m_replied.wait_for(lock, kReplyTimeout, [this]() { return m_reply.has_value() || m_closed; });
+            m_expected = 0;
+            if (!answered)
             {
+                // A late answer would otherwise be taken for the next request's: stop until the connection is back.
+                m_closed = true;
                 error = "The server didn't answer";
                 return false;
             }
@@ -250,9 +276,20 @@ namespace Marconi
 
         std::unique_ptr<FileReader> TightFiles::OpenRead(const std::string& path, std::string& error)
         {
+            {
+                // TightVNC keeps one download per connection: starting another would scramble the first.
+                std::lock_guard<std::mutex> lock(m_replyMutex);
+                if (m_downloading)
+                {
+                    error = "Another file is being downloaded from this computer; try again when it has finished";
+                    return nullptr;
+                }
+                m_downloading = true;
+            }
             Ft::Reply reply;
             if (!Request(Ft::EncodeDownloadStartRequest(path), reply, error))
             {
+                EndDownload();
                 error = "Couldn't open " + path + ": " + error;
                 return nullptr;
             }

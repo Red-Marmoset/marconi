@@ -43,6 +43,8 @@ namespace Marconi
 
             // Sends `request` and waits for the reply; a "request failed" reply becomes `error`. One at a time.
             bool Request(const Rfb::Bytes& request, Rfb::FileTransfer::Reply& outReply, std::string& error);
+            // A download's reader has finished (TightVNC keeps one download per connection).
+            void EndDownload();
 
         private:
             SendFunction m_send;
@@ -50,7 +52,9 @@ namespace Marconi
             std::mutex m_replyMutex;
             std::condition_variable m_replied;
             std::optional<Rfb::FileTransfer::Reply> m_reply;
+            uint32_t m_expected = 0; // the reply the request in progress is waiting for (0: none)
             bool m_closed = false;
+            bool m_downloading = false; // guarded by m_replyMutex
         };
     } // namespace Files
 } // namespace Marconi

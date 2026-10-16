@@ -368,6 +368,46 @@ namespace MarconiTest
             CHECK(!files.List("/C:/Nowhere", entries, error) && error.find("No such folder") != std::string::npos);
         });
 
+        RunTest("TightFiles allows one download at a time", []() {
+            std::unique_ptr<FakeTightServer> server;
+            Files::TightFiles files([&server](const Rfb::Bytes& request) { return server->Receive(request); });
+            server = std::make_unique<FakeTightServer>(files);
+            server->m_disk["/C:/Users/other.txt"] = "other";
+            std::string error;
+            std::unique_ptr<Files::FileReader> first = files.OpenRead("/C:/Users/report.txt", error);
+            CHECK(first != nullptr);
+            // TightVNC keeps one download per connection: a second would scramble the first.
+            CHECK(files.OpenRead("/C:/Users/other.txt", error) == nullptr && !error.empty());
+            first.reset();
+            error.clear();
+            std::unique_ptr<Files::FileReader> second = files.OpenRead("/C:/Users/other.txt", error);
+            CHECK(second != nullptr);
+        });
+
+        RunTest("TightFiles ignores a reply that doesn't belong to the request", []() {
+            Files::TightFiles* filesPointer = nullptr;
+            Files::TightFiles files([&filesPointer](const Rfb::Bytes& request) {
+                // A late reply to an earlier request arrives first, then the real answer.
+                Ft::Reply stray;
+                stray.id = Ft::UploadDataReply;
+                Ft::Reply answer;
+                answer.id = Ft::MakeFolderReply;
+                std::thread([filesPointer, stray, answer]() {
+                    filesPointer->OnReply(stray);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    filesPointer->OnReply(answer);
+                }).detach();
+                (void)request;
+                return true;
+            });
+            filesPointer = &files;
+            std::string error;
+            Ft::Reply reply;
+            CHECK(files.Request(Ft::EncodeMakeFolderRequest("/C:/x"), reply, error));
+            CHECK(reply.id == Ft::MakeFolderReply);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        });
+
         RunTest("TightFiles fails cleanly when the connection goes", []() {
             Files::TightFiles files([](const Rfb::Bytes&) { return true; }); // never answers
             std::thread closer([&files]() {

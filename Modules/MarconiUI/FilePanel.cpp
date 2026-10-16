@@ -595,6 +595,12 @@ namespace MarconiUI
         {
             return copies;
         }
+        if (m_tight != nullptr && m_queue && m_queue->IsBusy())
+        {
+            // TightVNC can only send one file at a time on a connection.
+            SetMessage("Wait for the current copy to finish before dragging files out.");
+            return copies;
+        }
         std::random_device random;
         wxString folder = wxStandardPaths::Get().GetTempDir() + wxFILE_SEP_PATH + "Marconi drag " +
                           wxString::Format("%08x", static_cast<unsigned>(random()));
@@ -750,6 +756,10 @@ namespace MarconiUI
             SetMessage("There's no computer to connect to.");
             return;
         }
+        if (m_queue && m_queue->IsBusy())
+        {
+            return; // the copy in progress still uses the current connection
+        }
         m_state = State::Connecting;
         SetMessage("Connecting to " + m_remote.displayName + " for file transfer" + wxString::FromUTF8("\xE2\x80\xA6"));
         JoinWorker();
@@ -759,7 +769,7 @@ namespace MarconiUI
         uint16_t port = m_remote.port;
         m_worker = std::thread([this, sftp, host, port]() {
             std::string error;
-            bool ok = sftp->Connect(host, port, 10000, error);
+            bool ok = sftp->Connect(host, port, 10000, error, &m_closing);
             if (!m_closing)
             {
                 CallAfter([this, ok, error]() { HandleConnected(ok, error); });
@@ -779,21 +789,28 @@ namespace MarconiUI
         }
         const Crypto::SshHostKey& key = m_sftp->GetHostKey();
         wxString fingerprint = wxString::FromUTF8(key.fingerprint);
+        bool newKeyAccepted = false;
         if (!m_remote.trustedKey.empty() && m_remote.trustedKey != fingerprint)
         {
-            m_state = State::Failed;
-            m_sftp->Abort();
             LOG_WARNING("Files", "SSH host key for %s changed: was %s, now %s", m_remote.host.c_str(),
                         m_remote.trustedKey.utf8_string().c_str(), key.fingerprint.c_str());
-            SetMessage("Refused: " + m_remote.displayName + " didn't identify itself the way it did before.");
-            wxMessageBox(m_remote.displayName + " identified itself differently from last time.\n\nThis happens "
-                         "when the computer has been reinstalled, but it can also mean another computer is "
-                         "pretending to be it. Marconi won't send your password to it.\n\nWas: " +
-                             m_remote.trustedKey + "\nNow: " + fingerprint,
-                         "Marconi", wxOK | wxICON_WARNING, this);
-            return;
+            wxMessageDialog changed(this,
+                                    m_remote.displayName + " identified itself differently from last time.\n\nThis "
+                                    "happens when the computer has been reinstalled, but it can also mean another "
+                                    "computer is pretending to be it. Only trust it if you know why it changed.\n\nWas: " +
+                                        m_remote.trustedKey + "\nNow: " + fingerprint,
+                                    "This computer has changed", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+            changed.SetYesNoLabels("Trust the New One", "Cancel");
+            if (changed.ShowModal() != wxID_YES)
+            {
+                m_state = State::Failed;
+                m_sftp->Abort();
+                SetMessage("Refused: " + m_remote.displayName + " didn't identify itself the way it did before.");
+                return;
+            }
+            newKeyAccepted = true;
         }
-        if (m_remote.trustedKey.empty())
+        if (m_remote.trustedKey.empty() && !newKeyAccepted)
         {
             wxMessageDialog trust(this,
                                   "Is this " + m_remote.displayName + "?\n\nThis is the first time Marconi transfers "
@@ -808,6 +825,9 @@ namespace MarconiUI
                 SetMessage("Not connected: the computer wasn't trusted.");
                 return;
             }
+        }
+        if (m_remote.trustedKey != fingerprint)
+        {
             m_remote.trustedKey = fingerprint;
             if (!m_remote.savedId.empty())
             {
@@ -936,7 +956,7 @@ namespace MarconiUI
                 desktop = m_sftp->GetHome();
             }
         }
-        StartCopy(m_local, localPaths, *remote, desktop, nullptr);
+        StartCopy(m_local, localPaths, *remote, desktop, m_remotePane);
         SetMessage(wxString::Format("Copying %zu item%s to ", localPaths.size(), localPaths.size() == 1 ? "" : "s") +
                    wxString::FromUTF8(desktop));
     }
@@ -944,6 +964,10 @@ namespace MarconiUI
     void FilePanel::StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
                               Marconi::Files::FileSource& to, const std::string& destination, FilePane* refreshAfter)
     {
+        if (!m_queue)
+        {
+            return; // shut down
+        }
         std::vector<int> ids = m_queue->Add(from, paths, to, destination);
         if (refreshAfter != nullptr && !ids.empty())
         {
@@ -974,12 +998,8 @@ namespace MarconiUI
             auto refresh = m_refreshWhenDone.find(status.id);
             if (refresh != m_refreshWhenDone.end())
             {
-                refresh->second->Refresh();
+                refresh->second->Refresh(); // once, when the copy's last item finishes
                 m_refreshWhenDone.erase(refresh);
-            }
-            else
-            {
-                m_remotePane->Refresh(); // e.g. a drop on the remote screen
             }
         }
     }

@@ -10,6 +10,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -85,14 +86,17 @@ namespace Marconi
 
             void Run();
             void CopyItem(const Item& item);
-            bool CopyTree(const Item& item, const std::string& sourcePath, const std::string& destinationFolder,
+            bool CopyTree(const Item& item, const std::string& sourcePath, const FileEntry& entry,
+                          const std::string& destinationFolder, const std::set<std::string>& existing,
                           TransferStatus& status);
             bool CopyFile(const Item& item, const std::string& sourcePath, const std::string& destinationPath,
-                          bool overwrite, TransferStatus& status);
+                          bool replace, TransferStatus& status);
             uint64_t MeasureTree(FileSource& source, const std::string& path, const FileEntry& entry);
-            // Where to write `name` in `folder` on `to`, after asking about an existing file. Empty means skip.
+            static std::set<std::string> ListNames(FileSource& source, const std::string& folder);
+            // Where to write `name` in `folder` (whose names are `existing`), after asking about an existing file.
+            // Empty means skip.
             std::string ResolveConflict(const Item& item, const std::string& folder, const std::string& name,
-                                        bool& outOverwrite);
+                                        const std::set<std::string>& existing, bool& outReplace);
 
             StatusFunction m_status;
             ConflictFunction m_conflict;
@@ -102,7 +106,6 @@ namespace Marconi
             std::deque<Item> m_waiting;
             bool m_working = false;
             bool m_stopping = false;
-            int m_nextId = 1;
             int m_nextBatch = 1;
             std::atomic<bool> m_cancel{false};
 
