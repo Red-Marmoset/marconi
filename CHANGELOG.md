@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.3.4
+
+- The license page in the installer no longer breaks lines in odd places.
+
 ## 0.3.3
 
 - The file panel is a proper file browser: folder tree, icons, a clickable path, Back and Forward, sortable columns.
