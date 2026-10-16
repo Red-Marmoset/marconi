@@ -195,9 +195,10 @@ Versions are `MAJOR.MINOR.PATCH.REVISION`, for example `0.2.0.48`:
 
 When to change `MAJOR.MINOR.PATCH`:
 
-- A big feature bumps MINOR (0.2.0 to 0.3.0) in the change that adds it.
-- Marconi stays on 0.x until its own server component exists, even if something breaks backwards compatibility.
-- 1.0 is the owner's call, made when Marconi feels complete, not when a rule says so.
+- PATCH goes up with each bug fix or small improvement (0.2.0 to 0.2.1).
+- MINOR goes up when a significant new feature is finished, and PATCH goes back to 0 (0.2.3 to 0.3.0).
+- MAJOR goes up only when backwards compatibility breaks, or when the owner decides. Marconi stays on 0.x until its
+  own server component exists, and 1.0 is the owner's call, made when Marconi feels complete.
 
 What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 

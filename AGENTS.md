@@ -28,14 +28,17 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 - **Version:** `MAJOR.MINOR.PATCH` in `Project.json` plus the commit count (`0.1.0.27`). The build scripts generate
   `Modules/MarconiCore/BuildVersion.h` (gitignored), included by `Version.cpp` and `MarconiUI/Marconi.rc`. Building
   without the scripts fails because it's missing.
-- **When to bump the version** (the owner's rule; every agent follows it):
-  - A big feature (protocol detection, file transfer and the like) bumps MINOR in `Project.json` (0.2.0 → 0.3.0),
-    in the same change that lands it. Small fixes leave it alone.
-  - A change that breaks backwards compatibility (saved settings older builds misread, addresses that change meaning,
-    protocol behaviour others rely on) would bump MAJOR. Don't: stay on 0.x until the Marconi server component
-    exists. Flag the break to the owner instead.
+- **When to bump the version** (the owner's rule; every agent follows it). Versions are
+  `MAJOR.MINOR.PATCH.REVISION`; `MAJOR.MINOR.PATCH` lives in `Project.json`:
+  - **PATCH** goes up with each bug fix or small improvement, in the same commit (0.2.0 → 0.2.1).
+  - **MINOR** goes up when a significant new feature is finished, in the commit that finishes it, and PATCH goes back
+    to 0 (0.2.3 → 0.3.0).
+  - **MAJOR** goes up only when backwards compatibility breaks (saved settings older builds misread, addresses that
+    change meaning, protocol behaviour others rely on) or when the owner decides. Don't bump it yourself: flag the
+    break to the owner, who would rather stay on 0.x until the Marconi server component exists.
   - **1.0 is the owner's decision alone**, possibly with no compatibility break, once Marconi feels complete. Never
     make or propose that bump.
+  - **REVISION** is the commit count, worked out from git by the build scripts. Never set it by hand.
 - **Changelog:** every user-visible change adds a line under "Unreleased" in `CHANGELOG.md`, in the same commit. A
   version bump renames "Unreleased" to that version and starts a new, empty "Unreleased" section.
   - Keep entries terse and minimal (the owner's rule): one short line saying what changed, with no explanation of
