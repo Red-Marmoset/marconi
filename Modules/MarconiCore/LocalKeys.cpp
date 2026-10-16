@@ -15,6 +15,7 @@ namespace Marconi
         {
             case 8: return LocalCommand::Menu;
             case 9: return LocalCommand::Toolbar;
+            case 10: return LocalCommand::Files;
             default: return LocalCommand::None;
         }
     }

@@ -5,6 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Copies files to and from Macs with Remote Login on: F10 opens the file panel.
+- Files dropped on the remote screen are copied to the remote Desktop.
 - Shows whether the connection is encrypted.
 - Says so when a server requires an encrypted connection.
 - Settings can delete all saved data; so can the Windows uninstaller.

@@ -7,6 +7,7 @@
 #include "ScaledBlit.h"
 
 #include <wx/cursor.h>
+#include <wx/dnd.h>
 #include <wx/dcclient.h>
 #include <wx/dcmemory.h>
 #include <wx/image.h>
@@ -496,6 +497,38 @@ namespace MarconiUI
         {
             m_keys.OnChar(event);
         }
+    }
+
+    namespace
+    {
+        class CanvasFileDrop : public wxFileDropTarget
+        {
+        public:
+            explicit CanvasFileDrop(std::function<void(const std::vector<std::string>&)> handler)
+                : m_handler(std::move(handler))
+            {
+            }
+
+            bool OnDropFiles(wxCoord, wxCoord, const wxArrayString& files) override
+            {
+                std::vector<std::string> paths;
+                for (wxString file : files)
+                {
+                    file.Replace("\\", "/");
+                    paths.push_back(file.utf8_string());
+                }
+                m_handler(paths);
+                return true;
+            }
+
+        private:
+            std::function<void(const std::vector<std::string>&)> m_handler;
+        };
+    } // namespace
+
+    void VncCanvas::SetFileDropHandler(std::function<void(const std::vector<std::string>&)> handler)
+    {
+        SetDropTarget(new CanvasFileDrop(std::move(handler)));
     }
 
     void VncCanvas::OnKillFocus(wxFocusEvent& event)

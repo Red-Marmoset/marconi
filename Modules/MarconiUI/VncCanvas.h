@@ -64,6 +64,9 @@ namespace MarconiUI
             m_localCommandHandler = std::move(handler);
         }
 
+        // Called with the paths of files dropped on the remote screen from Explorer or Finder.
+        void SetFileDropHandler(std::function<void(const std::vector<std::string>&)> handler);
+
     private:
         void ApplyDesktopSize(int width, int height);
         bool FramebufferIsBlack();

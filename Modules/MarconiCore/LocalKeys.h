@@ -10,6 +10,7 @@ namespace Marconi
         None,    // send the key to the remote computer
         Menu,    // F8: the viewer's menu
         Toolbar, // F9: show or hide the toolbar
+        Files,   // F10: show or hide the file panel
     };
 
     // What a function key pressed in the viewer does locally. `functionKey` is 1-24 (F1 = 1); `modifiers` is whether

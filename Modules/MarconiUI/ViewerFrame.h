@@ -16,6 +16,11 @@
 #include <wx/timer.h>
 
 class wxAuiToolBar;
+
+namespace MarconiUI
+{
+    class FilePanel;
+}
 class wxMenu;
 
 #include <atomic>
@@ -38,6 +43,7 @@ namespace MarconiUI
         wxString savedId;       // the saved connection this window was opened from, if any
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
+        wxString sshHostKey;    // from the saved connection: the SSH host key trusted for file transfer
         bool skipProbe = false; // the address's protocol and port are already known (e.g. found on the network)
         std::vector<uint8_t> trustedCertificateSha256; // a server certificate the user accepted before
 
@@ -113,6 +119,8 @@ namespace MarconiUI
         void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
         void ToggleFullScreen();
         void ToggleToolbar();
+        void ToggleFiles();
+        void ShowFiles();
         void ApplyLayout(const wxString& layout);
         wxString GetLayout() const;
         void SyncClipboardToServer();
@@ -127,6 +135,7 @@ namespace MarconiUI
         VncCanvas* m_canvas = nullptr;
         wxAuiManager m_aui;               // docks the toolbar (and later the file panel) around the screen
         wxAuiToolBar* m_toolBar = nullptr;
+        FilePanel* m_files = nullptr;
         wxString m_defaultLayout;         // the layout before any saved one was applied
         wxString m_layoutBeforeFullScreen; // full screen hides docked panels; this brings them back
         wxString m_desktopName;

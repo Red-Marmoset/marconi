@@ -7,6 +7,7 @@
 #include "ClipboardWatch.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
+#include "FilePanel.h"
 #include "ForegroundWindow.h"
 #include "VncCanvas.h"
 
@@ -64,6 +65,7 @@ namespace MarconiUI
             ID_SEND_F9,
             ID_SEND_F10,
             ID_SHOW_TOOLBAR,
+            ID_FILES,
             ID_REFRESH,
             ID_DISCONNECT,
         };
@@ -85,11 +87,38 @@ namespace MarconiUI
 
         CreateToolbar();
         CreateStatusBar();
+        FilePanel::Remote remote;
+        remote.host = m_options.address.host;
+        remote.username = m_options.credentials.username;
+        remote.password = m_options.credentials.password;
+        remote.displayName = wxString::FromUTF8(m_options.address.host);
+        remote.savedId = m_options.savedId;
+        remote.trustedKey = m_options.sshHostKey;
+        m_files = new FilePanel(this, remote);
+        m_aui.AddPane(m_files, wxAuiPaneInfo()
+                                   .Name("Files")
+                                   .Caption("Files")
+                                   .Right()
+                                   .BestSize(FromDIP(wxSize(640, 480)))
+                                   .MinSize(FromDIP(wxSize(360, 240)))
+                                   .Floatable(true)
+                                   .Dockable(true)
+                                   .Hide());
+        m_canvas->SetFileDropHandler([this](const std::vector<std::string>& paths) {
+            ShowFiles();
+            m_files->UploadToDesktop(paths);
+            SetStatusText(wxString::Format("Copying %zu item%s to the remote Desktop", paths.size(),
+                                           paths.size() == 1 ? "" : "s"));
+        });
         m_aui.Update();
         m_defaultLayout = m_aui.SavePerspective();
         if (!m_options.layout.empty())
         {
             ApplyLayout(m_options.layout);
+        }
+        if (m_aui.GetPane("Files").IsShown() && !m_options.headless)
+        {
+            CallAfter([this]() { m_files->Activate(); });
         }
         SetClientSize(FromDIP(wxSize(800, 600)));
 
@@ -101,6 +130,10 @@ namespace MarconiUI
             else if (command == Marconi::LocalCommand::Toolbar)
             {
                 ToggleToolbar();
+            }
+            else if (command == Marconi::LocalCommand::Files)
+            {
+                ToggleFiles();
             }
         });
         m_canvas->SetScaleMode(options.scaleMode);
@@ -173,6 +206,7 @@ namespace MarconiUI
         options.viewOnly = connection.viewOnly;
         options.clipboard = connection.clipboard;
         options.layout = connection.layout;
+        options.sshHostKey = connection.sshHostKey;
         out = options;
         return true;
     }
@@ -767,11 +801,14 @@ namespace MarconiUI
                            wxITEM_CHECK);
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+Del", wxNullBitmap, "Send Ctrl+Alt+Del");
-        // Marconi keeps F8 and F9 for itself (and F10 later), so these send them to the remote computer.
+        // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
         m_toolBar->AddTool(ID_SEND_F8, "F8", wxNullBitmap, "Send F8 to the remote computer");
         m_toolBar->AddTool(ID_SEND_F9, "F9", wxNullBitmap, "Send F9 to the remote computer");
         m_toolBar->AddTool(ID_SEND_F10, "F10", wxNullBitmap, "Send F10 to the remote computer");
         m_toolBar->AddTool(ID_REFRESH, "Refresh", wxNullBitmap, "Ask the server for a full screen update");
+        m_toolBar->AddSeparator();
+        m_toolBar->AddTool(ID_FILES, "Files", wxNullBitmap, "Copy files to and from the remote computer (F10)",
+                           wxITEM_CHECK);
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_DISCONNECT, "Disconnect", wxNullBitmap, "Close this connection");
         m_toolBar->Realize();
@@ -801,6 +838,7 @@ namespace MarconiUI
         menu->Append(ID_REFRESH, "&Refresh Screen");
         menu->AppendSeparator();
         menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
+        menu->AppendCheckItem(ID_FILES, "Transfer &Files\tF10");
         menu->AppendSeparator();
         menu->Append(ID_DISCONNECT, "Dis&connect");
 
@@ -810,6 +848,7 @@ namespace MarconiUI
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
+        menu->Check(ID_FILES, m_files->IsShown());
         for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10, ID_REFRESH})
         {
             menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
@@ -867,6 +906,9 @@ namespace MarconiUI
             break;
         case ID_SHOW_TOOLBAR:
             ToggleToolbar();
+            break;
+        case ID_FILES:
+            ToggleFiles();
             break;
         case ID_REFRESH:
             m_client.RequestFullUpdate();
@@ -965,7 +1007,35 @@ namespace MarconiUI
             m_toolBar->EnableTool(id, m_connected && !m_canvas->IsViewOnly());
         }
         m_toolBar->EnableTool(ID_REFRESH, m_connected);
+        m_toolBar->ToggleTool(ID_FILES, m_files != nullptr && m_files->IsShown());
         m_toolBar->Refresh();
+    }
+
+    void ViewerFrame::ToggleFiles()
+    {
+        wxAuiPaneInfo& pane = m_aui.GetPane("Files");
+        if (pane.IsShown())
+        {
+            pane.Hide();
+            m_aui.Update();
+            m_canvas->SetFocus();
+        }
+        else
+        {
+            ShowFiles();
+        }
+        UpdateControls();
+    }
+
+    void ViewerFrame::ShowFiles()
+    {
+        wxAuiPaneInfo& pane = m_aui.GetPane("Files");
+        if (!pane.IsShown())
+        {
+            pane.Show();
+            m_aui.Update();
+        }
+        m_files->Activate();
     }
 
     void ViewerFrame::ToggleToolbar()
@@ -1020,6 +1090,17 @@ namespace MarconiUI
 
     void ViewerFrame::OnClose(wxCloseEvent& event)
     {
+        if (m_files != nullptr && m_files->IsBusy() && event.CanVeto() && !m_options.headless &&
+            wxMessageBox("Files are still being copied. Stop copying and close?", "Marconi",
+                         wxYES_NO | wxICON_QUESTION, this) != wxYES)
+        {
+            event.Veto();
+            return;
+        }
+        if (m_files != nullptr)
+        {
+            m_files->Shutdown();
+        }
         if (!m_options.headless)
         {
             SaveSettings(); // a headless run must not change the user's saved settings

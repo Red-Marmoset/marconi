@@ -20,6 +20,7 @@ namespace MarconiUI
         wxString detected; // what the last probe found, e.g. "vnc 5900"; empty = probe next time
         wxString username;
         bool rememberPassword = false;
+        wxString sshHostKey;  // fingerprint of the SSH host key trusted for file transfer, e.g. "SHA256:..."
         wxString layout;      // where the viewer's panels were: a wxAUI perspective; empty = the default layout
         wxString certificate; // SHA-256 of a server certificate the user chose to trust, as hex; empty = none
         ScaleMode scaleMode = ScaleMode::Fit;
