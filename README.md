@@ -118,6 +118,12 @@ Versions are `MAJOR.MINOR.PATCH.REVISION`, for example `0.1.0.27`:
 - `REVISION` is the commit's position in the history: the first commit is 1, the second is 2, and so on
   (`git rev-list --count HEAD`). Each commit on `main` gets a higher number than the last.
 
+When to change `MAJOR.MINOR.PATCH`:
+
+- A big feature bumps MINOR (0.2.0 to 0.3.0) in the change that adds it.
+- Marconi stays on 0.x until its own server component exists, even if something breaks backwards compatibility.
+- 1.0 is the owner's call, made when Marconi feels complete, not when a rule says so.
+
 `Build.ps1` and `Build.sh` write the version to `Modules/MarconiCore/BuildVersion.h`, a generated file that isn't
 committed, before every build. Marconi logs its version and commit when it starts. On Windows the version is also
 in the executable's properties. A build without git history (such as a source zip) gets revision 0, and a shallow

@@ -17,6 +17,14 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 - **Version:** `MAJOR.MINOR.PATCH` in `Project.json` plus the commit count (`0.1.0.27`). The build scripts generate
   `Modules/MarconiCore/BuildVersion.h` (gitignored), included by `Version.cpp` and `MarconiUI/Marconi.rc`. Building
   without the scripts fails because it's missing.
+- **When to bump the version** (the owner's rule; every agent follows it):
+  - A big feature (protocol detection, file transfer and the like) bumps MINOR in `Project.json` (0.2.0 → 0.3.0),
+    in the same change that lands it. Small fixes leave it alone.
+  - A change that breaks backwards compatibility (saved settings older builds misread, addresses that change meaning,
+    protocol behaviour others rely on) would bump MAJOR. Don't: stay on 0.x until the Marconi server component
+    exists. Flag the break to the owner instead.
+  - **1.0 is the owner's decision alone**, possibly with no compatibility break, once Marconi feels complete. Never
+    make or propose that bump.
 - **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
   `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
