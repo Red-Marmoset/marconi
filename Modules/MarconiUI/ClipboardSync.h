@@ -21,7 +21,8 @@ namespace MarconiUI
         void OnServerText(const std::string& latin1Text);
 
         // UI thread. Sends the local clipboard if it changed since the last exchange in either direction. Call
-        // when the viewer gains focus, which is when someone who copied locally is about to paste remotely.
+        // only while the viewer is in front: when it gains focus, which is when someone who copied locally is about
+        // to paste remotely, and when the clipboard changes while it stays in front.
         void SendIfChanged();
 
         // Forget the last exchanged text (new connection: the server's clipboard is unknown).

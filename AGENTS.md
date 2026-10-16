@@ -5,6 +5,15 @@ Read this before changing anything. It applies to every agent working in this re
 Cross-platform VNC client. It's an out-of-tree una project; the engine lives at `$UNA_ENGINE_PATH` (default
 `C:\code\engine`).
 
+## Working with the owner
+
+- **Don't fill gaps with assumptions** (the owner's rule). When you notice you're assuming something about what the
+  owner wants, how the code behaves or how a system works, treat it as a risk and remove it:
+  - check it against something verifiable (the code, a test, a log, documentation, a real run) if you can;
+  - otherwise ask the owner, before acting on it.
+- Take requests as written. Don't widen or narrow their scope; if a request could mean more than one thing, ask
+  which.
+
 ## Build and test
 
 - **App:** `.\Build.ps1 [-Config Debug] [-Clean]` (Windows) or `./Build.sh` (macOS/Linux). Output goes to

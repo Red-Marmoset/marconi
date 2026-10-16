@@ -104,6 +104,10 @@ folder**, or find it here:
 
 If the other computer accepts the connection but then never answers, Marconi gives up after 10 seconds and says so.
 
+The log folder can also hold pictures of the other computer's screen. Marconi 0.2.0 and earlier saved a few during
+every connection (files named `snapshot_...png`), and you can delete them. The testing mode for developers
+(`--headless`, described below) saves pictures there on purpose. Look through the folder before you send it to anyone.
+
 Marconi used to be called rmvnc. The first time it starts, it copies rmvnc's saved computers and passwords, and
 leaves the originals as they were.
 
