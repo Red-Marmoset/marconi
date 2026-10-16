@@ -124,10 +124,18 @@ $installerDir = Join-Path $root "Build\Installer"
 $stageDir = Join-Path $installerDir "Stage"
 $appDir = Join-Path $stageDir "App"
 if (Test-Path $stageDir) {
-    Remove-Item -Recurse -Force $stageDir
+    $resolvedStage = (Resolve-Path -LiteralPath $stageDir).Path
+    $expectedStage = [IO.Path]::GetFullPath((Join-Path $root "Build\Installer\Stage"))
+    if ($resolvedStage -ne $expectedStage -or (Get-Item -LiteralPath $stageDir).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+        Fail "Refusing to remove unexpected staging directory: $resolvedStage"
+    }
+    Remove-Item -LiteralPath $resolvedStage -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item $exe $appDir
+# Explicit sources also make -SkipBuild packages independent of development asset staging.
+Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Bold.ttf") -Destination $appDir
+Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-LICENSE.txt") -Destination $appDir
 Copy-Item (Join-Path $crtDir "*.dll") $appDir
 $uninstallLines = Get-ChildItem -File $appDir | Sort-Object Name | ForEach-Object { "Delete `"`$INSTDIR\$($_.Name)`"" }
 [IO.File]::WriteAllLines((Join-Path $stageDir "UninstallFiles.nsh"), [string[]]$uninstallLines)

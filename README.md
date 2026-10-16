@@ -116,7 +116,9 @@ The installer is built with [NSIS 3](https://nsis.sourceforge.io) (`winget insta
     .\Package.ps1                     # -> Build\Installer\Marconi-0.1.0.27-win64-setup.exe
 
 It builds the Release app, then packages `Marconi.exe` with the Visual C++ runtime DLLs from your Visual Studio, so
-users don't need the separate redistributable. Then it prints the installer's SHA-256 and the command to tag the
+users don't need the separate redistributable. It also bundles Nebula Sans Bold and its SIL Open Font License.
+The font loads privately for Marconi, so branding works without a system font installation and uninstalling
+Marconi does not affect fonts used by other applications. Then it prints the installer's SHA-256 and the command to tag the
 release (`v0.1.0.27`). It refuses a shallow clone, and refuses uncommitted changes to tracked files unless you pass
 `-AllowDirty` for a test package. `-SkipBuild` packages the existing build if it matches the current version.
 

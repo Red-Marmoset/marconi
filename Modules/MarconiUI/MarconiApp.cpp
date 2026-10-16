@@ -18,6 +18,8 @@
 #include <wx/config.h>
 #include <wx/filename.h>
 #include <wx/image.h>
+#include <wx/font.h>
+#include <wx/log.h>
 #include <wx/msgdlg.h>
 #include <wx/stdpaths.h>
 
@@ -44,6 +46,19 @@ namespace MarconiUI
         wxFileName::Mkdir(logDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
         Log::InitializeFileLogging(logDir.utf8_string(), "marconi");
         LOG_INFO("App", "Marconi %s (%s) starting", Marconi::GetVersionString(), Marconi::GetVersionCommit());
+#if wxUSE_PRIVATE_FONTS
+        // Load before creating the wordmark or enumerating font faces. The font belongs to this process only.
+        const wxFileName brandFont(wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath(),
+                                   "NebulaSans-Bold.ttf");
+        bool fontLoaded = false;
+        if (brandFont.FileExists())
+        {
+            wxLogNull suppressFontDialog; // Missing/corrupt optional branding must not interrupt startup.
+            fontLoaded = wxFont::AddPrivateFont(brandFont.GetFullPath());
+        }
+        if (!fontLoaded)
+            LOG_INFO("App", "Bundled Nebula Sans unavailable; using installed or system font");
+#endif
         ConnectionStore::MigrateFromRmvnc();
 
         // "marconi [options] host[:display]" connects straight away.
