@@ -10,6 +10,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Branded the Windows installer.
 - Added a macOS disk image (`Package.sh`).
 - Rewrote the README in plain language, with the developer notes at the end.
+- No longer saves pictures of the other computer's screen in the log folder during normal use.
 
 ## 0.2.0
 

@@ -84,7 +84,6 @@ namespace MarconiUI
         void HandleConnected(const Marconi::Rfb::ServerInit& serverInit);
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
         void AskForCredentials(Marconi::Rfb::CredentialsKind kind);
-        void SaveSnapshot();
         void WatchClipboard();
         void SaveHeadlessSnapshot();
         void SavePngInBackground(const wxImage& image, const wxString& path);
@@ -122,8 +121,6 @@ namespace MarconiUI
         int m_autoReconnects = 0;         // reconnects made because the server stopped sending pixels
         bool m_autoReconnecting = false;
         wxTimer m_statsTimer;     // logs traffic every 10 seconds
-        wxTimer m_snapshotTimer;  // saves the framebuffer to the log folder a little after a resize
-        int m_snapshots = 0;
         wxTimer m_headlessSnapshotTimer;
         wxTimer m_quitTimer;
         int m_headlessSnapshots = 0;
