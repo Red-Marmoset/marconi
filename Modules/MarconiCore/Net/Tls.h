@@ -62,6 +62,8 @@ namespace Marconi
         // False in a build without a TLS implementation; CreateTlsStream then returns nullptr and Marconi never
         // chooses an encrypted security type.
         bool IsTlsAvailable();
+        // Whether `anonymous` connections (no certificate) can be made: some TLS libraries have no such suites.
+        bool IsAnonymousTlsAvailable();
         std::unique_ptr<TlsStream> CreateTlsStream(Socket& socket, const TlsOptions& options);
     } // namespace Net
 } // namespace Marconi

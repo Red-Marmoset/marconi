@@ -5,6 +5,7 @@
 
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/Net/Tls.h>
+#include <MarconiCore/Rfb/ClipboardChannel.h>
 #include <MarconiCore/Rfb/Decoders/Decoder.h>
 #include <MarconiCore/Rfb/Framebuffer.h>
 #include <MarconiCore/Rfb/Handshake.h>
@@ -39,6 +40,7 @@ namespace Marconi
             // Makes the encrypted stream when a server asks for encryption. Empty means Net::CreateTlsStream; tests
             // substitute their own.
             std::function<std::unique_ptr<Net::TlsStream>(Net::Socket&, const Net::TlsOptions&)> createTlsStream;
+            bool createTlsStreamAnonymous = true; // with createTlsStream: whether it makes anonymous connections too
             std::vector<int32_t> encodings; // preferred order; empty = Marconi's default order
             int compressLevel = 2;           // Tight/ZRLE zlib level hint 0-9, or -1 to let the server choose
             int qualityLevel = 8;            // Tight JPEG quality 0-9, or -1 for lossless only (no JPEG)
@@ -48,6 +50,11 @@ namespace Marconi
             bool resendPixelFormatOnResize = true;
             // Use TightVNC's own login when a server offers it: it logs in the same way, and adds file transfer.
             bool allowTight = true;
+            // Ask for encryption when the server offers it and this build can encrypt. Cleared for a retry after
+            // DisconnectInfo::encryptionUnusable.
+            bool allowEncryption = true;
+            // Offer the Extended Clipboard, which carries UTF-8 text and images with servers that support it.
+            bool extendedClipboard = true;
         };
 
         // Cursor image for local rendering: ARGB pixels (alpha 0 or 255), hotspot in pixels. Empty = hidden.
@@ -66,6 +73,8 @@ namespace Marconi
             bool authenticationFailed = false; // the server rejected the credentials; retrying may help
             bool wasConnected = false;         // got as far as ServerInit
             bool tightFailed = false;          // the TightVNC login went wrong (not the password): retry without it
+            bool encryptionUnusable = false;   // the server only offers encryption this computer can't make: retry
+                                               // without asking for encryption
         };
 
         // Callbacks arrive on the connection thread. UI implementations should marshal to the UI thread.
@@ -81,6 +90,8 @@ namespace Marconi
             // The server sent its cursor shape: draw it locally (the framebuffer no longer contains it).
             virtual void OnCursorShape(const CursorShape& /*cursor*/) {}
             virtual void OnServerCutText(const std::string& /*latin1Text*/) {}
+            // The server's clipboard over the Extended Clipboard: UTF-8 text and/or an image.
+            virtual void OnServerClipboard(const ClipboardContent& /*content*/) {}
             virtual void OnBell() {}
             // Exactly once per Connect().
             virtual void OnDisconnected(const DisconnectInfo& /*info*/) {}
@@ -138,6 +149,15 @@ namespace Marconi
             void SendPointerEvent(int x, int y, uint8_t buttonMask);
             void SendKeyEvent(uint32_t keysym, bool down);
             void SendClientCutText(const std::string& latin1Text);
+
+            // The Extended Clipboard, once a server has announced it (any thread). OfferClipboard tells the server
+            // what we have (it fetches it when someone pastes); false means the extension isn't active or the
+            // server takes none of the content's formats, so text should go through SendClientCutText instead.
+            // RequestServerClipboard asks for the server's clipboard, delivered through OnServerClipboard.
+            bool HasExtendedClipboard() const { return m_clipboardChannel.IsActive(); }
+            bool ServerAcceptsClipboardImages() const { return m_clipboardChannel.AcceptsImages(); }
+            bool OfferClipboard(const ClipboardContent& content) { return m_clipboardChannel.Offer(content); }
+            bool RequestServerClipboard() { return m_clipboardChannel.RequestFromServer(); }
             void RequestFullUpdate();
 
             // How long since the last key or pointer event was sent (or attempted). Any thread.
@@ -187,6 +207,8 @@ namespace Marconi
 
             ClientListener& m_listener;
             Framebuffer m_framebuffer;
+            ClipboardChannel m_clipboardChannel;
+            bool m_extendedClipboard = true; // connection thread only: whether we offered the extension
             std::map<int32_t, std::unique_ptr<Decoder>> m_decoders;
             static constexpr int kDetailedUpdates = 3;
             int m_detailedUpdates = 0; // connection thread only: how many more updates to log in detail

@@ -5,6 +5,13 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Encrypted connections on macOS and Linux, with servers that offer them with a certificate.
+- Connects without encryption, and says so, when a server only offers encryption without a certificate.
+- Copied text in any language travels between the computers with servers that support it (TigerVNC, UltraVNC).
+- Copied images travel too, with servers that support it.
+- The menu can send your clipboard to the other computer, or get its clipboard, with sharing on or off.
+- Says when characters can't be sent to a server that only takes Western European text.
+
 ## 0.3.3
 
 - The file panel is a proper file browser: folder tree, icons, a clickable path, Back and Forward, sortable columns.

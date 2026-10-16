@@ -249,7 +249,7 @@ namespace Marconi
 
         HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
                                          const CredentialsProvider& credentials, const TlsStarter& startTls,
-                                         bool allowTight, bool* outChoseTight)
+                                         bool allowTight, bool* outChoseTight, bool anonymousTls)
         {
             HandshakeResult result;
             result.minor = NegotiateVersion(in, out, result);
@@ -273,11 +273,11 @@ namespace Marconi
                         answerOut = answer;
                         return true;
                     },
-                    startTls);
+                    startTls, anonymousTls);
             }
             else
             {
-                result.veNCryptSubtype = Authenticate(login, in, out, credentials, startTls);
+                result.veNCryptSubtype = Authenticate(login, in, out, credentials, startTls, anonymousTls);
             }
             result.encrypted =
                 result.securityType == SecurityType::VeNCrypt && result.veNCryptSubtype != VeNCrypt::Plain;

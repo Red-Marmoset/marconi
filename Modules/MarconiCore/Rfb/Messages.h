@@ -71,6 +71,7 @@ namespace Marconi
             constexpr int32_t DesktopSize = -223;
             constexpr int32_t LastRect = -224;
             constexpr int32_t ExtendedDesktopSize = -308;
+            constexpr int32_t ExtendedClipboard = -1063131698;
         } // namespace Encoding
 
         const char* EncodingName(int32_t encoding);

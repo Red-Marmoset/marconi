@@ -85,6 +85,7 @@ namespace MarconiUI
         void OnBell() override;
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnServerCutText(const std::string& latin1Text) override;
+        void OnServerClipboard(const Marconi::Rfb::ClipboardContent& content) override;
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
@@ -142,6 +143,7 @@ namespace MarconiUI
         FilePanel* m_files = nullptr;
         std::unique_ptr<Marconi::Files::TightFiles> m_tightFiles; // file transfer on the VNC connection (TightVNC)
         bool m_allowTight = true; // cleared after a TightVNC login goes wrong, so the retry uses the plain login
+        bool m_allowEncryption = true; // cleared when the server only offers encryption this computer can't make
         wxString m_defaultLayout;         // the layout before any saved one was applied
         wxString m_layoutBeforeFullScreen; // full screen hides docked panels; this brings them back
         wxString m_desktopName;

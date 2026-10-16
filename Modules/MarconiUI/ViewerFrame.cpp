@@ -60,6 +60,8 @@ namespace MarconiUI
             ID_FULL_SCREEN,
             ID_VIEW_ONLY,
             ID_CLIPBOARD,
+            ID_SEND_CLIPBOARD,
+            ID_GET_CLIPBOARD,
             ID_SEND_CTRL_ALT_DEL,
             ID_SEND_F8,
             ID_SEND_F9,
@@ -145,6 +147,7 @@ namespace MarconiUI
         m_canvas->SetScaleMode(options.scaleMode);
         m_canvas->SetViewOnly(options.viewOnly);
         m_clipboard.SetEnabled(options.clipboard);
+        m_clipboard.SetStatusHandler([this](const wxString& message) { SetStatusText(message); });
         Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
             event.Skip();
             if (event.GetActive())
@@ -336,6 +339,7 @@ namespace MarconiUI
         connection.exactEncodings = !m_options.encodings.empty();
         connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
         connection.allowTight = m_allowTight;
+        connection.allowEncryption = m_allowEncryption;
         m_client.Connect(connection);
     }
 
@@ -454,6 +458,11 @@ namespace MarconiUI
     void ViewerFrame::OnServerCutText(const std::string& latin1Text)
     {
         CallAfter([this, latin1Text]() { m_clipboard.OnServerText(latin1Text); });
+    }
+
+    void ViewerFrame::OnServerClipboard(const Marconi::Rfb::ClipboardContent& content)
+    {
+        CallAfter([this, content]() { m_clipboard.OnServerContent(content); });
     }
 
     void ViewerFrame::SyncClipboardToServer()
@@ -779,6 +788,15 @@ namespace MarconiUI
             m_tightFiles->Close();
             m_files->SetTightFiles(nullptr, GetServerDisplayName());
         }
+        if (info.encryptionUnusable && m_allowEncryption)
+        {
+            // Typically a server offering only anonymous TLS, which this computer's TLS library can't make: connect
+            // again without asking for encryption. The status bar then says "not encrypted".
+            LOG_INFO("Viewer", "%s; connecting again without encryption", info.error.c_str());
+            m_allowEncryption = false;
+            ConnectVnc(m_port);
+            return;
+        }
         if (info.tightFailed && m_allowTight)
         {
             // Some servers offer TightVNC's own login but don't handle it well: try once more without it.
@@ -916,6 +934,8 @@ namespace MarconiUI
         menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
         menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
         menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
+        menu->Append(ID_SEND_CLIPBOARD, "Send Clipboard to the Other Computer");
+        menu->Append(ID_GET_CLIPBOARD, "Get Clipboard from the Other Computer");
         menu->AppendSeparator();
         menu->Append(ID_SEND_CTRL_ALT_DEL, "Send Ctrl+Alt+&Del");
         menu->Append(ID_SEND_F8, "Send F&8");
@@ -939,6 +959,8 @@ namespace MarconiUI
         {
             menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
         }
+        menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
+        menu->Enable(ID_GET_CLIPBOARD, m_connected);
         return menu;
     }
 
@@ -978,6 +1000,12 @@ namespace MarconiUI
                 SyncClipboardToServer();
             }
             break;
+        case ID_SEND_CLIPBOARD:
+            m_clipboard.SendNow();
+            return; // keep the status bar message; the automatic send below would repeat it
+        case ID_GET_CLIPBOARD:
+            m_clipboard.GetNow();
+            return;
         case ID_SEND_CTRL_ALT_DEL:
             SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Alt_L, Marconi::Keysym::Delete});
             break;
