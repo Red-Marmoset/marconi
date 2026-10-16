@@ -17,6 +17,7 @@
 #include <wx/dialog.h>
 #include <wx/dcbuffer.h>
 #include <wx/imaglist.h>
+#include <wx/fontenum.h>
 #include <wx/config.h>
 #include <wx/statline.h>
 #include <wx/stdpaths.h>
@@ -146,9 +147,22 @@ namespace MarconiUI
         brand->Add(new wxStaticBitmap(panel, wxID_ANY, logo), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(16));
         wxBoxSizer* wordmark = new wxBoxSizer(wxVERTICAL);
         wxStaticText* title = label("Marconi");
-        title->SetFont(title->GetFont().Scaled(2.1f).Bold());
+        wxFont brandFont = title->GetFont().Scaled(2.1f).Bold();
+        // Windows registers Nebula's individual weights as separate font families.
+        if (wxFontEnumerator::IsValidFacename("Nebula Sans Bold"))
+        {
+            brandFont.SetFaceName("Nebula Sans Bold");
+            brandFont.SetWeight(wxFONTWEIGHT_NORMAL); // The selected face already contains the bold outlines.
+        }
+        else if (wxFontEnumerator::IsValidFacename("Nebula Sans"))
+        {
+            brandFont.SetFaceName("Nebula Sans");
+        }
+        title->SetFont(brandFont);
         wordmark->Add(title);
-        wordmark->Add(label("Your desktops, within reach.", false, true), 0, wxTOP, FromDIP(4));
+        wxStaticText* subtitle = label("Multi-protocol Access and Remote Control Interface", false, true);
+        subtitle->Wrap(FromDIP(450));
+        wordmark->Add(subtitle, 0, wxTOP, FromDIP(4));
         brand->Add(wordmark, 1, wxALIGN_CENTER_VERTICAL);
         wxButton* settings = button("Settings");
         brand->Add(settings, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, border);
