@@ -25,6 +25,7 @@ namespace Test
         MarconiTest::RunRandomInputTests();
         MarconiTest::RunLocalKeysTests();
         MarconiTest::RunFilesTests();
+        MarconiTest::RunTightFilesTests();
 
         printf("\nMarconiCoreTest: %d passed, %d failed\n", MarconiTest::g_passed, MarconiTest::g_failed);
         return MarconiTest::g_failed;

@@ -52,6 +52,7 @@ namespace Marconi
             uint8_t securityType = SecurityType::Invalid;
             uint32_t veNCryptSubtype = 0; // with VeNCrypt: the VeNCrypt::* subtype in use
             bool encrypted = false;       // the connection is encrypted from here on
+            bool tightFileTransfer = false; // Tight security: the server offers TightVNC file transfer
             ServerInit serverInit;
         };
 
@@ -77,12 +78,15 @@ namespace Marconi
         // An encrypted connection (VeNCrypt) comes first when `tlsAvailable`. A Mac with "VNC viewers may control
         // screen with password" offers both its account login and the plain VNC password; the VNC password wins
         // unless `preferAccountLogin` is set. PerformHandshake decides that by asking for credentials first: a user
-        // name means the account login.
+        // name means the account login. With `allowTight`, TightVNC's own security type (16) comes next: it logs in
+        // the same way but lets the server offer file transfer.
         uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered, bool preferAccountLogin = false,
-                                   bool tlsAvailable = false);
+                                   bool tlsAvailable = false, bool allowTight = false);
 
-        // Runs the whole handshake up to and including ServerInit. Throws RfbError / AuthenticationFailed.
+        // Runs the whole handshake up to and including ServerInit (and, with Tight security, the server's feature
+        // lists). Throws RfbError / AuthenticationFailed.
         HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
-                                         const CredentialsProvider& credentials, const TlsStarter& startTls = nullptr);
+                                         const CredentialsProvider& credentials, const TlsStarter& startTls = nullptr,
+                                         bool allowTight = false);
     } // namespace Rfb
 } // namespace Marconi

@@ -129,4 +129,5 @@ namespace MarconiTest
     void RunRandomInputTests();
     void RunLocalKeysTests();
     void RunFilesTests();
+    void RunTightFilesTests();
 } // namespace MarconiTest
