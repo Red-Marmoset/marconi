@@ -87,6 +87,10 @@ namespace MarconiUI
         CreateStatusBar();
         m_aui.Update();
         m_defaultLayout = m_aui.SavePerspective();
+        if (!m_options.layout.empty())
+        {
+            ApplyLayout(m_options.layout);
+        }
         SetClientSize(FromDIP(wxSize(800, 600)));
 
         m_canvas->SetLocalCommandHandler([this](Marconi::LocalCommand command) {
@@ -168,6 +172,7 @@ namespace MarconiUI
         options.scaleMode = connection.scaleMode;
         options.viewOnly = connection.viewOnly;
         options.clipboard = connection.clipboard;
+        options.layout = connection.layout;
         out = options;
         return true;
     }
@@ -565,7 +570,7 @@ namespace MarconiUI
         FitToDesktop();
         if (m_options.fullScreen && !IsFullScreen())
         {
-            ShowFullScreen(true, wxFULLSCREEN_ALL);
+            ToggleFullScreen();
         }
         UpdateControls();
         UpdateStatus();
@@ -898,11 +903,56 @@ namespace MarconiUI
     void ViewerFrame::ToggleFullScreen()
     {
         m_canvas->ReleaseInput();
-        ShowFullScreen(!IsFullScreen(), wxFULLSCREEN_ALL);
         if (!IsFullScreen())
         {
-            FitToDesktop();
+            // Docked panels would cover part of the screen; floating ones stay where the user put them.
+            m_layoutBeforeFullScreen = m_aui.SavePerspective();
+            wxAuiPaneInfoArray& panes = m_aui.GetAllPanes();
+            for (size_t i = 0; i < panes.GetCount(); ++i)
+            {
+                if (panes[i].name != "Screen" && !panes[i].IsFloating())
+                {
+                    panes[i].Hide();
+                }
+            }
+            m_aui.Update();
+            ShowFullScreen(true, wxFULLSCREEN_ALL);
+            return;
         }
+        ShowFullScreen(false, wxFULLSCREEN_ALL);
+        m_aui.LoadPerspective(m_layoutBeforeFullScreen);
+        FitToDesktop();
+    }
+
+    void ViewerFrame::ApplyLayout(const wxString& layout)
+    {
+        // A layout saved by another version may name panels this one doesn't have (ignored) or lack some it has.
+        if (!m_aui.LoadPerspective(layout, false))
+        {
+            LOG_INFO("Viewer", "Couldn't restore the saved panel layout; using the default");
+            m_aui.LoadPerspective(m_defaultLayout);
+            return;
+        }
+        m_aui.GetPane("Screen").Show().CenterPane();
+        // A panel floating on a monitor that's no longer connected comes back docked.
+        wxAuiPaneInfoArray& panes = m_aui.GetAllPanes();
+        for (size_t i = 0; i < panes.GetCount(); ++i)
+        {
+            if (panes[i].IsFloating() && wxDisplay::GetFromPoint(panes[i].floating_pos) == wxNOT_FOUND)
+            {
+                panes[i].Dock();
+            }
+        }
+        m_aui.Update();
+    }
+
+    wxString ViewerFrame::GetLayout() const
+    {
+        if (IsFullScreen())
+        {
+            return m_layoutBeforeFullScreen;
+        }
+        return const_cast<wxAuiManager&>(m_aui).SavePerspective(); // SavePerspective isn't const, but doesn't change it
     }
 
     void ViewerFrame::UpdateControls()
@@ -964,6 +1014,7 @@ namespace MarconiUI
         saved.scaleMode = m_canvas->GetScaleMode();
         saved.viewOnly = m_canvas->IsViewOnly();
         saved.clipboard = m_clipboard.IsEnabled();
+        saved.layout = GetLayout();
         store.Save(saved);
     }
 
