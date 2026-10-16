@@ -23,6 +23,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - The toolbar can be moved to any edge of the window or floated, and F9 shows or hides it.
 - Added buttons that send F8, F9 and F10 to the other computer.
 - Each saved connection remembers where its toolbar was.
+- The Windows installer asks you to accept the MIT licence before installing.
+- The Windows installer can open the source code on GitHub and adds a Start menu link to it.
 
 ## 0.2.0
 

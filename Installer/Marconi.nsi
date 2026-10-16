@@ -1,13 +1,14 @@
 ; Copyright (c) 2026 Red Marmoset Studios Ltd.
 ; NSIS script for the Windows installer. Package.ps1 builds the app, stages its files and runs makensis with:
 ;   /DVERSION=0.1.0.27         MAJOR.MINOR.PATCH.REVISION, as stamped into Marconi.exe
-;   /DSTAGE_DIR=<dir>          App\ holds Marconi.exe and the MSVC runtime DLLs; UninstallFiles.nsh deletes them
+;   /DSTAGE_DIR=<dir>          App\ holds Marconi.exe and the MSVC runtime DLLs; UninstallFiles.nsh deletes them;
+;                              License.txt is the licence shown before installing, with each paragraph on one line
 ;   /DOUT_FILE=<path>          the setup executable to write
 ;   /DSIGN_SCRIPT=<path>       optional: a script that signs the file given as its only argument. Run on Uninstall.exe
 ;                              before it's embedded and on the setup executable once written (needs NSIS 3.08+).
 ; Paths are absolute; makensis runs from this folder, so the relative ones below are relative to it.
 ;
-; "Start Marconi now" on the finish page needs the ShellExecAsUser plug-in in the NSIS installation's
+; "Start Marconi now" and "Open the source code on GitHub" on the finish page need the ShellExecAsUser plug-in in the NSIS installation's
 ; Plugins\x86-unicode folder (see Package.ps1, which checks for it).
 
 !ifndef VERSION | STAGE_DIR | OUT_FILE
@@ -17,6 +18,8 @@
 !define APP_NAME "Marconi"
 !define PUBLISHER "Red Marmoset Studios Ltd."
 !define APP_EXE "Marconi.exe"
+!define SOURCE_URL "https://github.com/Red-Marmoset/marconi"
+!define SOURCE_SHORTCUT "${APP_NAME} source code.url"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 !define APP_ICON "..\Modules\MarconiUI\Resources\Marconi.ico"
 ; Branding bitmaps from Tools/make_installer_art.py; rerun it after changing the icon, colours or fonts.
@@ -78,9 +81,17 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 !define MUI_FINISHPAGE_RUN ""
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchAsUser
 !define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME} now"
+; The second checkbox opens the source code in the user's browser, unelevated for the same reason.
+!define MUI_FINISHPAGE_SHOWREADME ""
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION OpenSourceAsUser
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "Open the source code on GitHub"
+!define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+
+; The MIT licence. The checkbox must be ticked before Next is enabled.
+!define MUI_LICENSEPAGE_CHECKBOX
 
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "..\LICENSE"
+!insertmacro MUI_PAGE_LICENSE "${STAGE_DIR}\License.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -125,6 +136,10 @@ FunctionEnd
 Function LaunchAsUser
     SetOutPath "$INSTDIR"
     ShellExecAsUser::ShellExecAsUser "" "$INSTDIR\${APP_EXE}" ""
+FunctionEnd
+
+Function OpenSourceAsUser
+    ShellExecAsUser::ShellExecAsUser "" "${SOURCE_URL}" ""
 FunctionEnd
 
 Section "${APP_NAME}" SecApp
@@ -174,6 +189,8 @@ SectionEnd
 Section "Start menu shortcut" SecStartMenu
     SetShellVarContext all
     CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+    ; An internet shortcut, which opens the source code in the user's default browser.
+    WriteINIStr "$SMPROGRAMS\${SOURCE_SHORTCUT}" "InternetShortcut" "URL" "${SOURCE_URL}"
 SectionEnd
 
 Section /o "Desktop shortcut" SecDesktop
@@ -183,7 +200,7 @@ SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} VNC client."
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME} to the Start menu."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME}, and a link to its source code on GitHub, to the Start menu."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Add a ${APP_NAME} shortcut to the desktop."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
@@ -210,6 +227,7 @@ Section "un.${APP_NAME}" SecUnApp
     SectionIn RO
     SetShellVarContext all
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
+    Delete "$SMPROGRAMS\${SOURCE_SHORTCUT}"
     Delete "$DESKTOP\${APP_NAME}.lnk"
 
     ; Only the files the installer put there, in case the folder was shared with something else.

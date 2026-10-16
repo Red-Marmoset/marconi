@@ -213,6 +213,11 @@ Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Black.ttf") -De
 Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Semibold.ttf") -Destination $appDir
 Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-LICENSE.txt") -Destination $appDir
 Copy-Item (Join-Path $crtDir "*.dll") $appDir
+# The licence page wraps lines to fit, so join each paragraph of LICENSE into one line; its 80-column breaks would
+# otherwise leave ragged lines. The installed LICENSE.txt is the original.
+$licence = (Get-Content -Raw (Join-Path $root "LICENSE")) -replace "`r`n", "`n"
+$paragraphs = $licence.Trim() -split "`n{2,}" | ForEach-Object { ($_ -split "`n" | ForEach-Object { $_.Trim() }) -join " " }
+[IO.File]::WriteAllText((Join-Path $stageDir "License.txt"), ($paragraphs -join "`r`n`r`n") + "`r`n")
 $uninstallLines = Get-ChildItem -File $appDir | Sort-Object Name | ForEach-Object { "Delete `"`$INSTDIR\$($_.Name)`"" }
 [IO.File]::WriteAllLines((Join-Path $stageDir "UninstallFiles.nsh"), [string[]]$uninstallLines)
 
