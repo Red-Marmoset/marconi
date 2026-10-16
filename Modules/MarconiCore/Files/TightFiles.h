@@ -27,6 +27,8 @@ namespace Marconi
             void OnReply(const Rfb::FileTransfer::Reply& reply);
             // The VNC connection ended: everything waiting, and every later call, fails.
             void Close();
+            // The VNC connection is back (with file transfer).
+            void Reopen();
 
             std::string GetHome() override;
             bool List(const std::string& folder, std::vector<FileEntry>& outEntries, std::string& error) override;

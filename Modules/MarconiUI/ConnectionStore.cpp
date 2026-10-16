@@ -137,6 +137,7 @@ namespace MarconiUI
         out.certificate = config->Read(path + "/Certificate", wxEmptyString);
         out.layout = config->Read(path + "/Layout", wxEmptyString);
         out.sshHostKey = config->Read(path + "/SshHostKey", wxEmptyString);
+        out.dropFolder = config->Read(path + "/DropFolder", wxEmptyString);
         out.scaleMode = config->Read(path + "/Scale", "fit") == "100" ? ScaleMode::Actual : ScaleMode::Fit;
         out.viewOnly = config->ReadBool(path + "/ViewOnly", false);
         out.clipboard = config->ReadBool(path + "/Clipboard", true);
@@ -173,6 +174,7 @@ namespace MarconiUI
         config->Write(path + "/Certificate", connection.certificate);
         config->Write(path + "/Layout", connection.layout);
         config->Write(path + "/SshHostKey", connection.sshHostKey);
+        config->Write(path + "/DropFolder", connection.dropFolder);
         config->Write(path + "/Scale", connection.scaleMode == ScaleMode::Actual ? "100" : "fit");
         config->Write(path + "/ViewOnly", connection.viewOnly);
         config->Write(path + "/Clipboard", connection.clipboard);

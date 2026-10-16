@@ -567,9 +567,69 @@ namespace MarconiUI
 
     void FilePanel::Activate()
     {
+        if (m_tight != nullptr)
+        {
+            if (m_state != State::Connected)
+            {
+                ShowRemote(m_tight, m_tight->GetHome());
+            }
+            return;
+        }
         if (m_state == State::Idle || m_state == State::Failed)
         {
             Connect();
+        }
+    }
+
+    void FilePanel::SetTightFiles(Marconi::Files::TightFiles* files, const wxString& displayName)
+    {
+        if (files == m_tight && (files == nullptr || m_state == State::Connected))
+        {
+            return;
+        }
+        m_tight = files;
+        m_remote.displayName = displayName;
+        m_remotePane->SetHeading(displayName);
+        if (files == nullptr)
+        {
+            if (!m_sftp || !m_sftp->IsLoggedIn())
+            {
+                m_state = State::Idle;
+                m_remotePane->SetSource(nullptr, "");
+                m_upload->Enable(false);
+                m_download->Enable(false);
+            }
+            return;
+        }
+        m_state = State::Idle;
+        if (IsShownOnScreen())
+        {
+            Activate();
+        }
+    }
+
+    Marconi::Files::FileSource* FilePanel::GetRemote()
+    {
+        if (m_tight != nullptr)
+        {
+            return m_tight;
+        }
+        return m_sftp && m_sftp->IsLoggedIn() ? m_sftp.get() : nullptr;
+    }
+
+    void FilePanel::ShowRemote(Marconi::Files::FileSource* source, const std::string& folder)
+    {
+        m_state = State::Connected;
+        SetMessage("");
+        m_remotePane->SetHeading(m_remote.displayName);
+        m_remotePane->SetSource(source, folder);
+        m_upload->Enable(true);
+        m_download->Enable(true);
+        if (!m_pendingDesktopUploads.empty())
+        {
+            std::vector<std::string> pending;
+            pending.swap(m_pendingDesktopUploads);
+            UploadToDesktop(pending);
         }
     }
 
@@ -693,33 +753,20 @@ namespace MarconiUI
             SetMessage("Couldn't log in for file transfer: " + wxString::FromUTF8(error));
             return;
         }
-        m_state = State::Connected;
-        SetMessage("");
-        m_remotePane->SetHeading(m_remote.displayName);
-        m_remotePane->SetSource(m_sftp.get(), m_sftp->GetHome());
-        m_upload->Enable(true);
-        m_download->Enable(true);
-        if (!m_pendingDesktopUploads.empty())
-        {
-            std::vector<std::string> pending;
-            pending.swap(m_pendingDesktopUploads);
-            UploadToDesktop(pending);
-        }
+        ShowRemote(m_sftp.get(), m_sftp->GetHome());
     }
 
     void FilePanel::CopyBetweenSides(bool fromRemote, const std::vector<std::string>& paths)
     {
-        if (paths.empty() || m_state != State::Connected)
+        Marconi::Files::FileSource* remote = GetRemote();
+        if (paths.empty() || m_state != State::Connected || remote == nullptr)
         {
             return;
         }
         FilePane* destination = fromRemote ? m_localPane : m_remotePane;
-        StartCopy(fromRemote ? static_cast<Marconi::Files::FileSource&>(*m_sftp)
-                             : static_cast<Marconi::Files::FileSource&>(m_local),
-                  paths,
-                  fromRemote ? static_cast<Marconi::Files::FileSource&>(m_local)
-                             : static_cast<Marconi::Files::FileSource&>(*m_sftp),
-                  destination->GetFolder(), destination);
+        Marconi::Files::FileSource& local = m_local;
+        StartCopy(fromRemote ? *remote : local, paths, fromRemote ? local : *remote, destination->GetFolder(),
+                  destination);
     }
 
     void FilePanel::UploadToDesktop(const std::vector<std::string>& localPaths)
@@ -734,15 +781,52 @@ namespace MarconiUI
             Activate();
             return;
         }
-        // The remote Desktop folder: neither VNC nor SSH says which window is under the pointer.
-        std::string desktop = Marconi::Files::JoinPath(m_sftp->GetHome(), "Desktop");
-        Marconi::Files::FileEntry entry;
-        std::string error;
-        if (!m_sftp->Stat(desktop, entry, error) || !entry.isFolder)
+        // A fixed folder: neither VNC nor SSH says which window or folder is under the pointer.
+        Marconi::Files::FileSource* remote = GetRemote();
+        if (remote == nullptr)
         {
-            desktop = m_sftp->GetHome();
+            return;
         }
-        StartCopy(m_local, localPaths, *m_sftp, desktop, nullptr);
+        std::string desktop;
+        if (m_tight != nullptr)
+        {
+            // TightVNC doesn't say which Windows user is logged in: ask once, and remember.
+            if (m_remote.dropFolder.empty())
+            {
+                wxString folder = wxGetTextFromUser(
+                    "Files dropped on " + m_remote.displayName + "'s screen are copied to this folder on it. "
+                    "The Public Desktop shows on everyone's desktop.",
+                    "Where should dropped files go?", "/C:/Users/Public/Desktop", this);
+                if (folder.empty())
+                {
+                    return;
+                }
+                folder.Replace("\\", "/");
+                m_remote.dropFolder = folder;
+                if (!m_remote.savedId.empty())
+                {
+                    ConnectionStore store;
+                    SavedConnection saved;
+                    if (store.Load(m_remote.savedId, saved))
+                    {
+                        saved.dropFolder = folder;
+                        store.Save(saved);
+                    }
+                }
+            }
+            desktop = m_remote.dropFolder.utf8_string();
+        }
+        else
+        {
+            desktop = Marconi::Files::JoinPath(m_sftp->GetHome(), "Desktop");
+            Marconi::Files::FileEntry entry;
+            std::string error;
+            if (!m_sftp->Stat(desktop, entry, error) || !entry.isFolder)
+            {
+                desktop = m_sftp->GetHome();
+            }
+        }
+        StartCopy(m_local, localPaths, *remote, desktop, nullptr);
         SetMessage(wxString::Format("Copying %zu item%s to ", localPaths.size(), localPaths.size() == 1 ? "" : "s") +
                    wxString::FromUTF8(desktop));
     }

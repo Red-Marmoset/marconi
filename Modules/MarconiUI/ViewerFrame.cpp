@@ -94,6 +94,7 @@ namespace MarconiUI
         remote.displayName = wxString::FromUTF8(m_options.address.host);
         remote.savedId = m_options.savedId;
         remote.trustedKey = m_options.sshHostKey;
+        remote.dropFolder = m_options.dropFolder;
         m_files = new FilePanel(this, remote);
         m_aui.AddPane(m_files, wxAuiPaneInfo()
                                    .Name("Files")
@@ -211,6 +212,7 @@ namespace MarconiUI
         options.clipboard = connection.clipboard;
         options.layout = connection.layout;
         options.sshHostKey = connection.sshHostKey;
+        options.dropFolder = connection.dropFolder;
         out = options;
         return true;
     }
@@ -324,6 +326,7 @@ namespace MarconiUI
         connection.encodings = m_options.encodings;
         connection.exactEncodings = !m_options.encodings.empty();
         connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
+        connection.allowTight = m_allowTight;
         m_client.Connect(connection);
     }
 
@@ -590,6 +593,21 @@ namespace MarconiUI
         m_desktopName = wxString::FromUTF8(serverInit.name);
         SetTitle(GetServerDisplayName() + " - Marconi");
         m_connected = true;
+        if (m_client.HasFileTransfer())
+        {
+            // TightVNC: files travel on this connection, with no second login.
+            if (!m_tightFiles)
+            {
+                m_tightFiles = std::make_unique<Marconi::Files::TightFiles>(
+                    [this](const Marconi::Rfb::Bytes& request) { return m_client.SendFileTransferRequest(request); });
+            }
+            m_tightFiles->Reopen();
+            Marconi::Files::TightFiles* files = m_tightFiles.get();
+            m_client.SetFileTransferHandler([files](const Marconi::Rfb::FileTransfer::Reply& reply) {
+                files->OnReply(reply);
+            });
+            m_files->SetTightFiles(files, GetServerDisplayName());
+        }
         if (m_rememberPassword)
         {
             // Only now: the credentials are known to work.
@@ -705,6 +723,20 @@ namespace MarconiUI
             }
         }
         LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
+        if (m_tightFiles)
+        {
+            m_client.SetFileTransferHandler(nullptr);
+            m_tightFiles->Close();
+            m_files->SetTightFiles(nullptr, GetServerDisplayName());
+        }
+        if (info.tightFailed && m_allowTight)
+        {
+            // Some servers offer TightVNC's own login but don't handle it well: try once more without it.
+            LOG_INFO("Viewer", "The TightVNC login failed; trying the plain VNC login");
+            m_allowTight = false;
+            ConnectVnc(m_port);
+            return;
+        }
         if (m_autoReconnecting)
         {
             m_autoReconnecting = false;

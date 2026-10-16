@@ -7,6 +7,7 @@
 #include "VncCanvas.h"
 
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Files/TightFiles.h>
 #include <MarconiCore/Net/Probe.h>
 #include <MarconiCore/Rfb/Client.h>
 
@@ -44,6 +45,7 @@ namespace MarconiUI
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
         wxString sshHostKey;    // from the saved connection: the SSH host key trusted for file transfer
+        wxString dropFolder;    // from the saved connection: where files dropped on a TightVNC screen go
         bool showFiles = false; // open the file panel straight away (--files)
         bool skipProbe = false; // the address's protocol and port are already known (e.g. found on the network)
         std::vector<uint8_t> trustedCertificateSha256; // a server certificate the user accepted before
@@ -137,6 +139,8 @@ namespace MarconiUI
         wxAuiManager m_aui;               // docks the toolbar (and later the file panel) around the screen
         wxAuiToolBar* m_toolBar = nullptr;
         FilePanel* m_files = nullptr;
+        std::unique_ptr<Marconi::Files::TightFiles> m_tightFiles; // file transfer on the VNC connection (TightVNC)
+        bool m_allowTight = true; // cleared after a TightVNC login goes wrong, so the retry uses the plain login
         wxString m_defaultLayout;         // the layout before any saved one was applied
         wxString m_layoutBeforeFullScreen; // full screen hides docked panels; this brings them back
         wxString m_desktopName;

@@ -129,6 +129,13 @@ namespace Marconi
             m_replied.notify_all();
         }
 
+        void TightFiles::Reopen()
+        {
+            std::lock_guard<std::mutex> lock(m_replyMutex);
+            m_closed = false;
+            m_reply.reset();
+        }
+
         bool TightFiles::Request(const Rfb::Bytes& request, Ft::Reply& outReply, std::string& error)
         {
             std::lock_guard<std::mutex> one(m_requestMutex);

@@ -5,6 +5,7 @@
 
 #include <MarconiCore/Files/LocalFiles.h>
 #include <MarconiCore/Files/SftpFiles.h>
+#include <MarconiCore/Files/TightFiles.h>
 #include <MarconiCore/Files/TransferQueue.h>
 
 #include <wx/panel.h>
@@ -38,6 +39,7 @@ namespace MarconiUI
             wxString displayName; // e.g. the desktop name, for headings and prompts
             wxString savedId;     // the saved connection, to remember a trusted host key
             wxString trustedKey;  // the host key fingerprint trusted before, if any
+            wxString dropFolder;  // TightVNC: where files dropped on the remote screen go; asked for if empty
         };
 
         FilePanel(wxWindow* parent, const Remote& remote);
@@ -45,6 +47,8 @@ namespace MarconiUI
 
         // Connects to the remote computer the first time the panel is shown.
         void Activate();
+        // The VNC connection offers TightVNC file transfer (or no longer does, with nullptr): use it instead of SFTP.
+        void SetTightFiles(Marconi::Files::TightFiles* files, const wxString& displayName);
         // Files dropped on the remote screen: copy them to the remote Desktop (connecting first if needed).
         void UploadToDesktop(const std::vector<std::string>& localPaths);
         bool IsBusy() const;
@@ -73,10 +77,13 @@ namespace MarconiUI
         void ShowStatus(const Marconi::Files::TransferStatus& status);
         Marconi::Files::ConflictAnswer AskAboutExisting(const std::string& destinationPath);
         void JoinWorker();
+        Marconi::Files::FileSource* GetRemote();
+        void ShowRemote(Marconi::Files::FileSource* source, const std::string& folder);
 
         Remote m_remote;
         Marconi::Files::LocalFiles m_local;
         std::unique_ptr<Marconi::Files::SftpFiles> m_sftp;
+        Marconi::Files::TightFiles* m_tight = nullptr; // owned by the viewer
         std::unique_ptr<Marconi::Files::TransferQueue> m_queue;
         State m_state = State::Idle;
         std::thread m_worker; // connects and logs in
