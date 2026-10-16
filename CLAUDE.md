@@ -25,6 +25,8 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
     exists. Flag the break to the owner instead.
   - **1.0 is the owner's decision alone**, possibly with no compatibility break, once Marconi feels complete. Never
     make or propose that bump.
+- **Changelog:** every user-visible change adds a line under "Unreleased" in `CHANGELOG.md`, in the same commit. A
+  version bump renames "Unreleased" to that version and starts a new, empty "Unreleased" section.
 - **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
   `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
