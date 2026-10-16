@@ -9,6 +9,7 @@
 #include "ViewerFrame.h"
 
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Net/Discovery.h>
 #include <MarconiCore/Version.h>
 
 #include <Log/Log.h>
@@ -88,6 +89,8 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "no-recovery",
              "headless diagnostics: never re-request the desktop or reconnect when no picture arrives",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "discover", "diagnostics: log the machines found on the network, then exit",
+             wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_PARAM, nullptr, nullptr, "host[:display] | host::port", wxCMD_LINE_VAL_STRING,
              wxCMD_LINE_PARAM_OPTIONAL},
             wxCMD_LINE_DESC_END,
@@ -96,6 +99,17 @@ namespace MarconiUI
         if (parser.Parse() != 0)
         {
             return false; // help shown or bad arguments (wx reports them)
+        }
+        if (parser.Found("discover"))
+        {
+            std::vector<Marconi::Net::DiscoveredService> services = Marconi::Net::Discover(3000);
+            for (const Marconi::Net::DiscoveredService& service : services)
+            {
+                LOG_INFO("App", "Found %s: %s %s:%u (%s)", Marconi::ProtocolName(service.protocol),
+                         service.instance.c_str(), service.hostName.c_str(), service.port, service.ipv4.c_str());
+            }
+            LOG_INFO("App", "Found %zu service%s on the network", services.size(), services.size() == 1 ? "" : "s");
+            return false;
         }
         const bool headless = parser.Found("headless");
         wxString savedName;

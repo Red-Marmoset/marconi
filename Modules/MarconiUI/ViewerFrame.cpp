@@ -315,8 +315,8 @@ namespace MarconiUI
 
     void ViewerFrame::RememberDetected(const wxString& detected)
     {
-        // A headless run must not change the user's saved settings.
-        if (m_options.savedId.empty() || m_options.headless || m_options.detected == detected)
+        // Unlike the window settings, this is a fact about the machine, so headless runs keep it too.
+        if (m_options.savedId.empty() || m_options.detected == detected)
         {
             return;
         }
