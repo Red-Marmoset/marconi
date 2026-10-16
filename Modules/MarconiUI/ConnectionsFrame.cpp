@@ -16,6 +16,7 @@
 #include <wx/button.h>
 #include <wx/choice.h>
 #include <wx/dialog.h>
+#include <wx/display.h>
 #include <wx/dcbuffer.h>
 #include <wx/imaglist.h>
 #include <wx/fontenum.h>
@@ -272,7 +273,8 @@ namespace MarconiUI
         const wxString savedColumns[3] = {"Name", "Address", "Last used"};
         tableHeader(savedColumns);
         m_list = list("Saved connections", savedColumns, 180);
-        outer->Add(m_list, 1, wxEXPAND | wxLEFT | wxRIGHT, border);
+        m_list->SetMinSize(FromDIP(wxSize(-1, 76))); // both lists shrink to two rows on short screens
+        outer->Add(m_list, 2, wxEXPAND | wxLEFT | wxRIGHT, border);
         m_empty = label("", false, true);
         m_empty->Hide();
         outer->Add(m_empty, 0, wxLEFT | wxRIGHT | wxTOP, border);
@@ -295,7 +297,8 @@ namespace MarconiUI
         const wxString networkColumns[3] = {"Name", "Address", "Type"};
         tableHeader(networkColumns);
         m_network = list("On this network", networkColumns, 112);
-        outer->Add(m_network, 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+        m_network->SetMinSize(FromDIP(wxSize(-1, 76)));
+        outer->Add(m_network, 1, wxEXPAND | wxLEFT | wxRIGHT, border);
         m_networkEmpty = label(wxString::FromUTF8("Searching your network\xE2\x80\xA6"), false, true);
         outer->Add(m_networkEmpty, 0, wxLEFT | wxRIGHT | wxTOP, border);
         outer->AddSpacer(border);
@@ -323,8 +326,11 @@ namespace MarconiUI
         wxBoxSizer* frameSizer = new wxBoxSizer(wxVERTICAL);
         frameSizer->Add(panel, 1, wxEXPAND);
         SetSizer(frameSizer);
-        SetClientSize(FromDIP(wxSize(740, 980)));
-        SetMinClientSize(FromDIP(wxSize(720, 900)));
+        // Tall enough for both lists, but never taller than the screen (a scaled laptop has ~700-800 DIP).
+        const wxRect workArea = wxDisplay(this).GetClientArea();
+        const int frameExtra = GetSize().y - GetClientSize().y;
+        SetClientSize(FromDIP(740), std::min(FromDIP(980), workArea.height - frameExtra));
+        SetMinClientSize(FromDIP(wxSize(720, 640)));
         Centre();
         settings->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { ShowSettings(); });
         m_search->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { Reload(); event.Skip(); });
