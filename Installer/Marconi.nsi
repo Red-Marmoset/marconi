@@ -8,8 +8,8 @@
 ;                              before it's embedded and on the setup executable once written (needs NSIS 3.08+).
 ; Paths are absolute; makensis runs from this folder, so the relative ones below are relative to it.
 ;
-; "Start Marconi now" and "Open the source code on GitHub" on the finish page need the ShellExecAsUser plug-in in the NSIS installation's
-; Plugins\x86-unicode folder (see Package.ps1, which checks for it).
+; "Start Marconi now" and "Open the source code on GitHub" on the finish page need the ShellExecAsUser plug-in in the
+; NSIS installation's Plugins\x86-unicode folder (see Package.ps1, which checks for it).
 
 !ifndef VERSION | STAGE_DIR | OUT_FILE
     !error "Run Package.ps1 rather than makensis directly (it defines VERSION, STAGE_DIR and OUT_FILE)."
