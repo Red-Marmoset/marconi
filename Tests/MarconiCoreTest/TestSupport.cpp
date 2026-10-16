@@ -39,6 +39,25 @@ namespace MarconiTest
         }
     }
 
+    bool ThrowsRfbError(const std::function<void()>& body, const std::string& messagePart)
+    {
+        try
+        {
+            body();
+        }
+        catch (const Rfb::RfbError& error)
+        {
+            if (std::string(error.what()).find(messagePart) != std::string::npos)
+            {
+                return true;
+            }
+            printf("  threw \"%s\", expected a message containing \"%s\"\n", error.what(), messagePart.c_str());
+            return false;
+        }
+        printf("  didn't throw, expected an error containing \"%s\"\n", messagePart.c_str());
+        return false;
+    }
+
     Rfb::Bytes HexBytes(const std::string& hex)
     {
         Rfb::Bytes bytes;

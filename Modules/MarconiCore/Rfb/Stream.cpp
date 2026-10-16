@@ -29,6 +29,10 @@ namespace Marconi
 
         ptrdiff_t MemorySource::Read(void* buffer, size_t length)
         {
+            if (m_position == m_data.size() && length > 0 && !m_endMessage.empty())
+            {
+                throw RfbError(m_endMessage);
+            }
             size_t count = std::min(length, m_data.size() - m_position);
             std::memcpy(buffer, m_data.data() + m_position, count);
             m_position += count;

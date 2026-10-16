@@ -14,7 +14,11 @@ namespace Marconi
         class ZlibStream
         {
         public:
-            ZlibStream();
+            // A single rectangle can't legitimately decompress to more than this (a 16k x 16k desktop of raw pixels).
+            static constexpr size_t kDefaultMaxOutput = 1024ull * 1024 * 1024;
+
+            // `maxOutput` caps what one Inflate may produce; tests lower it to check the cap without a 1 GiB buffer.
+            explicit ZlibStream(size_t maxOutput = kDefaultMaxOutput);
             ~ZlibStream();
 
             ZlibStream(const ZlibStream&) = delete;
@@ -30,6 +34,7 @@ namespace Marconi
         private:
             struct State;
             std::unique_ptr<State> m_state;
+            size_t m_maxOutput;
         };
     } // namespace Rfb
 } // namespace Marconi

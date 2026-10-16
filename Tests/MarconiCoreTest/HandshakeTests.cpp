@@ -32,6 +32,54 @@ namespace MarconiTest
                 }
             }
         };
+
+        class DiscardSink : public Rfb::ByteSink
+        {
+        public:
+            void Send(const Rfb::Bytes&) override {}
+        };
+
+        // Runs the client side of the handshake against `serverBytes`, cancelling any request for credentials.
+        Rfb::HandshakeResult Handshake(const Rfb::Bytes& serverBytes)
+        {
+            Rfb::MemorySource source(serverBytes);
+            Rfb::InStream in(source);
+            DiscardSink sink;
+            return Rfb::PerformHandshake(in, sink, true, [](Rfb::CredentialsKind, Rfb::Credentials&) { return false; });
+        }
+
+        bool HandshakeFails(const Rfb::Bytes& serverBytes, const std::string& messagePart)
+        {
+            return ThrowsRfbError([&]() { Handshake(serverBytes); }, messagePart);
+        }
+
+        // A 3.8 server that refuses the connection with `reason`, sent with `length` as its length.
+        Rfb::Bytes Refusal(const std::string& reason, uint32_t length)
+        {
+            Rfb::OutBuffer out;
+            out.Append("RFB 003.008\n").U8(0).U32(length).Append(reason);
+            return out.Data();
+        }
+
+        // A 3.8 server with no security, up to ServerInit with a desktop name of `nameLength` bytes.
+        Rfb::Bytes ServerInitWithName(uint32_t nameLength)
+        {
+            Rfb::OutBuffer out;
+            out.Append("RFB 003.008\n").U8(1).U8(Rfb::SecurityType::None).U32(0);
+            out.U16(8).U16(8);
+            Rfb::PixelFormat().Write(out);
+            out.U32(nameLength).Append(std::string(nameLength, 'n'));
+            return out.Data();
+        }
+
+        // A 3.8 server offering only Apple's login, sending DH parameters with `keyLength` as their length.
+        Rfb::Bytes ArdParameters(uint16_t keyLength, size_t keyBytes)
+        {
+            Rfb::OutBuffer out;
+            out.Append("RFB 003.008\n").U8(1).U8(Rfb::SecurityType::AppleRemoteDesktop);
+            out.U16(2).U16(keyLength).Append(std::string(keyBytes * 2, '\x7f'));
+            return out.Data();
+        }
     } // namespace
 
     void RunHandshakeTests()
@@ -124,6 +172,40 @@ namespace MarconiTest
             s.server.Send(types);
             CHECK(s.listener.WaitFor([&]() { return s.listener.disconnected; }));
             CHECK(s.listener.disconnectError.find("200, 201") != std::string::npos);
+        });
+
+        RunTest("Refusal reasons over 64 KiB are refused", []() {
+            const uint32_t limit = 64 * 1024;
+            CHECK(HandshakeFails(Refusal(std::string(limit + 1, 'r'), limit + 1),
+                                 "The server sent an invalid error message"));
+            CHECK(HandshakeFails(Refusal("", 0xFFFFFFFFu), "The server sent an invalid error message"));
+            CHECK(HandshakeFails(Refusal(std::string(limit, 'r'), limit), "The server refused the connection: rrr"));
+        });
+
+        RunTest("Desktop names over 64 KiB are refused", []() {
+            const uint32_t limit = 64 * 1024;
+            CHECK(HandshakeFails(ServerInitWithName(limit + 1), "The server sent an invalid desktop name"));
+            CHECK(Handshake(ServerInitWithName(limit)).serverInit.name.size() == limit);
+        });
+
+        RunTest("RFB 3.3 refusal (security type 0) reports the reason", []() {
+            Rfb::OutBuffer server;
+            server.Append("RFB 003.003\n").U32(Rfb::SecurityType::Invalid).U32(15).Append("Too many people");
+            CHECK(HandshakeFails(server.Data(), "The server refused the connection: Too many people"));
+        });
+
+        RunTest("Apple login key lengths outside 16 to 1024 are refused", []() {
+            for (int keyLength : {0, 15, 1025, 65535})
+            {
+                CHECK(HandshakeFails(ArdParameters(static_cast<uint16_t>(keyLength), 0),
+                                     "invalid Apple authentication key length"));
+            }
+            // At the limits the parameters are read and the user is asked to log in (and cancels here).
+            for (int keyLength : {16, 1024})
+            {
+                CHECK(HandshakeFails(ArdParameters(static_cast<uint16_t>(keyLength), static_cast<size_t>(keyLength)),
+                                     "Authentication cancelled"));
+            }
         });
 
         RunTest("Non-VNC server is rejected", []() {

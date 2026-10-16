@@ -13,6 +13,41 @@ namespace MarconiTest
 {
     using namespace Marconi;
 
+    namespace
+    {
+        // A response header with these section counts.
+        Rfb::OutBuffer DnsHeader(uint16_t questions, uint16_t answers, uint16_t authorities = 0)
+        {
+            Rfb::OutBuffer out;
+            out.U16(0).U16(0x8400).U16(questions).U16(answers).U16(authorities).U16(0);
+            return out;
+        }
+
+        // A name of labels with these lengths, as sent (no compression).
+        void AppendName(Rfb::OutBuffer& out, const std::vector<int>& labelLengths)
+        {
+            for (int length : labelLengths)
+            {
+                out.U8(static_cast<uint8_t>(length)).Append(std::string(static_cast<size_t>(length), 'a'));
+            }
+            out.U8(0);
+        }
+
+        // An A record for 10.0.0.1 named with these labels, declaring `dataLength` bytes of data.
+        void AppendARecord(Rfb::OutBuffer& out, const std::vector<int>& labelLengths, uint16_t dataLength = 4)
+        {
+            AppendName(out, labelLengths);
+            out.U16(Net::Dns::kTypeA).U16(1).U32(120).U16(dataLength);
+            out.U8(10).U8(0).U8(0).U8(1);
+        }
+
+        bool Parses(const Rfb::OutBuffer& message)
+        {
+            std::vector<Net::Dns::Record> records;
+            return Net::Dns::ParseMessage(message.Data().data(), message.Data().size(), records);
+        }
+    } // namespace
+
     void RunDiscoveryTests()
     {
         RunTest("DNS query encoding", []() {
@@ -64,6 +99,60 @@ namespace MarconiTest
             std::vector<uint8_t> truncated = HexBytes("0000 8400 0000 0001 0000 0000 045f726662");
             CHECK(!Net::Dns::ParseMessage(truncated.data(), truncated.size(), records));
             CHECK(!Net::Dns::ParseMessage(nullptr, 0, records));
+        });
+
+        RunTest("ParseMessage rejects labels longer than 63 bytes", []() {
+            Rfb::OutBuffer ok = DnsHeader(0, 1);
+            AppendARecord(ok, {63, 5});
+            CHECK(Parses(ok));
+            Rfb::OutBuffer tooLong = DnsHeader(0, 1);
+            AppendARecord(tooLong, {64, 5});
+            CHECK(!Parses(tooLong));
+        });
+
+        RunTest("ParseMessage rejects names longer than 255 characters", []() {
+            Rfb::OutBuffer ok = DnsHeader(0, 1);
+            AppendARecord(ok, {63, 63, 63, 60}); // 252 characters with the dots
+            CHECK(Parses(ok));
+            Rfb::OutBuffer tooLong = DnsHeader(0, 1);
+            AppendARecord(tooLong, {63, 63, 63, 63, 63});
+            CHECK(!Parses(tooLong));
+            // The same limit holds for a name assembled through a compression pointer.
+            Rfb::OutBuffer viaPointer = DnsHeader(0, 2);
+            AppendARecord(viaPointer, {63, 63, 63}); // name at offset 12
+            AppendName(viaPointer, {63, 63});
+            std::vector<uint8_t> bytes = viaPointer.Data();
+            bytes.pop_back(); // end the second name with a pointer to the first instead
+            bytes.push_back(0xC0);
+            bytes.push_back(12);
+            Rfb::OutBuffer rest;
+            rest.U16(Net::Dns::kTypeA).U16(1).U32(120).U16(4).U8(10).U8(0).U8(0).U8(2);
+            bytes.insert(bytes.end(), rest.Data().begin(), rest.Data().end());
+            std::vector<Net::Dns::Record> records;
+            CHECK(!Net::Dns::ParseMessage(bytes.data(), bytes.size(), records));
+        });
+
+        RunTest("ParseMessage rejects record data running past the end", []() {
+            Rfb::OutBuffer ok = DnsHeader(0, 1);
+            AppendARecord(ok, {4}, 4);
+            CHECK(Parses(ok));
+            Rfb::OutBuffer overrun = DnsHeader(0, 1);
+            AppendARecord(overrun, {4}, 5);
+            CHECK(!Parses(overrun));
+            Rfb::OutBuffer farOverrun = DnsHeader(0, 1);
+            AppendARecord(farOverrun, {4}, 0xFFFF);
+            CHECK(!Parses(farOverrun));
+        });
+
+        RunTest("ParseMessage rejects header counts larger than the message", []() {
+            Rfb::OutBuffer answers = DnsHeader(0, 2);
+            AppendARecord(answers, {4});
+            CHECK(!Parses(answers));
+            Rfb::OutBuffer questions = DnsHeader(0xFFFF, 0);
+            CHECK(!Parses(questions));
+            Rfb::OutBuffer authorities = DnsHeader(0, 1, 1);
+            AppendARecord(authorities, {4});
+            CHECK(!Parses(authorities));
         });
 
         RunTest("UDP send and receive on localhost", []() {

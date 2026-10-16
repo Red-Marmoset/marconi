@@ -21,6 +21,7 @@
 #endif
 
 #include <cstdlib>
+#include <utility>
 
 namespace MarconiTest
 {
@@ -143,6 +144,322 @@ namespace MarconiTest
             Rfb::Bytes* out = static_cast<Rfb::Bytes*>(context);
             const uint8_t* bytes = static_cast<const uint8_t*>(data);
             out->insert(out->end(), bytes, bytes + size);
+        }
+
+        // Runs a decoder over `encoded`, expecting it to refuse the data with a message containing `messagePart`.
+        bool DecodeFails(Rfb::Decoder& decoder, const Rfb::Bytes& encoded, const Rfb::Rect& rect, Rfb::Framebuffer& fb,
+                         const std::string& messagePart)
+        {
+            return ThrowsRfbError(
+                [&]() {
+                    Rfb::MemorySource source(encoded);
+                    Rfb::InStream in(source);
+                    decoder.Decode(in, rect, fb);
+                },
+                messagePart);
+        }
+
+        // A ZRLE rectangle: the length, then `tiles` compressed on a fresh zlib stream.
+        Rfb::Bytes ZrleRect(const Rfb::Bytes& tiles)
+        {
+            Deflater deflater;
+            Rfb::Bytes compressed = deflater.Compress(tiles);
+            Rfb::OutBuffer data;
+            data.U32(static_cast<uint32_t>(compressed.size())).Append(compressed.data(), compressed.size());
+            return data.Data();
+        }
+
+        // A smooth width x height JPEG, as a Tight server would send it.
+        Rfb::Bytes MakeJpeg(int width, int height)
+        {
+            std::vector<uint8_t> rgb;
+            for (int y = 0; y < height; ++y)
+            {
+                for (int x = 0; x < width; ++x)
+                {
+                    rgb.push_back(static_cast<uint8_t>(40 + x * 4));
+                    rgb.push_back(static_cast<uint8_t>(90 + y * 4));
+                    rgb.push_back(160);
+                }
+            }
+            Rfb::Bytes jpeg;
+            stbi_write_jpg_to_func(JpegWriter, &jpeg, width, height, 3, rgb.data(), 90);
+            return jpeg;
+        }
+
+        Rfb::Bytes TightJpegRect(const Rfb::Bytes& jpeg, size_t length)
+        {
+            Rfb::OutBuffer data;
+            data.U8(0x90);
+            AppendCompactLength(data, static_cast<uint32_t>(length));
+            data.Append(jpeg.data(), length);
+            return data.Data();
+        }
+
+        void RunDecoderErrorTests()
+        {
+            RunTest("zlib refuses data that expands too far", []() {
+                // 4 MiB of zeros compresses to a few KiB; a stream capped at 1 MiB must refuse it.
+                const Rfb::Bytes zeros(4 * 1024 * 1024, 0);
+                Deflater deflater;
+                const Rfb::Bytes bomb = deflater.Compress(zeros);
+                CHECK(bomb.size() < 64 * 1024);
+                Rfb::ZlibStream capped(1024 * 1024);
+                CHECK(ThrowsRfbError([&]() { capped.Inflate(bomb); }, "Compressed data expands too far"));
+                // A size hint above the cap doesn't lift it.
+                Rfb::ZlibStream hinted(1024 * 1024);
+                CHECK(ThrowsRfbError([&]() { hinted.Inflate(bomb, zeros.size()); }, "Compressed data expands too far"));
+                // The same data inflates under a cap it fits in.
+                Rfb::ZlibStream roomy(8 * 1024 * 1024);
+                CHECK(roomy.Inflate(bomb) == zeros);
+            });
+
+            RunTest("zlib refuses corrupt data", []() {
+                Rfb::ZlibStream badHeader;
+                CHECK(ThrowsRfbError([&]() { badHeader.Inflate(HexBytes("00 01 02 03 04 05")); },
+                                     "Corrupt compressed data"));
+                Rfb::ZlibStream badBlock; // a valid zlib header, then a block of the reserved type 3
+                CHECK(ThrowsRfbError([&]() { badBlock.Inflate(HexBytes("78 9c ff ff ff")); },
+                                     "Corrupt compressed data"));
+            });
+
+            RunTest("zlib refuses junk after a sync flush", []() {
+                // zlib reads on past the flush point, so junk there shows up as corrupt data.
+                Deflater deflater;
+                Rfb::Bytes chunk = deflater.Compress({'h', 'e', 'l', 'l', 'o'});
+                chunk.insert(chunk.end(), {0xff, 0xff, 0xff});
+                Rfb::ZlibStream stream;
+                CHECK(ThrowsRfbError([&]() { stream.Inflate(chunk); }, "Corrupt compressed data"));
+            });
+
+            RunTest("Tight refuses a palette index past the palette", []() {
+                Rfb::OutBuffer data;
+                data.U8(0x40).U8(1).U8(2); // explicit filter, palette, 3 colours
+                AppendTPixel(data, 0xff0000);
+                AppendTPixel(data, 0x00ff00);
+                AppendTPixel(data, 0x0000ff);
+                data.U8(0).U8(1).U8(2).U8(3); // 2x2 indices, 4 bytes so uncompressed; 3 is out of range
+                Rfb::TightDecoder decoder;
+                Rfb::Framebuffer fb;
+                fb.Resize(4, 4);
+                CHECK(DecodeFails(decoder, data.Data(), {0, 0, 2, 2}, fb, "Tight palette index out of range"));
+            });
+
+            RunTest("Tight refuses data that decompresses too short", []() {
+                // A 4x4 copy rectangle needs 48 bytes; send 47.
+                Deflater deflater;
+                Rfb::Bytes compressed = deflater.Compress(Rfb::Bytes(47, 0x80));
+                Rfb::OutBuffer data;
+                data.U8(0x00);
+                AppendCompactLength(data, static_cast<uint32_t>(compressed.size()));
+                data.Append(compressed.data(), compressed.size());
+                Rfb::TightDecoder decoder;
+                Rfb::Framebuffer fb;
+                fb.Resize(4, 4);
+                CHECK(DecodeFails(decoder, data.Data(), {0, 0, 4, 4}, fb,
+                                  "Tight rectangle decompressed to too little data"));
+            });
+
+            RunTest("Tight lengths stop below 4 MiB; a rectangle missing its data is refused", []() {
+                // Three bytes of 7, 7 and 8 bits can't reach the 64 MiB limit, so the largest length is checked here.
+                Rfb::MemorySource source(HexBytes("ff ff ff"));
+                Rfb::InStream in(source);
+                CHECK(Rfb::ReadCompactLength(in) == 4194303u);
+
+                Rfb::Framebuffer fb;
+                fb.Resize(8, 8);
+                Rfb::TightDecoder copy;
+                CHECK(DecodeFails(copy, HexBytes("00 ff ff ff"), {0, 0, 8, 8}, fb, "closed the connection"));
+                Rfb::TightDecoder jpeg;
+                CHECK(DecodeFails(jpeg, HexBytes("90 ff ff ff"), {0, 0, 8, 8}, fb, "closed the connection"));
+            });
+
+            RunTest("Tight refuses unknown filters and compression types", []() {
+                Rfb::Framebuffer fb;
+                fb.Resize(4, 4);
+                for (int filter : {3, 255})
+                {
+                    Rfb::OutBuffer data;
+                    data.U8(0x40).U8(static_cast<uint8_t>(filter));
+                    Rfb::TightDecoder decoder;
+                    CHECK(DecodeFails(decoder, data.Data(), {0, 0, 2, 2}, fb,
+                                      "Unknown Tight filter " + std::to_string(filter)));
+                }
+                for (int type = 10; type <= 15; ++type)
+                {
+                    Rfb::OutBuffer data;
+                    data.U8(static_cast<uint8_t>(type << 4));
+                    Rfb::TightDecoder decoder;
+                    CHECK(DecodeFails(decoder, data.Data(), {0, 0, 2, 2}, fb,
+                                      "Unsupported Tight compression type " + std::to_string(type)));
+                }
+            });
+
+            RunTest("Tight refuses a JPEG of the wrong size", []() {
+                const Rfb::Bytes jpeg = MakeJpeg(24, 16);
+                CHECK(!jpeg.empty());
+                Rfb::Framebuffer fb;
+                fb.Resize(32, 32);
+                for (Rfb::Rect rect : {Rfb::Rect{0, 0, 16, 16}, Rfb::Rect{0, 0, 24, 17}, Rfb::Rect{0, 0, 25, 16}})
+                {
+                    Rfb::TightDecoder decoder;
+                    CHECK(DecodeFails(decoder, TightJpegRect(jpeg, jpeg.size()), rect, fb, "doesn't match"));
+                }
+            });
+
+            RunTest("Tight survives a JPEG cut short at every length", []() {
+                const Rfb::Bytes jpeg = MakeJpeg(24, 16);
+                Rfb::Framebuffer fb;
+                fb.Resize(24, 16);
+                // Cut inside its headers, before the image size, it can't be decoded.
+                Rfb::TightDecoder decoder;
+                CHECK(DecodeFails(decoder, TightJpegRect(jpeg, 64), {0, 0, 24, 16}, fb,
+                                  "Could not decode a JPEG rectangle"));
+                // Cut anywhere else, stb_image either refuses it or fills in what's missing; either is fine.
+                int refused = 0;
+                for (size_t length = 0; length < jpeg.size(); ++length)
+                {
+                    Rfb::Bytes data = TightJpegRect(jpeg, length);
+                    Rfb::MemorySource source(data);
+                    Rfb::InStream in(source);
+                    Rfb::TightDecoder cut;
+                    try
+                    {
+                        cut.Decode(in, {0, 0, 24, 16}, fb);
+                    }
+                    catch (const Rfb::RfbError&)
+                    {
+                        ++refused;
+                    }
+                }
+                CHECK(refused > 0);
+            });
+
+            RunTest("ZRLE refuses unknown subencodings", []() {
+                Rfb::Framebuffer fb;
+                fb.Resize(4, 4);
+                std::vector<int> unknown = {129};
+                for (int subencoding = 17; subencoding <= 127; ++subencoding)
+                {
+                    unknown.push_back(subencoding);
+                }
+                for (int subencoding : unknown)
+                {
+                    Rfb::ZrleDecoder decoder;
+                    CHECK(DecodeFails(decoder, ZrleRect({static_cast<uint8_t>(subencoding)}), {0, 0, 1, 1}, fb,
+                                      "Unknown ZRLE subencoding " + std::to_string(subencoding)));
+                }
+            });
+
+            RunTest("ZRLE refuses a packed palette index past the palette", []() {
+                Rfb::Framebuffer fb;
+                fb.Resize(4, 4);
+                // 3 colours use 2 bits per pixel, so index 3 fits the bits but not the palette; likewise 7 of 5.
+                for (int colours : {3, 5})
+                {
+                    Rfb::OutBuffer tile;
+                    tile.U8(static_cast<uint8_t>(colours));
+                    for (int i = 0; i < colours; ++i)
+                    {
+                        AppendCPixel(tile, 0x111111u * static_cast<uint32_t>(i));
+                    }
+                    tile.U8(static_cast<uint8_t>(colours == 3 ? 0xC0 : 0x70));
+                    Rfb::ZrleDecoder decoder;
+                    CHECK(DecodeFails(decoder, ZrleRect(tile.Data()), {0, 0, 1, 1}, fb,
+                                      "ZRLE palette index out of range"));
+                }
+            });
+
+            RunTest("ZRLE refuses an implausible compressed length", []() {
+                Rfb::OutBuffer data;
+                data.U32(64 * 1024 * 1024 + 1);
+                Rfb::ZrleDecoder decoder;
+                Rfb::Framebuffer fb;
+                fb.Resize(4, 4);
+                CHECK(DecodeFails(decoder, data.Data(), {0, 0, 4, 4}, fb, "ZRLE rectangle is implausibly large"));
+            });
+
+            RunTest("ZRLE says when its data decompresses too short", []() {
+                // A raw 2x2 tile needs four pixels; send one.
+                Rfb::OutBuffer tile;
+                tile.U8(0);
+                AppendCPixel(tile, 0x123456);
+                Rfb::ZrleDecoder decoder;
+                Rfb::Framebuffer fb;
+                fb.Resize(4, 4);
+                CHECK(DecodeFails(decoder, ZrleRect(tile.Data()), {0, 0, 2, 2}, fb,
+                                  "ZRLE rectangle decompressed to too little data"));
+            });
+
+            RunTest("RRE refuses subrectangles outside the rectangle and too many of them", []() {
+                Rfb::Framebuffer fb;
+                fb.Resize(8, 8);
+                for (Rfb::Rect sub : {Rfb::Rect{3, 0, 2, 1}, Rfb::Rect{0, 3, 1, 2}, Rfb::Rect{4, 0, 1, 1}})
+                {
+                    Rfb::OutBuffer data;
+                    data.U32(1);
+                    AppendPixel32(data, 0x000000);
+                    AppendPixel32(data, 0xffffff);
+                    data.U16(static_cast<uint16_t>(sub.x)).U16(static_cast<uint16_t>(sub.y));
+                    data.U16(static_cast<uint16_t>(sub.width)).U16(static_cast<uint16_t>(sub.height));
+                    Rfb::RreDecoder decoder;
+                    CHECK(DecodeFails(decoder, data.Data(), {2, 2, 4, 4}, fb,
+                                      "RRE subrectangle lies outside its rectangle"));
+                }
+
+                Rfb::OutBuffer tooMany;
+                tooMany.U32((1u << 24) + 1);
+                Rfb::RreDecoder decoder;
+                CHECK(DecodeFails(decoder, tooMany.Data(), {0, 0, 4, 4}, fb,
+                                  "RRE rectangle has too many subrectangles"));
+                // The limit itself is allowed; that rectangle only fails because its data is missing.
+                Rfb::OutBuffer atLimit;
+                atLimit.U32(1u << 24);
+                CHECK(DecodeFails(decoder, atLimit.Data(), {0, 0, 4, 4}, fb, "closed the connection"));
+            });
+
+            RunTest("Hextile refuses subrectangles outside their tile", []() {
+                // A 20x4 rectangle has a 16x4 tile and a 4x4 tile; each subrectangle overhangs its tile by one pixel.
+                Rfb::Framebuffer fb;
+                fb.Resize(20, 4);
+                struct Case
+                {
+                    int tile;
+                    uint8_t position;
+                    uint8_t size;
+                };
+                for (Case c : {Case{0, 0xF0, 0x10}, Case{0, 0x03, 0x01}, Case{1, 0x30, 0x10}, Case{1, 0x00, 0x04}})
+                {
+                    Rfb::OutBuffer data;
+                    if (c.tile == 1)
+                    {
+                        data.U8(0); // the first tile, plain background
+                    }
+                    data.U8(8).U8(1).U8(c.position).U8(c.size); // one foreground subrectangle
+                    Rfb::HextileDecoder decoder;
+                    CHECK(DecodeFails(decoder, data.Data(), {0, 0, 20, 4}, fb,
+                                      "Hextile subrectangle lies outside its tile"));
+                }
+            });
+
+            RunTest("CopyRect refuses a source outside the desktop", []() {
+                Rfb::Framebuffer fb;
+                fb.Resize(8, 8);
+                const std::pair<int, int> sources[] = {{7, 7}, {7, 0}, {0, 7}, {65535, 0}};
+                for (const std::pair<int, int>& source : sources)
+                {
+                    Rfb::OutBuffer data;
+                    data.U16(static_cast<uint16_t>(source.first)).U16(static_cast<uint16_t>(source.second));
+                    Rfb::CopyRectDecoder decoder;
+                    CHECK(DecodeFails(decoder, data.Data(), {0, 0, 2, 2}, fb,
+                                      "CopyRect source lies outside the desktop"));
+                }
+                // The far corner itself is fine.
+                Rfb::OutBuffer corner;
+                corner.U16(6).U16(6);
+                Rfb::CopyRectDecoder decoder;
+                CHECK(DecodeInto(decoder, corner.Data(), {0, 0, 2, 2}, fb));
+            });
         }
     } // namespace
 
@@ -479,5 +796,7 @@ namespace MarconiTest
             big.Resize(64, 64);
             CHECK(!DecodeInto(decoder, data.Data(), {0, 0, 32, 16}, big));
         });
+
+        RunDecoderErrorTests();
     }
 } // namespace MarconiTest

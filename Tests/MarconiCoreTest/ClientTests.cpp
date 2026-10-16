@@ -259,6 +259,62 @@ namespace MarconiTest
             CHECK(s.listener.disconnectError.find("outside") != std::string::npos);
         });
 
+        RunTest("Oversized cursor disconnects with an error", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+            RectHeader(update, 0, 0, 1025, 1024, Rfb::Encoding::Cursor); // just over a million pixels
+            s.server.Send(update);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.disconnected; }));
+            CHECK(s.listener.disconnectError.find("oversized cursor") != std::string::npos);
+            CHECK(s.listener.cursorUpdates == 0);
+        });
+
+        RunTest("Oversized server cut text disconnects with an error", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer message;
+            message.U8(Rfb::ServerMessage::ServerCutText).Padding(3).U32(16 * 1024 * 1024 + 1);
+            s.server.Send(message);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.disconnected; }));
+            CHECK(s.listener.disconnectError.find("oversized clipboard update") != std::string::npos);
+            CHECK(s.listener.cutTexts.empty());
+        });
+
+        RunTest("Extended cut text (negative length) is skipped", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer messages;
+            // Its payload is four Bell bytes: misread as messages, they would ring four extra times.
+            messages.U8(Rfb::ServerMessage::ServerCutText).Padding(3).S32(-4);
+            messages.U8(Rfb::ServerMessage::Bell).U8(Rfb::ServerMessage::Bell);
+            messages.U8(Rfb::ServerMessage::Bell).U8(Rfb::ServerMessage::Bell);
+            messages.U8(Rfb::ServerMessage::Bell);
+            messages.U8(Rfb::ServerMessage::ServerCutText).Padding(3).U32(5).Append("after");
+            s.server.Send(messages);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.cutTexts.size() == 1; }));
+            CHECK(s.listener.cutTexts[0] == "after");
+            CHECK(s.listener.bells == 1);
+            CHECK(!s.listener.disconnected && s.client.IsConnected());
+        });
+
+        RunTest("An encoding we didn't ask for disconnects with an error", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+            RectHeader(update, 0, 0, 1, 1, 6); // zlib encoding, which Marconi doesn't offer
+            s.server.Send(update);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.disconnected; }));
+            CHECK(s.listener.disconnectError.find("encoding we didn't ask for (6)") != std::string::npos);
+        });
+
+        RunTest("Unknown server message type disconnects with an error", []() {
+            ConnectedSession s(4, 3);
+            Rfb::OutBuffer message;
+            message.U8(99);
+            s.server.Send(message);
+            CHECK(s.listener.WaitFor([&]() { return s.listener.disconnected; }));
+            CHECK(s.listener.disconnectError.find("unknown message type 99") != std::string::npos);
+        });
+
         RunTest("Server closing the connection is reported", []() {
             ConnectedSession s(4, 3);
             s.server.Close();

@@ -146,7 +146,8 @@ namespace Marconi
                 throw RfbError("ZRLE rectangle is implausibly large");
             }
             Bytes compressed = in.ReadBytes(length);
-            MemorySource source(m_zlib.Inflate(compressed, static_cast<size_t>(rect.width) * rect.height * 3));
+            MemorySource source(m_zlib.Inflate(compressed, static_cast<size_t>(rect.width) * rect.height * 3),
+                                "ZRLE rectangle decompressed to too little data");
             InStream tiles(source);
 
             m_buffer.Resize(rect.width, rect.height);

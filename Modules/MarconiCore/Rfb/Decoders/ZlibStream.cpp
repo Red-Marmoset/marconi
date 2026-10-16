@@ -11,19 +11,13 @@ namespace Marconi
 {
     namespace Rfb
     {
-        namespace
-        {
-            // A single rectangle can't legitimately decompress to more than this (a 16k x 16k desktop of raw pixels).
-            constexpr size_t kMaxOutput = 1024ull * 1024 * 1024;
-        }
-
         struct ZlibStream::State
         {
             z_stream stream = {};
             bool initialised = false;
         };
 
-        ZlibStream::ZlibStream() : m_state(std::make_unique<State>())
+        ZlibStream::ZlibStream(size_t maxOutput) : m_state(std::make_unique<State>()), m_maxOutput(maxOutput)
         {
         }
 
@@ -55,7 +49,7 @@ namespace Marconi
                 m_state->initialised = true;
             }
 
-            Bytes output(std::max<size_t>(expectedSize, input.size() * 4 + 1024));
+            Bytes output(std::min(std::max<size_t>(expectedSize, input.size() * 4 + 1024), m_maxOutput));
             size_t produced = 0;
             stream.next_in = const_cast<Bytef*>(input.data());
             stream.avail_in = static_cast<uInt>(input.size());
@@ -64,11 +58,11 @@ namespace Marconi
             {
                 if (produced == output.size())
                 {
-                    if (output.size() >= kMaxOutput)
+                    if (output.size() >= m_maxOutput)
                     {
                         throw RfbError("Compressed data expands too far");
                     }
-                    output.resize(std::min(output.size() * 2, kMaxOutput));
+                    output.resize(std::min(output.size() * 2, m_maxOutput));
                 }
                 stream.next_out = output.data() + produced;
                 stream.avail_out = static_cast<uInt>(output.size() - produced);

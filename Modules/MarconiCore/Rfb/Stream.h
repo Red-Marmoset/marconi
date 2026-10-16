@@ -49,11 +49,18 @@ namespace Marconi
         class MemorySource : public ByteSource
         {
         public:
-            explicit MemorySource(Bytes data) : m_data(std::move(data)) {}
+            // Reading past the end throws RfbError(`endMessage`), or reports the end of stream (which InStream calls
+            // the server closing the connection) if there is no message. Give one when the bytes didn't come
+            // straight from the network, such as decompressed data.
+            explicit MemorySource(Bytes data, std::string endMessage = {})
+                : m_data(std::move(data)), m_endMessage(std::move(endMessage))
+            {
+            }
             ptrdiff_t Read(void* buffer, size_t length) override;
 
         private:
             Bytes m_data;
+            std::string m_endMessage;
             size_t m_position = 0;
         };
 
