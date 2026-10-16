@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.3.3
+
+- The file panel is a proper file browser: folder tree, icons, a clickable path, Back and Forward, sortable columns.
+- Opening folders no longer freezes the window.
+
 ## 0.3.2
 
 - Cancelling or failing a "Replace" no longer loses the original file.

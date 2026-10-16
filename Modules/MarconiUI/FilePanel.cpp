@@ -9,7 +9,13 @@
 
 #include <Log/Log.h>
 
+#include <wx/artprov.h>
+#include <wx/bmpbuttn.h>
 #include <wx/button.h>
+#include <wx/imaglist.h>
+#include <wx/splitter.h>
+#include <wx/treectrl.h>
+#include <wx/volume.h>
 #include <wx/datetime.h>
 #include <wx/dnd.h>
 #include <wx/filename.h>
@@ -25,8 +31,13 @@
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
 
+#include <MarconiCore/Files/FileView.h>
+
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <functional>
 #include <random>
 
 namespace MarconiUI
@@ -42,7 +53,7 @@ namespace MarconiUI
 
         wxString FormatSize(const Marconi::Files::FileEntry& entry)
         {
-            return entry.isFolder ? wxString("Folder") : wxFileName::GetHumanReadableSize(wxULongLong(entry.size));
+            return entry.isFolder ? wxString() : wxFileName::GetHumanReadableSize(wxULongLong(entry.size));
         }
 
         wxString FormatModified(int64_t seconds)
@@ -114,10 +125,96 @@ namespace MarconiUI
         };
     } // namespace
 
-    // One side: a heading, the folder path, Up and Refresh, and the folder's contents.
+    // Runs file operations one at a time on a worker thread, so a slow folder listing never freezes the window.
+    class BackgroundWork
+    {
+    public:
+        BackgroundWork() : m_thread([this]() { Run(); }) {}
+        ~BackgroundWork() { Stop(); }
+
+        void Post(std::function<void()> job)
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_stopping)
+                {
+                    return;
+                }
+                m_jobs.push_back(std::move(job));
+            }
+            m_changed.notify_all();
+        }
+
+        // Drops what's waiting and waits for the job in progress, e.g. before the file source changes.
+        void Drain()
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            m_jobs.clear();
+            m_changed.wait(lock, [this]() { return !m_busy; });
+        }
+
+        void Stop()
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_stopping)
+                {
+                    return;
+                }
+                m_stopping = true;
+                m_jobs.clear();
+            }
+            m_changed.notify_all();
+            if (m_thread.joinable())
+            {
+                m_thread.join();
+            }
+        }
+
+    private:
+        void Run()
+        {
+            for (;;)
+            {
+                std::function<void()> job;
+                {
+                    std::unique_lock<std::mutex> lock(m_mutex);
+                    m_changed.wait(lock, [this]() { return m_stopping || !m_jobs.empty(); });
+                    if (m_stopping)
+                    {
+                        return;
+                    }
+                    job = std::move(m_jobs.front());
+                    m_jobs.pop_front();
+                    m_busy = true;
+                }
+                job();
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    m_busy = false;
+                }
+                m_changed.notify_all();
+            }
+        }
+
+        std::mutex m_mutex;
+        std::condition_variable m_changed;
+        std::deque<std::function<void()>> m_jobs;
+        bool m_busy = false;
+        bool m_stopping = false;
+        std::thread m_thread;
+    };
+
+    // One side, like a file explorer: Back, Forward, Up and the clickable path; a folder tree; the folder's contents.
     class FilePane : public wxPanel
     {
     public:
+        struct Root
+        {
+            wxString label;
+            std::string path;
+        };
+
         FilePane(wxWindow* parent, FilePanel& owner, bool remote, const wxString& heading)
             : wxPanel(parent),
               m_owner(owner),
@@ -127,101 +224,149 @@ namespace MarconiUI
             m_heading = new wxStaticText(this, wxID_ANY, heading);
             m_heading->SetFont(m_heading->GetFont().Bold());
             sizer->Add(m_heading, 0, wxBOTTOM, FromDIP(4));
+
             wxBoxSizer* bar = new wxBoxSizer(wxHORIZONTAL);
-            wxButton* up = new wxButton(this, wxID_ANY, "Up", wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-            wxButton* refresh = new wxButton(this, wxID_ANY, "Refresh", wxDefaultPosition, wxDefaultSize,
-                                             wxBU_EXACTFIT);
-            m_path = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
-                                    wxTE_PROCESS_ENTER);
-            bar->Add(up, 0, wxRIGHT, FromDIP(4));
-            bar->Add(m_path, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
-            bar->Add(refresh, 0);
+            auto barButton = [this, bar](const wxArtID& art, const wxString& tip) {
+                wxBitmapButton* button = new wxBitmapButton(
+                    this, wxID_ANY, wxArtProvider::GetBitmapBundle(art, wxART_BUTTON, FromDIP(wxSize(16, 16))));
+                button->SetToolTip(tip);
+                bar->Add(button, 0, wxRIGHT, FromDIP(2));
+                return button;
+            };
+            m_back = barButton(wxART_GO_BACK, "Back");
+            m_forward = barButton(wxART_GO_FORWARD, "Forward");
+            m_up = barButton(wxART_GO_UP, "Up to the folder above (Backspace)");
+            wxBitmapButton* refresh = barButton(wxART_REDO, "Refresh (F5)");
+            m_crumbs = new wxPanel(this);
+            m_crumbs->SetSizer(new wxBoxSizer(wxHORIZONTAL));
+            bar->Add(m_crumbs, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(6));
             sizer->Add(bar, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
-            m_list = new wxListView(this, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(160, 120)),
-                                    wxLC_REPORT | wxBORDER_SIMPLE);
-            m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(150));
+
+            m_split = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                                           wxSP_LIVE_UPDATE | wxSP_3DSASH);
+            m_split->SetMinimumPaneSize(FromDIP(80));
+            m_tree = new wxTreeCtrl(m_split, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                                    wxTR_HAS_BUTTONS | wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_NO_LINES | wxBORDER_SIMPLE);
+            m_list = new wxListView(m_split, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxBORDER_SIMPLE);
+            m_icons = new wxImageList(FromDIP(16), FromDIP(16), true);
+            m_icons->Add(wxArtProvider::GetIcon(wxART_FOLDER, wxART_LIST, FromDIP(wxSize(16, 16))));
+            m_icons->Add(wxArtProvider::GetIcon(wxART_NORMAL_FILE, wxART_LIST, FromDIP(wxSize(16, 16))));
+            m_icons->Add(wxArtProvider::GetIcon(wxART_HARDDISK, wxART_LIST, FromDIP(wxSize(16, 16))));
+            m_list->SetImageList(m_icons, wxIMAGE_LIST_SMALL);
+            m_tree->SetImageList(m_icons);
+            m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(180));
             m_list->AppendColumn("Size", wxLIST_FORMAT_RIGHT, FromDIP(70));
             m_list->AppendColumn("Modified", wxLIST_FORMAT_LEFT, FromDIP(115));
-            sizer->Add(m_list, 1, wxEXPAND);
+            m_list->AppendColumn("Type", wxLIST_FORMAT_LEFT, FromDIP(80));
+            m_split->SplitVertically(m_tree, m_list, FromDIP(160));
+            m_split->SetSashGravity(0.0);
+            sizer->Add(m_split, 1, wxEXPAND);
             SetSizer(sizer);
 
-            up->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { GoUp(); });
+            m_back->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { GoBack(); });
+            m_forward->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { GoForward(); });
+            m_up->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { GoUp(); });
             refresh->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Refresh(); });
-            m_path->Bind(wxEVT_TEXT_ENTER, [this](wxCommandEvent&) { Navigate(m_path->GetValue().utf8_string()); });
+            m_tree->Bind(wxEVT_TREE_ITEM_EXPANDING, [this](wxTreeEvent& event) { LoadTreeItem(event.GetItem()); });
+            m_tree->Bind(wxEVT_TREE_SEL_CHANGED, [this](wxTreeEvent& event) {
+                if (!m_syncingTree && event.GetItem().IsOk())
+                {
+                    if (auto* data = static_cast<TreeData*>(m_tree->GetItemData(event.GetItem())))
+                    {
+                        Navigate(data->path);
+                    }
+                }
+            });
             m_list->Bind(wxEVT_LIST_ITEM_ACTIVATED, [this](wxListEvent& event) { OnActivated(event); });
             m_list->Bind(wxEVT_LIST_BEGIN_DRAG, [this](wxListEvent&) { StartDrag(); });
+            m_list->Bind(wxEVT_LIST_COL_CLICK, [this](wxListEvent& event) { SortBy(event.GetColumn()); });
             m_list->Bind(wxEVT_CONTEXT_MENU, [this](wxContextMenuEvent&) { ShowContextMenu(); });
             m_list->Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& event) { OnKey(event); });
             m_list->SetDropTarget(new DropTarget(*this));
+            UpdateButtons();
             Enable(false);
+        }
+
+        ~FilePane() override
+        {
+            delete m_icons; // shared by the tree and the list, so neither owns it
         }
 
         bool IsRemote() const { return m_remote; }
         const std::string& GetFolder() const { return m_folder; }
         Marconi::Files::FileSource* GetSource() const { return m_source; }
 
-        void SetSource(Marconi::Files::FileSource* source, const std::string& folder)
+        // Stops background listings; call before the file source goes away.
+        void StopWork() { m_work.Stop(); }
+
+        void SetSource(Marconi::Files::FileSource* source, const std::string& folder, const std::vector<Root>& roots)
         {
+            m_work.Drain(); // nothing may still be using the old source
+            ++m_generation;
             m_source = source;
+            m_history.clear();
+            m_future.clear();
+            m_folder.clear();
+            m_entries.clear();
+            m_list->DeleteAllItems();
+            m_tree->DeleteAllItems();
+            m_treeRoot = m_tree->AddRoot("");
             Enable(source != nullptr);
-            if (source != nullptr)
+            if (source == nullptr)
             {
-                Navigate(folder);
+                ShowCrumbs();
+                UpdateButtons();
+                return;
             }
+            for (const Root& root : roots)
+            {
+                bool drive = root.path == "/" || (root.path.size() >= 2 && root.path[root.path.size() - 2] == ':');
+                wxTreeItemId item = m_tree->AppendItem(m_treeRoot, root.label, drive ? 2 : 0, -1,
+                                                       new TreeData(root.path));
+                m_tree->SetItemHasChildren(item, true);
+            }
+            Navigate(folder);
         }
 
         void SetHeading(const wxString& heading) { m_heading->SetLabel(heading); }
 
-        void Navigate(const std::string& folder)
+        void Navigate(const std::string& folder, bool remember = true)
         {
-            if (m_source == nullptr)
+            if (m_source == nullptr || folder.empty())
             {
                 return;
             }
-            std::vector<Marconi::Files::FileEntry> entries;
-            std::string error;
-            if (!m_source->List(folder, entries, error))
+            if (remember && !m_folder.empty() && folder != m_folder)
             {
-                wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
-                m_path->ChangeValue(wxString::FromUTF8(m_folder));
-                return;
+                m_history.push_back(m_folder);
+                m_future.clear();
             }
-            // Folders first, then by name, ignoring case; hidden files (".name") last.
-            std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
-                if (a.isFolder != b.isFolder)
-                {
-                    return a.isFolder;
-                }
-                bool aHidden = !a.name.empty() && a.name[0] == '.';
-                bool bHidden = !b.name.empty() && b.name[0] == '.';
-                if (aHidden != bHidden)
-                {
-                    return bHidden;
-                }
-                return wxString::FromUTF8(a.name).CmpNoCase(wxString::FromUTF8(b.name)) < 0;
+            int generation = ++m_generation;
+            Marconi::Files::FileSource* source = m_source;
+            m_work.Post([this, source, folder, generation]() {
+                auto entries = std::make_shared<std::vector<Marconi::Files::FileEntry>>();
+                std::string error;
+                bool ok = source->List(folder, *entries, error);
+                CallAfter([this, ok, folder, generation, entries, error]() {
+                    if (generation != m_generation)
+                    {
+                        return; // the user has gone somewhere else since
+                    }
+                    if (!ok)
+                    {
+                        if (!m_history.empty() && m_history.back() == m_folder)
+                        {
+                            m_history.pop_back();
+                        }
+                        wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
+                        return;
+                    }
+                    ShowFolder(folder, std::move(*entries));
+                });
             });
-            m_folder = folder;
-            m_entries = entries;
-            m_path->ChangeValue(wxString::FromUTF8(folder));
-            m_list->Freeze();
-            m_list->DeleteAllItems();
-            for (size_t i = 0; i < m_entries.size(); ++i)
-            {
-                const auto& entry = m_entries[i];
-                long row = m_list->InsertItem(static_cast<long>(i), wxString::FromUTF8(entry.name));
-                m_list->SetItem(row, 1, FormatSize(entry));
-                m_list->SetItem(row, 2, FormatModified(entry.modified));
-            }
-            m_list->Thaw();
         }
 
-        void Refresh()
-        {
-            if (!m_folder.empty())
-            {
-                Navigate(m_folder);
-            }
-        }
+        void Refresh() { Navigate(m_folder, false); }
 
         std::vector<std::string> GetSelectedPaths() const
         {
@@ -236,7 +381,7 @@ namespace MarconiUI
             return paths;
         }
 
-        // Paths dropped on this pane: from the other pane (`fromOtherPane`) or from Explorer/Finder.
+        // Paths dropped on this pane: from the other pane or from Explorer/Finder.
         void OnDropped(const std::vector<std::string>& paths, bool fromRemote)
         {
             if (fromRemote == m_remote)
@@ -247,6 +392,13 @@ namespace MarconiUI
         }
 
     private:
+        struct TreeData : public wxTreeItemData
+        {
+            explicit TreeData(std::string folder) : path(std::move(folder)) {}
+            std::string path;
+            bool loaded = false;
+        };
+
         class DropTarget : public wxDropTarget
         {
         public:
@@ -308,11 +460,194 @@ namespace MarconiUI
             wxCustomDataObject* m_paneFiles = nullptr;
         };
 
+        void ShowFolder(const std::string& folder, std::vector<Marconi::Files::FileEntry> entries)
+        {
+            m_folder = folder;
+            m_entries = std::move(entries);
+            Marconi::Files::SortEntries(m_entries, m_sortColumn, m_sortAscending);
+            m_list->Freeze();
+            m_list->DeleteAllItems();
+            for (size_t i = 0; i < m_entries.size(); ++i)
+            {
+                const auto& entry = m_entries[i];
+                long row = m_list->InsertItem(static_cast<long>(i), wxString::FromUTF8(entry.name),
+                                              entry.isFolder ? 0 : 1);
+                m_list->SetItem(row, 1, FormatSize(entry));
+                m_list->SetItem(row, 2, FormatModified(entry.modified));
+                m_list->SetItem(row, 3, wxString::FromUTF8(Marconi::Files::TypeName(entry)));
+            }
+            m_list->Thaw();
+            ShowCrumbs();
+            UpdateButtons();
+            SelectInTree(folder);
+        }
+
+        // The path as buttons: clicking one goes there.
+        void ShowCrumbs()
+        {
+            m_crumbs->Freeze();
+            m_crumbs->DestroyChildren();
+            wxSizer* sizer = m_crumbs->GetSizer();
+            sizer->Clear();
+            std::vector<Marconi::Files::PathPart> parts = Marconi::Files::SplitPath(m_folder);
+            for (size_t i = 0; i < parts.size(); ++i)
+            {
+                if (i > 0 && parts[i - 1].label != "/")
+                {
+                    sizer->Add(new wxStaticText(m_crumbs, wxID_ANY, wxString::FromUTF8("\xE2\x80\xBA")), 0,
+                               wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(2));
+                }
+                wxString label = parts[i].label == "/" && m_remote && m_source != nullptr ? wxString("/")
+                                                                                            : wxString::FromUTF8(parts[i].label);
+                wxButton* crumb = new wxButton(m_crumbs, wxID_ANY, label, wxDefaultPosition, wxDefaultSize,
+                                               wxBU_EXACTFIT | wxBORDER_NONE);
+                if (i + 1 == parts.size())
+                {
+                    crumb->SetFont(crumb->GetFont().Bold());
+                }
+                std::string path = parts[i].path;
+                crumb->Bind(wxEVT_BUTTON, [this, path](wxCommandEvent&) { Navigate(path); });
+                sizer->Add(crumb, 0, wxALIGN_CENTER_VERTICAL);
+            }
+            StyleWindow(m_crumbs);
+            m_crumbs->Layout();
+            m_crumbs->Thaw();
+        }
+
+        void UpdateButtons()
+        {
+            m_back->Enable(!m_history.empty());
+            m_forward->Enable(!m_future.empty());
+            m_up->Enable(!m_folder.empty() && Marconi::Files::ParentPath(m_folder) != m_folder);
+        }
+
+        void GoBack()
+        {
+            if (m_history.empty())
+            {
+                return;
+            }
+            m_future.push_back(m_folder);
+            std::string folder = m_history.back();
+            m_history.pop_back();
+            Navigate(folder, false);
+        }
+
+        void GoForward()
+        {
+            if (m_future.empty())
+            {
+                return;
+            }
+            m_history.push_back(m_folder);
+            std::string folder = m_future.back();
+            m_future.pop_back();
+            Navigate(folder, false);
+        }
+
         void GoUp()
         {
             if (!m_folder.empty())
             {
                 Navigate(Marconi::Files::ParentPath(m_folder));
+            }
+        }
+
+        void SortBy(int column)
+        {
+            static const Marconi::Files::SortColumn kColumns[] = {
+                Marconi::Files::SortColumn::Name, Marconi::Files::SortColumn::Size,
+                Marconi::Files::SortColumn::Modified, Marconi::Files::SortColumn::Type};
+            if (column < 0 || column > 3)
+            {
+                return;
+            }
+            Marconi::Files::SortColumn chosen = kColumns[column];
+            m_sortAscending = chosen == m_sortColumn ? !m_sortAscending : chosen != Marconi::Files::SortColumn::Modified;
+            m_sortColumn = chosen;
+            ShowFolder(m_folder, m_entries);
+        }
+
+        // Fills in a folder's subfolders the first time it's opened in the tree, in the background.
+        void LoadTreeItem(const wxTreeItemId& item)
+        {
+            auto* data = static_cast<TreeData*>(m_tree->GetItemData(item));
+            if (data == nullptr || data->loaded || m_source == nullptr)
+            {
+                return;
+            }
+            data->loaded = true;
+            m_tree->DeleteChildren(item);
+            m_tree->AppendItem(item, wxString::FromUTF8("Loading\xE2\x80\xA6"));
+            Marconi::Files::FileSource* source = m_source;
+            std::string folder = data->path;
+            int generation = m_generation;
+            m_work.Post([this, source, folder, item, generation]() {
+                auto entries = std::make_shared<std::vector<Marconi::Files::FileEntry>>();
+                std::string error;
+                bool ok = source->List(folder, *entries, error);
+                CallAfter([this, ok, folder, item, generation, entries]() {
+                    if (!item.IsOk() || !m_source || FindTreeItem(m_treeRoot, folder) != item)
+                    {
+                        return; // the tree was rebuilt meanwhile
+                    }
+                    (void)generation;
+                    m_tree->DeleteChildren(item);
+                    if (!ok)
+                    {
+                        m_tree->SetItemHasChildren(item, false);
+                        return;
+                    }
+                    Marconi::Files::SortEntries(*entries, Marconi::Files::SortColumn::Name, true);
+                    bool any = false;
+                    for (const auto& entry : *entries)
+                    {
+                        if (!entry.isFolder)
+                        {
+                            continue;
+                        }
+                        wxTreeItemId child =
+                            m_tree->AppendItem(item, wxString::FromUTF8(entry.name), 0, -1,
+                                               new TreeData(Marconi::Files::JoinPath(folder, entry.name)));
+                        m_tree->SetItemHasChildren(child, true);
+                        any = true;
+                    }
+                    m_tree->SetItemHasChildren(item, any);
+                    SelectInTree(m_folder);
+                });
+            });
+        }
+
+        wxTreeItemId FindTreeItem(const wxTreeItemId& parent, const std::string& path)
+        {
+            wxTreeItemIdValue cookie;
+            for (wxTreeItemId child = m_tree->GetFirstChild(parent, cookie); child.IsOk();
+                 child = m_tree->GetNextChild(parent, cookie))
+            {
+                auto* data = static_cast<TreeData*>(m_tree->GetItemData(child));
+                if (data != nullptr && data->path == path)
+                {
+                    return child;
+                }
+                wxTreeItemId found = FindTreeItem(child, path);
+                if (found.IsOk())
+                {
+                    return found;
+                }
+            }
+            return wxTreeItemId();
+        }
+
+        // Highlights the folder being shown, if the tree has it open.
+        void SelectInTree(const std::string& folder)
+        {
+            wxTreeItemId item = FindTreeItem(m_treeRoot, folder);
+            if (item.IsOk() && m_tree->GetSelection() != item)
+            {
+                m_syncingTree = true;
+                m_tree->SelectItem(item);
+                m_tree->EnsureVisible(item);
+                m_syncingTree = false;
             }
         }
 
@@ -338,6 +673,13 @@ namespace MarconiUI
             else if (event.GetKeyCode() == WXK_F5)
             {
                 Refresh();
+            }
+            else if (event.GetKeyCode() == 'A' && event.ControlDown())
+            {
+                for (long row = 0; row < m_list->GetItemCount(); ++row)
+                {
+                    m_list->Select(row);
+                }
             }
             else
             {
@@ -503,10 +845,46 @@ namespace MarconiUI
         Marconi::Files::FileSource* m_source = nullptr;
         std::string m_folder;
         std::vector<Marconi::Files::FileEntry> m_entries;
+        std::vector<std::string> m_history; // for Back
+        std::vector<std::string> m_future;  // for Forward
+        int m_generation = 0;               // the latest listing asked for; older answers are dropped
+        bool m_syncingTree = false;
+        Marconi::Files::SortColumn m_sortColumn = Marconi::Files::SortColumn::Name;
+        bool m_sortAscending = true;
         wxStaticText* m_heading = nullptr;
-        wxTextCtrl* m_path = nullptr;
+        wxBitmapButton* m_back = nullptr;
+        wxBitmapButton* m_forward = nullptr;
+        wxBitmapButton* m_up = nullptr;
+        wxPanel* m_crumbs = nullptr;
+        wxSplitterWindow* m_split = nullptr;
+        wxTreeCtrl* m_tree = nullptr;
         wxListView* m_list = nullptr;
+        wxImageList* m_icons = nullptr;
+        wxTreeItemId m_treeRoot;
+        BackgroundWork m_work; // last, so it stops first
     };
+
+    namespace
+    {
+        // This computer: the home folder, then the drives (Windows) or the root.
+        std::vector<FilePane::Root> LocalRoots(const std::string& home)
+        {
+            std::vector<FilePane::Root> roots = {{"Home", home}};
+#if defined(__WXMSW__)
+            for (const wxString& volume : wxFSVolume::GetVolumes(wxFS_VOL_MOUNTED))
+            {
+                wxString path = volume;
+                path.Replace("\\", "/");
+                wxString label = path;
+                label.RemoveLast();
+                roots.push_back({label, path.utf8_string()});
+            }
+#else
+            roots.push_back({"Computer", "/"});
+#endif
+            return roots;
+        }
+    } // namespace
 
     FilePanel::FilePanel(wxWindow* parent, const Remote& remote) : wxPanel(parent), m_remote(remote)
     {
@@ -529,7 +907,7 @@ namespace MarconiUI
         panes->Add(m_localPane, 1, wxEXPAND | wxRIGHT, FromDIP(6));
         panes->Add(middle, 0, wxEXPAND | wxRIGHT, FromDIP(6));
         panes->Add(m_remotePane, 1, wxEXPAND);
-        sizer->Add(panes, 3, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(6));
+        sizer->Add(panes, 1, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(6));
 
         wxBoxSizer* transfersBar = new wxBoxSizer(wxHORIZONTAL);
         wxStaticText* transfersHeading = new wxStaticText(this, wxID_ANY, "Transfers");
@@ -540,10 +918,10 @@ namespace MarconiUI
         sizer->Add(transfersBar, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(6));
         m_transfers = new wxListView(this, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 60)),
                                      wxLC_REPORT | wxLC_NO_HEADER | wxBORDER_SIMPLE);
-        m_transfers->SetMinSize(FromDIP(wxSize(-1, 60)));
+        m_transfers->SetMinSize(FromDIP(wxSize(-1, 72)));
         m_transfers->AppendColumn("File", wxLIST_FORMAT_LEFT, FromDIP(260));
         m_transfers->AppendColumn("Progress", wxLIST_FORMAT_LEFT, FromDIP(260));
-        sizer->Add(m_transfers, 1, wxEXPAND | wxALL, FromDIP(6));
+        sizer->Add(m_transfers, 0, wxEXPAND | wxALL, FromDIP(6));
         SetSizer(sizer);
 
         m_upload->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
@@ -568,7 +946,7 @@ namespace MarconiUI
             },
             [this](const std::string& path) { return AskAboutExisting(path); });
 
-        m_localPane->SetSource(&m_local, m_local.GetHome());
+        m_localPane->SetSource(&m_local, m_local.GetHome(), LocalRoots(m_local.GetHome()));
         m_upload->Enable(false);
         m_download->Enable(false);
         SetMessage("Not connected yet.");
@@ -649,6 +1027,8 @@ namespace MarconiUI
         {
             m_sftp->Abort();
         }
+        m_localPane->StopWork(); // their listings use the file sources that go next
+        m_remotePane->StopWork();
         m_queue.reset(); // cancels and waits for the copy in progress
         JoinWorker();
         // The temporary copies made for drags out: Explorer or Finder has copied them by now.
@@ -711,7 +1091,7 @@ namespace MarconiUI
             if (!m_sftp || !m_sftp->IsLoggedIn())
             {
                 m_state = State::Idle;
-                m_remotePane->SetSource(nullptr, "");
+                m_remotePane->SetSource(nullptr, "", {});
                 m_upload->Enable(false);
                 m_download->Enable(false);
             }
@@ -738,7 +1118,17 @@ namespace MarconiUI
         m_state = State::Connected;
         SetMessage("");
         m_remotePane->SetHeading(m_remote.displayName);
-        m_remotePane->SetSource(source, folder);
+        std::vector<FilePane::Root> roots;
+        if (source == m_tight)
+        {
+            roots.push_back({"Drives", "/"}); // TightVNC lists the drives at "/"
+        }
+        else
+        {
+            roots.push_back({"Home", source->GetHome()});
+            roots.push_back({"Computer", "/"});
+        }
+        m_remotePane->SetSource(source, folder, roots);
         m_upload->Enable(true);
         m_download->Enable(true);
         if (!m_pendingDesktopUploads.empty())
@@ -763,6 +1153,7 @@ namespace MarconiUI
         m_state = State::Connecting;
         SetMessage("Connecting to " + m_remote.displayName + " for file transfer" + wxString::FromUTF8("\xE2\x80\xA6"));
         JoinWorker();
+        m_remotePane->SetSource(nullptr, "", {});
         m_sftp = std::make_unique<Marconi::Files::SftpFiles>();
         Marconi::Files::SftpFiles* sftp = m_sftp.get();
         std::string host = m_remote.host;

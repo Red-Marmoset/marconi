@@ -131,4 +131,5 @@ namespace MarconiTest
     void RunLocalKeysTests();
     void RunFilesTests();
     void RunTightFilesTests();
+    void RunFileViewTests();
 } // namespace MarconiTest

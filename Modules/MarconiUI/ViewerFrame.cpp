@@ -83,6 +83,7 @@ namespace MarconiUI
         SetIcons(GetAppIcons());
         m_canvas = new VncCanvas(this, m_client);
         m_aui.SetManagedWindow(this);
+        m_aui.SetDockSizeConstraint(0.5, 0.6); // the file panel needs room: up to 60% of the height (wx: 30%)
         m_aui.AddPane(m_canvas, wxAuiPaneInfo().Name("Screen").CenterPane());
 
         CreateToolbar();
@@ -100,8 +101,8 @@ namespace MarconiUI
                                    .Name("Files")
                                    .Caption("Files")
                                    .Bottom()
-                                   .BestSize(FromDIP(wxSize(900, 380)))
-                                   .MinSize(FromDIP(wxSize(480, 300)))
+                                   .BestSize(FromDIP(wxSize(1000, 480)))
+                                   .MinSize(FromDIP(wxSize(480, 420)))
                                    .Floatable(true)
                                    .Dockable(true)
                                    .Hide());

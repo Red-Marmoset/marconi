@@ -228,7 +228,7 @@ namespace MarconiUI
             return false;
         }
         const bool headless = parser.Found("headless");
-        if (headless || parser.Found("sftp-check"))
+        if (headless || parser.Found("sftp-check") || parser.Found("files"))
         {
             // No window and nobody watching: a failed wxWidgets check goes to the log instead of an alert.
             wxSetAssertHandler([](const wxString& file, int line, const wxString& function, const wxString& condition,
