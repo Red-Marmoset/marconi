@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Red Marmoset Studios Ltd.
-# Renders the installer's branding bitmaps from the app icon's geometry, the theme's accent red and Nebula Sans:
+# Renders the installer's branding bitmaps from the app icon's geometry, the theme's accent red, Nebula Sans and the
+# Red Marmoset logo (Assets/RedMarmoset.png, from the studio website):
 #
 #   Installer/Art/Wizard.bmp   164x314, the left panel of the welcome and finish pages
 #   Installer/Art/Header.bmp   150x57, the top-right image on the other pages
@@ -26,6 +27,7 @@ WHITE = (255, 255, 255)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONTS = os.path.join(ROOT, "Assets", "Fonts")
+STUDIO_LOGO = os.path.join(ROOT, "Assets", "RedMarmoset.png")
 
 
 def font(name, size):
@@ -54,14 +56,24 @@ def wizard():
         draw.line([(0, y), (width, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(RED, RED_DARK)))
 
     mark = logo(112, WHITE)
-    image.paste(mark, ((width - mark.width) // 2, 40 * SUPERSAMPLE), mark)
+    image.paste(mark, ((width - mark.width) // 2, 26 * SUPERSAMPLE), mark)
 
-    centred_text(draw, width, 148 * SUPERSAMPLE, "Marconi", font("NebulaSans-Black.ttf", 30), WHITE)
+    centred_text(draw, width, 132 * SUPERSAMPLE, "Marconi", font("NebulaSans-Black.ttf", 30), WHITE)
     subtitle = font("NebulaSans-Semibold.ttf", 10)
     for i, line in enumerate(["Multi-protocol Access", "and Remote Control", "Interface"]):
-        centred_text(draw, width, (192 + i * 14) * SUPERSAMPLE, line, subtitle, (240, 200, 205))
+        centred_text(draw, width, (174 + i * 14) * SUPERSAMPLE, line, subtitle, (240, 200, 205))
 
-    centred_text(draw, width, 286 * SUPERSAMPLE, "Red Marmoset Studios", font("NebulaSans-Semibold.ttf", 9),
+    # The studio logo is red on transparent, so it sits on a white disc.
+    disc = 52 * SUPERSAMPLE
+    discX, discY = (width - disc) // 2, 228 * SUPERSAMPLE
+    draw.ellipse((discX, discY, discX + disc - 1, discY + disc - 1), fill=WHITE)
+    studio = Image.open(STUDIO_LOGO).convert("RGBA")
+    studio = studio.crop(studio.getbbox())
+    inner = disc - 6 * SUPERSAMPLE
+    studio = studio.resize((inner, inner), Image.LANCZOS)
+    image.paste(studio, (discX + (disc - inner) // 2, discY + (disc - inner) // 2), studio)
+
+    centred_text(draw, width, 288 * SUPERSAMPLE, "Red Marmoset Studios", font("NebulaSans-Semibold.ttf", 9),
                  (220, 150, 160))
     return image.resize((164, 314), Image.LANCZOS)
 
