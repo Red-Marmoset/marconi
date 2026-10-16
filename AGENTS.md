@@ -42,7 +42,8 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
   `Marconi.icns`, fonts in `Contents/Resources`), signs it ad-hoc or with `MARCONI_SIGN_IDENTITY`, and writes
   `Build/Installer/Marconi-<version>-macos-<arch>.dmg`. BuildTool itself makes a bare executable, not a bundle.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
-  logs every input event it receives.
+  logs every input event it receives. `Tools/fake_vencrypt_server.py` is the same for encrypted (VeNCrypt over TLS)
+  connections, and `Tools/TlsStream_OpenSSL.cpp` is the reference TLS stream it was checked against (not built).
 
 ## Architecture
 
@@ -54,7 +55,11 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
   - Decoders write into `Framebuffer` under its mutex, through a scratch `PixelBuffer`, and never hold the lock
     while reading the network.
   - Input senders are thread-safe.
-- `OnCredentialsRequired` blocks the worker until the UI answers. `ViewerFrame` releases it if the window closes.
+- `OnCredentialsRequired` and `OnUntrustedCertificate` block the worker until the UI answers (`ViewerFrame::AskUser`).
+  `ViewerFrame` releases it if the window closes.
+- Encryption: `Net/Tls.h` is the TLS stream interface; `Net/Tls.cpp` returns nothing until a platform implementation
+  exists (see README, "Encryption: what's done and what's left"). The handshake only chooses VeNCrypt when
+  `IsTlsAvailable()` is true, so nothing changes for users until then except the "not encrypted" status.
 - The client always requests 32bpp little-endian 0x00RRGGBB pixels. ZRLE's CPIXEL is B,G,R; Tight's TPIXEL is
   R,G,B.
 

@@ -19,7 +19,12 @@ namespace Marconi
 
         ptrdiff_t SocketSource::Read(void* buffer, size_t length)
         {
-            return m_socket.Receive(buffer, length);
+            ptrdiff_t got = m_socket.Receive(buffer, length);
+            if (got < 0 && m_socket.TimedOut())
+            {
+                throw RfbError("The server stopped responding");
+            }
+            return got;
         }
 
         ptrdiff_t MemorySource::Read(void* buffer, size_t length)

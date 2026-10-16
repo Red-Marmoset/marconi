@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Keep application surfaces responsive while respecting native wx appearance limitations.
+// Light, dark or system appearance: the saved choice, the shared colour palette and applying it to windows
+
 #include "Appearance.h"
 
 #include <wx/app.h>

@@ -70,9 +70,10 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
-!define MUI_WELCOMEPAGE_TEXT "This will remove ${APP_NAME} from your computer. Your saved connections, stored passwords and logs are kept.$\r$\n$\r$\nClose ${APP_NAME} before continuing, then click Next."
+!define MUI_WELCOMEPAGE_TEXT "This will remove ${APP_NAME} from your computer.$\r$\n$\r$\nYour saved connections, stored passwords and logs are kept unless you choose to remove them too, two pages on.$\r$\n$\r$\nClose ${APP_NAME} before continuing, then click Next."
 !insertmacro MUI_UNPAGE_WELCOME
 !insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_COMPONENTS
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
 
@@ -88,6 +89,19 @@ FunctionEnd
 
 Function un.onInit
     SetRegView 64
+FunctionEnd
+
+; The account signed in at this computer's screen (it may differ from the account running this uninstaller after a
+; UAC prompt), or "" if Windows won't say. Pushes the name.
+Function un.GetConsoleUser
+    System::Call 'kernel32::WTSGetActiveConsoleSessionId() i .r0'
+    System::Call 'wtsapi32::WTSQuerySessionInformationW(p 0, i r0, i 5, *p .r1, *i .r2) i .r3'
+    StrCpy $4 ""
+    ${If} $3 != 0
+        System::Call '*$1(&w256 .r4)'
+        System::Call 'wtsapi32::WTSFreeMemory(p r1)'
+    ${EndIf}
+    Push $4
 FunctionEnd
 
 Section "${APP_NAME}" SecApp
@@ -141,9 +155,27 @@ SectionEnd
     !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Add a ${APP_NAME} shortcut to the desktop."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
-; Saved connections (registry), keychain passwords and logs belong to each user and are kept, so reinstalling or
-; upgrading doesn't lose them.
-Section "Uninstall"
+; Saved connections (registry), keychain passwords and logs belong to each user and are kept unless asked for, so
+; reinstalling or upgrading doesn't lose them. This section comes first because it needs Marconi.exe, which the
+; next one deletes. It is unticked by default and never runs in the silent uninstall an upgrade does.
+Section /o "un.Saved connections, passwords and logs" SecUnData
+    ; The data lives in the user's own profile and keychain, so only Marconi running as that user can remove it.
+    ; After a UAC prompt the uninstaller may be running as a different (administrator) account.
+    Call un.GetConsoleUser
+    Pop $1
+    UserInfo::GetName
+    Pop $2
+    ${If} $1 != ""
+    ${AndIf} $1 != $2
+        MessageBox MB_OK|MB_ICONINFORMATION "This uninstaller is running as $2, so it can't remove the saved connections of $1.$\r$\n$\r$\nTo remove them, open ${APP_NAME} as $1 and choose Settings > Remove my saved connections, passwords and logs." /SD IDOK
+    ${Else}
+        DetailPrint "Removing the saved connections, passwords and logs of $2"
+        ExecWait '"$INSTDIR\${APP_EXE}" --remove-my-data'
+    ${EndIf}
+SectionEnd
+
+Section "un.${APP_NAME}" SecUnApp
+    SectionIn RO
     SetShellVarContext all
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
     Delete "$DESKTOP\${APP_NAME}.lnk"
@@ -156,3 +188,8 @@ Section "Uninstall"
 
     DeleteRegKey HKLM "${UNINSTALL_KEY}"
 SectionEnd
+
+!insertmacro MUI_UNFUNCTION_DESCRIPTION_BEGIN
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecUnApp} "Remove the ${APP_NAME} program files and shortcuts."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecUnData} "Also remove your saved connections, their passwords from Windows Credential Manager, your settings and ${APP_NAME}'s logs. Other users' data stays."
+!insertmacro MUI_UNFUNCTION_DESCRIPTION_END

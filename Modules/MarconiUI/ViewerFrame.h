@@ -19,6 +19,7 @@ class wxToolBar;
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -36,6 +37,7 @@ namespace MarconiUI
         wxString savedId;       // the saved connection this window was opened from, if any
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         bool skipProbe = false; // the address's protocol and port are already known (e.g. found on the network)
+        std::vector<uint8_t> trustedCertificateSha256; // a server certificate the user accepted before
 
         // Headless (testing and automation): no window and no dialogs. Saves the picture the viewer would show
         // to the log folder every `snapshotEverySeconds`, and closes after `quitAfterSeconds`.
@@ -73,8 +75,16 @@ namespace MarconiUI
         void OnServerCutText(const std::string& latin1Text) override;
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
+        bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
+
+        // Connection thread: runs `question` on the UI thread (it shows a dialog and returns the answer) and waits
+        // for the answer, or for the window to close. The question must keep its results in members, not in the
+        // calling thread's locals, since that thread may have moved on if the window closed meanwhile.
+        bool AskUser(const std::function<bool()>& question);
 
         // UI thread
+        void RunPendingQuestion();
+        bool ConfirmCertificate(const Marconi::Net::TlsCertificate& certificate);
         void Connect();
         void StartProbe();
         void StopProbe();
@@ -83,7 +93,6 @@ namespace MarconiUI
         void RememberDetected(const wxString& detected);
         void HandleConnected(const Marconi::Rfb::ServerInit& serverInit);
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
-        void AskForCredentials(Marconi::Rfb::CredentialsKind kind);
         void SaveSnapshot();
         void WatchClipboard();
         void SaveHeadlessSnapshot();
@@ -137,12 +146,14 @@ namespace MarconiUI
         bool m_reprobed = false;        // a remembered result failed and we probed again; don't loop
         uint16_t m_port = 0;            // the port we connect to
 
-        // Hand-off between the connection thread (waiting for credentials) and the UI thread (asking the user).
-        std::mutex m_credentialsMutex;
-        std::condition_variable m_credentialsChanged;
-        bool m_credentialsAnswered = false;
-        bool m_credentialsAccepted = false;
-        Marconi::Rfb::Credentials m_credentialsAnswer;
-        bool m_closing = false; // guarded by m_credentialsMutex
+        // Hand-off between the connection thread (waiting for an answer) and the UI thread (asking the user), for
+        // credentials and for certificates this computer doesn't trust.
+        std::mutex m_questionMutex;
+        std::condition_variable m_questionChanged;
+        std::function<bool()> m_question; // waiting to run on the UI thread
+        bool m_questionAnswered = false;
+        bool m_questionAccepted = false;
+        Marconi::Rfb::Credentials m_credentialsAnswer; // what the credentials prompt returned
+        bool m_closing = false; // guarded by m_questionMutex
     };
 } // namespace MarconiUI

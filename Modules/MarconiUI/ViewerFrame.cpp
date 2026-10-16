@@ -11,6 +11,7 @@
 
 #include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
+#include <MarconiCore/Text.h>
 
 #include <Log/Log.h>
 
@@ -27,12 +28,28 @@
 
 #include <algorithm>
 #include <chrono>
+#include <functional>
 #include <string>
 
 namespace MarconiUI
 {
     namespace
     {
+        // "AB:CD:..." in two lines, as browsers show certificate fingerprints.
+        wxString FormatFingerprint(const std::vector<uint8_t>& sha256)
+        {
+            wxString text;
+            for (size_t i = 0; i < sha256.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    text += i == sha256.size() / 2 ? "\n" : ":";
+                }
+                text += wxString::Format("%02X", sha256[i]);
+            }
+            return text;
+        }
+
         enum CommandId
         {
             ID_SCALE_FIT = wxID_HIGHEST + 100,
@@ -128,6 +145,7 @@ namespace MarconiUI
         }
         options.savedId = connection.id;
         options.detected = connection.detected;
+        options.trustedCertificateSha256 = Marconi::HexToBytes(connection.certificate.utf8_string());
         options.credentials.username = connection.username.utf8_string();
         wxString password;
         if (connection.rememberPassword && store.LoadPassword(connection.id, password))
@@ -202,10 +220,10 @@ namespace MarconiUI
         }
         // Normally already done in OnClose; the Client must stop before this listener goes away.
         {
-            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            std::lock_guard<std::mutex> lock(m_questionMutex);
             m_closing = true;
         }
-        m_credentialsChanged.notify_all();
+        m_questionChanged.notify_all();
         m_client.Disconnect();
     }
 
@@ -246,6 +264,7 @@ namespace MarconiUI
         connection.host = m_options.address.host;
         connection.port = port;
         connection.credentials = m_options.credentials;
+        connection.trustedCertificateSha256 = m_options.trustedCertificateSha256;
         connection.encodings = m_options.encodings;
         connection.exactEncodings = !m_options.encodings.empty();
         connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
@@ -281,7 +300,7 @@ namespace MarconiUI
     void ViewerFrame::HandleProbe(const std::vector<Marconi::Net::ProbeResult>& results)
     {
         {
-            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            std::lock_guard<std::mutex> lock(m_questionMutex);
             if (m_closing)
             {
                 return;
@@ -388,6 +407,43 @@ namespace MarconiUI
         CallAfter([this, info]() { HandleDisconnected(info); });
     }
 
+    bool ViewerFrame::AskUser(const std::function<bool()>& question)
+    {
+        std::unique_lock<std::mutex> lock(m_questionMutex);
+        if (m_closing)
+        {
+            return false;
+        }
+        m_question = question;
+        m_questionAnswered = false;
+        m_questionAccepted = false;
+        CallAfter([this]() { RunPendingQuestion(); });
+        m_questionChanged.wait(lock, [this]() { return m_questionAnswered || m_closing; });
+        return !m_closing && m_questionAccepted;
+    }
+
+    void ViewerFrame::RunPendingQuestion()
+    {
+        std::function<bool()> question;
+        {
+            // The window may have started closing after this was queued; nobody is waiting any more.
+            std::lock_guard<std::mutex> lock(m_questionMutex);
+            if (m_closing || !m_question)
+            {
+                return;
+            }
+            question = std::move(m_question);
+            m_question = nullptr;
+        }
+        bool accepted = question();
+        {
+            std::lock_guard<std::mutex> lock(m_questionMutex);
+            m_questionAccepted = accepted;
+            m_questionAnswered = true;
+        }
+        m_questionChanged.notify_all();
+    }
+
     bool ViewerFrame::OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials)
     {
         // Connection thread: ask the UI thread and wait for the answer (or for the window to close).
@@ -396,52 +452,80 @@ namespace MarconiUI
             LOG_WARNING("Viewer", "Headless: the server wants credentials that aren't saved for this connection");
             return false;
         }
-        std::unique_lock<std::mutex> lock(m_credentialsMutex);
-        if (m_closing)
+        bool accepted = AskUser([this, kind]() {
+            SetStatusText("Waiting for credentials...");
+            bool offerRemember = !m_options.savedId.empty() && ConnectionStore::IsKeychainAvailable();
+            CredentialsDialog dialog(this, GetServerDisplayName(), kind,
+                                     wxString::FromUTF8(m_options.credentials.username), offerRemember);
+            if (dialog.ShowModal() != wxID_OK)
+            {
+                m_rememberPassword = false;
+                return false;
+            }
+            m_rememberPassword = dialog.GetRemember();
+            m_credentialsAnswer.username = dialog.GetUsername().utf8_string();
+            m_credentialsAnswer.password = dialog.GetPassword().utf8_string();
+            // Keep them for the rest of this window's life so reconnects don't ask again.
+            m_options.credentials = m_credentialsAnswer;
+            SetStatusText("Authenticating...");
+            return true;
+        });
+        if (!accepted)
         {
             return false;
         }
-        m_credentialsAnswered = false;
-        CallAfter([this, kind]() { AskForCredentials(kind); });
-        m_credentialsChanged.wait(lock, [this]() { return m_credentialsAnswered || m_closing; });
-        if (m_closing || !m_credentialsAccepted)
-        {
-            return false;
-        }
+        std::lock_guard<std::mutex> lock(m_questionMutex);
         credentials = m_credentialsAnswer;
         return true;
     }
 
-    void ViewerFrame::AskForCredentials(Marconi::Rfb::CredentialsKind kind)
+    bool ViewerFrame::OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate)
     {
+        // Connection thread.
+        if (m_options.headless)
         {
-            // The window may have started closing after this was queued; nobody is waiting any more.
-            std::lock_guard<std::mutex> lock(m_credentialsMutex);
-            if (m_closing)
+            LOG_WARNING("Viewer", "Headless: the server's certificate isn't trusted (%s); not connecting",
+                        certificate.problem.c_str());
+            return false;
+        }
+        LOG_INFO("Viewer", "The server's certificate isn't trusted (%s); asking", certificate.problem.c_str());
+        Marconi::Net::TlsCertificate copy = certificate; // the UI thread gets its own copy
+        return AskUser([this, copy]() { return ConfirmCertificate(copy); });
+    }
+
+    bool ViewerFrame::ConfirmCertificate(const Marconi::Net::TlsCertificate& certificate)
+    {
+        SetStatusText("Waiting for you to check the server's certificate...");
+        wxString message = wxString::Format(
+            "%s identifies itself with a security certificate this computer doesn't trust (%s).\n\n"
+            "Issued to: %s\nIssued by: %s\nValid until: %s\n\nFingerprint (SHA-256):\n%s\n\n"
+            "If you set up that computer yourself, this is normal: connect anyway, and Marconi will remember this "
+            "certificate for this connection. If you weren't expecting it, someone may be listening in: cancel and "
+            "check the other computer.",
+            wxString::FromUTF8(m_options.address.host), wxString::FromUTF8(certificate.problem),
+            wxString::FromUTF8(certificate.subject), wxString::FromUTF8(certificate.issuer),
+            wxString::FromUTF8(certificate.validUntil), FormatFingerprint(certificate.sha256));
+        wxMessageDialog dialog(this, message, "Connection to " + GetServerDisplayName(),
+                               wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+        dialog.SetYesNoLabels("Connect Anyway", "Cancel");
+        if (dialog.ShowModal() != wxID_YES)
+        {
+            return false;
+        }
+        // Reconnects in this window don't ask again, and neither does the saved connection next time.
+        m_options.trustedCertificateSha256 = certificate.sha256;
+        if (!m_options.savedId.empty())
+        {
+            ConnectionStore store;
+            SavedConnection saved;
+            if (store.Load(m_options.savedId, saved))
             {
-                return;
+                saved.certificate = wxString::FromUTF8(Marconi::BytesToHex(certificate.sha256));
+                store.Save(saved);
             }
         }
-        SetStatusText("Waiting for credentials...");
-        bool offerRemember = !m_options.savedId.empty() && ConnectionStore::IsKeychainAvailable();
-        CredentialsDialog dialog(this, GetServerDisplayName(), kind,
-                                 wxString::FromUTF8(m_options.credentials.username), offerRemember);
-        bool accepted = dialog.ShowModal() == wxID_OK;
-        m_rememberPassword = accepted && dialog.GetRemember();
-        {
-            std::lock_guard<std::mutex> lock(m_credentialsMutex);
-            m_credentialsAccepted = accepted;
-            m_credentialsAnswer.username = dialog.GetUsername().utf8_string();
-            m_credentialsAnswer.password = dialog.GetPassword().utf8_string();
-            m_credentialsAnswered = true;
-        }
-        m_credentialsChanged.notify_all();
-        if (accepted)
-        {
-            // Keep them for the rest of this window's life so reconnects don't ask again.
-            m_options.credentials = m_credentialsAnswer;
-            SetStatusText("Authenticating...");
-        }
+        SetStatusText("Connecting securely...");
+        return true;
     }
 
     void ViewerFrame::HandleConnected(const Marconi::Rfb::ServerInit& serverInit)
@@ -593,7 +677,7 @@ namespace MarconiUI
     void ViewerFrame::HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info)
     {
         {
-            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            std::lock_guard<std::mutex> lock(m_questionMutex);
             if (m_closing)
             {
                 return;
@@ -834,6 +918,10 @@ namespace MarconiUI
         }
         wxSize desktop = m_canvas->GetDesktopSize();
         wxString status = wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), desktop.x, desktop.y);
+        // Always say whether the connection is encrypted: without encryption, the picture and every key typed can
+        // be read by anyone on the network between the two computers.
+        status += m_client.IsEncrypted() ? " - encrypted, " + wxString::FromUTF8(m_client.GetEncryptionName())
+                                         : wxString(" - not encrypted");
         if (m_waitingForPicture)
         {
             status += " - waiting for the screen...";
@@ -871,10 +959,10 @@ namespace MarconiUI
             SaveSettings(); // a headless run must not change the user's saved settings
         }
         {
-            std::lock_guard<std::mutex> lock(m_credentialsMutex);
+            std::lock_guard<std::mutex> lock(m_questionMutex);
             m_closing = true;
         }
-        m_credentialsChanged.notify_all();
+        m_questionChanged.notify_all();
         StopProbe();
         StopTimers();
         m_canvas->ReleaseInput();

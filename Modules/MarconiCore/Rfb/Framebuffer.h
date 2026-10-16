@@ -30,8 +30,8 @@ namespace Marconi
 
             // True if `rect` lies entirely inside the framebuffer. Decoders reject anything else.
             bool Contains(const Rect& rect) const;
-        // True when every pixel is black, e.g. before the server has sent a real picture.
-        bool IsBlack() const;
+            // True when every pixel is black, e.g. before the server has sent a real picture.
+            bool IsBlack() const;
 
             void Fill(const Rect& rect, uint32_t colour);
             void CopyRect(const Rect& destination, int sourceX, int sourceY);

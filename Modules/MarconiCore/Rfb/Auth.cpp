@@ -7,6 +7,9 @@
 
 #include <Crypto/Crypto.h>
 
+#include <Log/Log.h>
+
+#include <algorithm>
 #include <cstring>
 
 namespace Marconi
@@ -70,15 +73,121 @@ namespace Marconi
                 Credentials credentials = RequestCredentials(provider, CredentialsKind::Password);
                 out.Send(ComputeVncAuthResponse(credentials.password, challenge));
             }
+
+            // VeNCrypt's Plain login: the user name and password as they are, which is safe only because the
+            // connection is already encrypted when this runs.
+            void AuthenticatePlain(ByteSink& out, const CredentialsProvider& provider)
+            {
+                Credentials credentials = RequestCredentials(provider, CredentialsKind::Account);
+                OutBuffer message;
+                message.U32(static_cast<uint32_t>(credentials.username.size()))
+                    .U32(static_cast<uint32_t>(credentials.password.size()))
+                    .Append(credentials.username)
+                    .Append(credentials.password);
+                out.Send(message.Data());
+            }
+
+            std::string ListSubtypes(const std::vector<uint32_t>& subtypes)
+            {
+                std::string text;
+                for (uint32_t subtype : subtypes)
+                {
+                    text += (text.empty() ? "" : ", ") + std::to_string(subtype);
+                }
+                return text;
+            }
+
+            // VeNCrypt: agree on version 0.2, pick an encrypted subtype, start TLS, then run the subtype's login.
+            uint32_t AuthenticateVeNCrypt(InStream& in, ByteSink& out, const CredentialsProvider& provider,
+                                          const TlsStarter& startTls)
+            {
+                if (!startTls)
+                {
+                    throw RfbError("This build of Marconi can't make encrypted connections yet");
+                }
+                uint8_t major = in.U8();
+                uint8_t minor = in.U8();
+                LOG_INFO("Rfb", "Server speaks VeNCrypt %d.%d", major, minor);
+                if (major != 0 || minor < 1)
+                {
+                    throw RfbError("The server uses a version of VeNCrypt Marconi doesn't support (" +
+                                   std::to_string(major) + "." + std::to_string(minor) + ")");
+                }
+                OutBuffer version;
+                version.U8(0).U8(2);
+                out.Send(version.Data());
+                if (in.U8() != 0)
+                {
+                    throw RfbError("The server rejected VeNCrypt version 0.2");
+                }
+
+                uint8_t count = in.U8();
+                std::vector<uint32_t> offered;
+                for (uint8_t i = 0; i < count; ++i)
+                {
+                    offered.push_back(in.U32());
+                }
+                LOG_INFO("Rfb", "Server offers VeNCrypt subtypes [%s]", ListSubtypes(offered).c_str());
+                uint32_t chosen = ChooseVeNCryptSubtype(offered);
+                if (chosen == 0)
+                {
+                    throw RfbError("The server offers no encrypted login method Marconi supports "
+                                   "(VeNCrypt subtypes: " + ListSubtypes(offered) + ")");
+                }
+                OutBuffer choice;
+                choice.U32(chosen);
+                out.Send(choice.Data());
+                if (in.U8() != 1)
+                {
+                    throw RfbError("The server couldn't start encryption");
+                }
+
+                bool anonymous = chosen == VeNCrypt::TlsNone || chosen == VeNCrypt::TlsVnc || chosen == VeNCrypt::TlsPlain;
+                startTls(anonymous);
+                LOG_INFO("Rfb", "Connection encrypted; logging in with VeNCrypt subtype %u", chosen);
+                switch (chosen)
+                {
+                case VeNCrypt::TlsVnc:
+                case VeNCrypt::X509Vnc:
+                    AuthenticateVnc(in, out, provider);
+                    break;
+                case VeNCrypt::TlsPlain:
+                case VeNCrypt::X509Plain:
+                    AuthenticatePlain(out, provider);
+                    break;
+                default:
+                    break; // TlsNone / X509None: nothing more to send
+                }
+                return chosen;
+            }
         } // namespace
 
-        const std::vector<uint8_t>& SupportedSecurityTypes()
+        std::vector<uint8_t> SupportedSecurityTypes(bool tlsAvailable)
         {
-            // The VNC password before Apple's account login: when a Mac offers both, the password is what users of
-            // other viewers expect to type (ChooseSecurityType can still prefer the account login).
-            static const std::vector<uint8_t> types = {SecurityType::None, SecurityType::VncAuth,
-                                                       SecurityType::AppleRemoteDesktop};
+            // Encryption first. Then the VNC password before Apple's account login: when a Mac offers both, the
+            // password is what users of other viewers expect to type (ChooseSecurityType can still prefer the
+            // account login).
+            std::vector<uint8_t> types;
+            if (tlsAvailable)
+            {
+                types.push_back(SecurityType::VeNCrypt);
+            }
+            types.insert(types.end(), {SecurityType::None, SecurityType::VncAuth, SecurityType::AppleRemoteDesktop});
             return types;
+        }
+
+        uint32_t ChooseVeNCryptSubtype(const std::vector<uint32_t>& offered)
+        {
+            static const uint32_t kPreferred[] = {VeNCrypt::X509None, VeNCrypt::X509Vnc, VeNCrypt::X509Plain,
+                                                  VeNCrypt::TlsNone,  VeNCrypt::TlsVnc,  VeNCrypt::TlsPlain};
+            for (uint32_t candidate : kPreferred)
+            {
+                if (std::find(offered.begin(), offered.end(), candidate) != offered.end())
+                {
+                    return candidate;
+                }
+            }
+            return 0;
         }
 
         Bytes ComputeVncAuthResponse(const std::string& passwordUtf8, const Bytes& challenge)
@@ -141,18 +250,21 @@ namespace Marconi
             return response;
         }
 
-        void Authenticate(uint8_t securityType, InStream& in, ByteSink& out, const CredentialsProvider& credentials)
+        uint32_t Authenticate(uint8_t securityType, InStream& in, ByteSink& out, const CredentialsProvider& credentials,
+                              const TlsStarter& startTls)
         {
             switch (securityType)
             {
             case SecurityType::None:
-                return;
+                return 0;
             case SecurityType::VncAuth:
                 AuthenticateVnc(in, out, credentials);
-                return;
+                return 0;
             case SecurityType::AppleRemoteDesktop:
                 AuthenticateArd(in, out, credentials);
-                return;
+                return 0;
+            case SecurityType::VeNCrypt:
+                return AuthenticateVeNCrypt(in, out, credentials, startTls);
             default:
                 throw RfbError("Unsupported security type " + std::to_string(securityType));
             }

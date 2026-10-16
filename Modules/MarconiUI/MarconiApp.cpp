@@ -6,6 +6,7 @@
 #include "Appearance.h"
 #include "ConnectionStore.h"
 #include "ConnectionsFrame.h"
+#include "UserData.h"
 #include "ViewerFrame.h"
 
 #include <MarconiCore/Address.h>
@@ -17,6 +18,7 @@
 #include <wx/arrstr.h>
 #include <wx/cmdline.h>
 #include <wx/config.h>
+#include <wx/fileconf.h>
 #include <wx/filename.h>
 #include <wx/image.h>
 #include <wx/font.h>
@@ -24,52 +26,40 @@
 #include <wx/msgdlg.h>
 #include <wx/stdpaths.h>
 
+#if !defined(__WINDOWS__)
+#include <sys/stat.h>
+#endif
+
 namespace MarconiUI
 {
     bool MarconiApp::OnInit()
     {
+#if !defined(__WINDOWS__)
+        // Settings, logs and anything else Marconi writes are private to this user.
+        umask(S_IRWXG | S_IRWXO);
+#endif
         // wxApp::OnInit's command line parser would reject our positional address argument.
         SetAppName("marconi");
         SetAppDisplayName("Marconi");
         SetVendorName("Red Marmoset Studios");
 
 #if defined(__WXGTK__)
-        // ~/.config/marconi and ~/.local/share/marconi rather than wx's traditional ~/.marconi.
+        // ~/.config/marconi.conf and ~/.local/share/marconi rather than wx's traditional ~/.marconi.
         wxStandardPaths::Get().SetFileLayout(wxStandardPaths::FileLayout_XDG);
 #endif
         // wxRegConfig on Windows, wxFileConfig (XDG / ~/Library/Preferences) elsewhere.
         wxConfigBase::Set(wxConfigBase::Create());
-        InitializeAppearance(); // Native wx appearance must be selected before creating any window.
-        wxImage::AddHandler(new wxPNGHandler); // diagnostic snapshots
-
-        // Logs go to <user local data>/logs (e.g. %LOCALAPPDATA%/marconi/logs, ~/Library/Application Support/marconi/logs).
-        wxString logDir = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs";
-        wxFileName::Mkdir(logDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
-        Log::InitializeFileLogging(logDir.utf8_string(), "marconi");
-        LOG_INFO("App", "Marconi %s (%s) starting", Marconi::GetVersionString(), Marconi::GetVersionCommit());
-#if wxUSE_PRIVATE_FONTS
-        // Load before creating the wordmark or enumerating font faces. The font belongs to this process only.
-        // Windows and development builds keep the fonts beside the executable; the macOS bundle keeps them in
-        // Contents/Resources.
-        for (const auto* fontFile : {"NebulaSans-Black.ttf", "NebulaSans-Semibold.ttf"})
+#if !defined(__WINDOWS__)
+        // Earlier versions created the settings file with the usual permissions; make it private now.
+        wxFileName settingsFile =
+            wxFileConfig::GetLocalFile(GetAppName(), wxCONFIG_USE_LOCAL_FILE | wxCONFIG_USE_GLOBAL_FILE);
+        if (settingsFile.FileExists())
         {
-            wxFileName brandFont(wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath(), fontFile);
-            if (!brandFont.FileExists())
-            {
-                brandFont.AssignDir(wxStandardPaths::Get().GetResourcesDir());
-                brandFont.SetFullName(fontFile);
-            }
-            bool fontLoaded = false;
-            if (brandFont.FileExists())
-            {
-                wxLogNull suppressFontDialog; // Missing/corrupt optional branding must not interrupt startup.
-                fontLoaded = wxFont::AddPrivateFont(brandFont.GetFullPath());
-            }
-            if (!fontLoaded)
-                LOG_INFO("App", "Bundled font %s unavailable; using installed or system font", fontFile);
+            chmod(settingsFile.GetFullPath().utf8_string().c_str(), S_IRUSR | S_IWUSR);
         }
 #endif
-        ConnectionStore::MigrateFromRmvnc();
+        InitializeAppearance(); // Native wx appearance must be selected before creating any window.
+        wxImage::AddHandler(new wxPNGHandler); // diagnostic snapshots
 
         // "marconi [options] host[:display]" connects straight away.
         static const wxCmdLineEntryDesc kCommandLine[] = {
@@ -80,6 +70,8 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "no-clipboard", "don't share the clipboard", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_OPTION, nullptr, "saved", "open a saved connection (by name, address or id)",
              wxCMD_LINE_VAL_STRING, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "remove-my-data",
+             "remove this user's saved connections, passwords, settings and logs, then exit", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "headless",
              "no window or dialogs: log and save snapshots to the log folder (testing, automation)",
              wxCMD_LINE_VAL_NONE, 0},
@@ -107,6 +99,43 @@ namespace MarconiUI
         {
             return false; // help shown or bad arguments (wx reports them)
         }
+        if (parser.Found("remove-my-data"))
+        {
+            // Before any log file is open, so the whole log folder can go now.
+            RemoveAllUserData();
+            RemoveLogDirectory();
+            return false;
+        }
+
+        // Logs go to <user local data>/logs (e.g. %LOCALAPPDATA%/marconi/logs, ~/Library/Application Support/marconi/logs).
+        wxString logDir = GetLogDirectory();
+        wxFileName::Mkdir(logDir, wxS_IRUSR | wxS_IWUSR | wxS_IXUSR, wxPATH_MKDIR_FULL);
+        Log::InitializeFileLogging(logDir.utf8_string(), "marconi");
+        LOG_INFO("App", "Marconi %s (%s) starting", Marconi::GetVersionString(), Marconi::GetVersionCommit());
+#if wxUSE_PRIVATE_FONTS
+        // Load before creating the wordmark or enumerating font faces. The font belongs to this process only.
+        // Windows and development builds keep the fonts beside the executable; the macOS bundle keeps them in
+        // Contents/Resources.
+        for (const auto* fontFile : {"NebulaSans-Black.ttf", "NebulaSans-Semibold.ttf"})
+        {
+            wxFileName brandFont(wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath(), fontFile);
+            if (!brandFont.FileExists())
+            {
+                brandFont.AssignDir(wxStandardPaths::Get().GetResourcesDir());
+                brandFont.SetFullName(fontFile);
+            }
+            bool fontLoaded = false;
+            if (brandFont.FileExists())
+            {
+                wxLogNull suppressFontDialog; // Missing/corrupt optional branding must not interrupt startup.
+                fontLoaded = wxFont::AddPrivateFont(brandFont.GetFullPath());
+            }
+            if (!fontLoaded)
+                LOG_INFO("App", "Bundled font %s unavailable; using installed or system font", fontFile);
+        }
+#endif
+        ConnectionStore::MigrateFromRmvnc();
+
         if (parser.Found("discover"))
         {
             std::vector<Marconi::Net::DiscoveredService> services = Marconi::Net::Discover(3000);
@@ -226,6 +255,10 @@ namespace MarconiUI
     {
         LOG_INFO("App", "Exiting");
         Log::ShutdownFileLogging();
+        if (ShouldRemoveLogsOnExit())
+        {
+            RemoveLogDirectory(); // the log file just closed was the last thing in the way
+        }
         delete wxConfigBase::Set(nullptr);
         return wxApp::OnExit();
     }

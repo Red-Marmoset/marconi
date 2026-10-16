@@ -31,7 +31,8 @@ namespace Marconi
         {
         public:
             virtual ~ByteSource() = default;
-            // Blocks until at least one byte is available. Returns bytes read, 0 at end of stream, -1 on error.
+            // Blocks until at least one byte is available. Returns bytes read, 0 at end of stream, -1 on error; may
+            // instead throw RfbError when it has a more exact message than "connection lost" to give.
             virtual ptrdiff_t Read(void* buffer, size_t length) = 0;
         };
 
@@ -87,6 +88,9 @@ namespace Marconi
             }
 
             uint64_t GetBytesRead() const { return m_totalRead; }
+            // Bytes taken from the source but not consumed yet. Must be 0 before the connection changes underneath
+            // the stream (switching to encryption), or those bytes would be read as if they were encrypted.
+            size_t GetBufferedCount() const { return m_end - m_start; }
 
         private:
             void Fill(size_t minimum);

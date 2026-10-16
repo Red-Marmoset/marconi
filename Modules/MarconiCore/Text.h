@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace Marconi
 {
@@ -13,4 +15,9 @@ namespace Marconi
 
     // "\r\n" -> "\n": RFB clipboard text uses bare newlines.
     std::string ToNetworkLineEndings(const std::string& text);
+
+    // Lower-case hex without separators, e.g. for saving a certificate fingerprint. HexToBytes ignores separators
+    // (colons, spaces) and is empty if the text isn't hex.
+    std::string BytesToHex(const std::vector<uint8_t>& bytes);
+    std::vector<uint8_t> HexToBytes(const std::string& hex);
 } // namespace Marconi

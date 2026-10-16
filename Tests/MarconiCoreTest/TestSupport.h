@@ -43,6 +43,12 @@ namespace MarconiTest
         void SendString(const std::string& text);
         void Close();
 
+        Marconi::Net::Socket& GetClientSocket() { return m_client; }
+        // From here on reads come through `source` and Send goes through `send` instead of the socket directly
+        // (the server side of a fake encrypted stream). Nothing may be buffered in In() at this point.
+        void Reroute(std::unique_ptr<Marconi::Rfb::ByteSource> source,
+                     std::function<void(const Marconi::Rfb::Bytes&)> send);
+
         // Standard happy-path setup up to ServerInit for the given version banner and security type None.
         void HandshakeNone(const std::string& banner, int width, int height, const std::string& name);
         // Reads the client's SetPixelFormat + SetEncodings + first FramebufferUpdateRequest.
@@ -51,8 +57,9 @@ namespace MarconiTest
     private:
         Marconi::Net::Socket m_listener;
         Marconi::Net::Socket m_client;
-        std::unique_ptr<Marconi::Rfb::SocketSource> m_source;
+        std::unique_ptr<Marconi::Rfb::ByteSource> m_source;
         std::unique_ptr<Marconi::Rfb::InStream> m_in;
+        std::function<void(const Marconi::Rfb::Bytes&)> m_send; // empty: straight to the socket
         uint16_t m_port = 0;
     };
 
@@ -67,6 +74,7 @@ namespace MarconiTest
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
+        bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
 
         // Waits until `predicate` (evaluated under the lock) holds. Returns false on timeout.
         bool WaitFor(const std::function<bool()>& predicate, int timeoutMs = 5000);
@@ -92,6 +100,11 @@ namespace MarconiTest
         int credentialRequests = 0;
         bool lastNeedUsername = false;
         Marconi::Rfb::CredentialsKind lastKind = Marconi::Rfb::CredentialsKind::Password;
+
+        // Whether to trust a certificate this computer doesn't; what was asked about.
+        bool trustCertificate = false;
+        int certificateQuestions = 0;
+        Marconi::Net::TlsCertificate lastCertificate;
     };
 
     Marconi::Rfb::Bytes HexBytes(const std::string& hex);
@@ -108,4 +121,5 @@ namespace MarconiTest
     void RunProbeTests();
     void RunChoiceTests();
     void RunDiscoveryTests();
+    void RunVeNCryptTests();
 } // namespace MarconiTest

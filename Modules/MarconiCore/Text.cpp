@@ -91,4 +91,64 @@ namespace Marconi
         }
         return result;
     }
+
+    std::string BytesToHex(const std::vector<uint8_t>& bytes)
+    {
+        static const char kDigits[] = "0123456789abcdef";
+        std::string hex;
+        hex.reserve(bytes.size() * 2);
+        for (uint8_t byte : bytes)
+        {
+            hex.push_back(kDigits[byte >> 4]);
+            hex.push_back(kDigits[byte & 15]);
+        }
+        return hex;
+    }
+
+    std::vector<uint8_t> HexToBytes(const std::string& hex)
+    {
+        auto digit = [](char c) -> int {
+            if (c >= '0' && c <= '9')
+            {
+                return c - '0';
+            }
+            if (c >= 'a' && c <= 'f')
+            {
+                return c - 'a' + 10;
+            }
+            if (c >= 'A' && c <= 'F')
+            {
+                return c - 'A' + 10;
+            }
+            return -1;
+        };
+        std::vector<uint8_t> bytes;
+        int pending = -1;
+        for (char c : hex)
+        {
+            if (c == ':' || c == ' ' || c == '-')
+            {
+                continue;
+            }
+            int value = digit(c);
+            if (value < 0)
+            {
+                return {};
+            }
+            if (pending < 0)
+            {
+                pending = value;
+            }
+            else
+            {
+                bytes.push_back(static_cast<uint8_t>((pending << 4) | value));
+                pending = -1;
+            }
+        }
+        if (pending >= 0)
+        {
+            return {}; // odd number of digits
+        }
+        return bytes;
+    }
 } // namespace Marconi

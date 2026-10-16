@@ -20,6 +20,7 @@ It works with:
 - Find computers on your home or office network by itself.
 - Just watch, without sending any keyboard or mouse input ("view only").
 - Send Ctrl+Alt+Del to a Windows computer.
+- Tell you, in the bar at the bottom of the window, whether the connection is encrypted.
 
 ## Before you start: set up the other computer
 
@@ -77,6 +78,19 @@ connections window. **Settings** has the same choice, and a button that opens Ma
 
 On Windows, a few parts (menus and the title bar) only change colour after you restart Marconi.
 
+## Is the connection private?
+
+Not yet. Marconi can't make encrypted connections, so the screen picture, everything you type and the password check
+itself travel over the network as they are. Anyone able to watch the network between the two computers could read
+them. The plain VNC password check in particular is weak: someone who records it can work out the password later. A
+Mac's account login protects the password itself, but nothing after it.
+
+So use Marconi on networks you trust, such as your home network, or over a VPN. As a reminder, the bar at the bottom
+of every connection window says **not encrypted**.
+
+Some servers insist on an encrypted connection (they use a method called VeNCrypt). Marconi recognises them and tells
+you it can't connect to them yet, rather than failing in a confusing way.
+
 ## If something goes wrong
 
 Marconi keeps a log of what it did, which helps when reporting a problem. Open it from **Settings > Open log
@@ -88,16 +102,39 @@ folder**, or find it here:
 | macOS | `~/Library/Application Support/marconi/logs` |
 | Linux | `~/.local/share/marconi/logs` |
 
+If the other computer accepts the connection but then never answers, Marconi gives up after 10 seconds and says so.
+
 Marconi used to be called rmvnc. The first time it starts, it copies rmvnc's saved computers and passwords, and
 leaves the originals as they were.
 
+## Removing what Marconi has saved
+
+Marconi keeps your saved connections and settings, their passwords in your system's password store, and its logs.
+To remove all of that at once, open **Settings** and choose **Remove my saved connections, passwords and logs**.
+Marconi closes afterwards. On Windows, the uninstaller offers the same choice; it is off unless you tick it, and
+upgrading never removes anything.
+
+Only your own data is affected. If several people use Marconi on one computer, each removes their own from their own
+account.
+
+If you'd rather do it by hand, this is where everything lives:
+
+| System | Saved connections and settings | Passwords | Logs |
+|---|---|---|---|
+| Windows | the registry, under `HKEY_CURRENT_USER\Software\Red Marmoset Studios\marconi` | Credential Manager, entries starting `marconi/` | `%LOCALAPPDATA%\marconi\logs` |
+| macOS | a file called `marconi Preferences` in `~/Library/Preferences` | Keychain Access, items starting `marconi/` | `~/Library/Application Support/marconi/logs` |
+| Linux | `~/.config/marconi.conf` | your desktop's keyring, items starting `marconi/` | `~/.local/share/marconi/logs` |
+
+On macOS and Linux these files can only be read by your own account.
+
 ## Not available yet
 
-- **Encrypted connections.** Your password is protected when you log in, but the screen picture and your typing are
-  not encrypted after that. Use Marconi on networks you trust, such as your home network.
+- **Encrypted connections.** See "Is the connection private?" above.
 - **Remote Desktop and SSH** connections (recognised, but not supported yet).
 - **File transfer.**
 - Copying text in some languages and symbols (the clipboard only carries Western European characters for now).
+- VNC passwords containing characters outside Western European languages. The VNC password check only carries
+  those, so such a password won't work with Marconi. A Mac account login accepts any characters.
 - Changing the other computer's screen resolution from Marconi.
 - Apple's newest login methods. The one every recent macOS version offers works.
 
@@ -108,8 +145,11 @@ leaves the originals as they were.
 ## Command line
 
     marconi [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
+    marconi --remove-my-data
 
-`--saved NAME` opens a saved connection by its name, address or id, using its stored password.
+`--saved NAME` opens a saved connection by its name, address or id, using its stored password. `--remove-my-data`
+removes the current user's saved connections, keychain passwords, settings and logs, then exits; the Windows
+uninstaller runs it for the "Saved connections, passwords and logs" option.
 
 **Headless mode**, for testing and automation, runs a connection without a window or dialogs. It logs what happens
 and saves what the viewer would show as PNG files in the log folder, then exits:
@@ -177,7 +217,9 @@ Marconi doesn't affect other applications. It then prints the installer's SHA-25
 
 The installer installs to `Program Files\Marconi`, with a Start menu shortcut and an optional desktop one. It also
 adds an entry to Settings > Apps. Installing a newer version replaces the old one. Uninstalling keeps each user's
-saved connections, passwords and logs. `Uninstall.exe /S` uninstalls silently, and the installer accepts `/S` and
+saved connections, passwords and logs unless the "Saved connections, passwords and logs" option is ticked, which
+runs `Marconi.exe --remove-my-data` for the account signed in (and says so if the uninstaller is running as a
+different account). `Uninstall.exe /S` uninstalls silently, keeping the data, and the installer accepts `/S` and
 `/D=<folder>` too.
 
 `Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico` and
@@ -207,6 +249,8 @@ ID Application certificate, and set `MARCONI_NOTARY_PROFILE` to a profile from `
 - address parsing and text conversion;
 - streams;
 - the handshake, VNC auth and Apple auth against a scripted fake server on loopback;
+- VeNCrypt negotiation, switching the connection to an encrypted stream, certificate trust decisions and the
+  handshake timeout, with a stand-in for TLS;
 - every decoder, using hand-built encoded data;
 - the client message loop;
 - connecting, probing for protocols, DNS messages and network discovery, against local fake services.
@@ -219,11 +263,37 @@ authentication and logs every key, pointer and clipboard event it receives:
     python Tools/fake_vnc_server.py --port 5999 --size 1024x768 [--cut-on-connect "text"]
     marconi 127.0.0.1::5999
 
+`Tools/fake_vencrypt_server.py` is the same idea for encryption: it only accepts VeNCrypt over real TLS (a
+self-signed certificate, or anonymous TLS), then serves one frame and waits for a key press.
+
+## Encryption: what's done and what's left
+
+Everything Marconi needs for encrypted connections is in place except the TLS stream itself:
+
+- `Modules/MarconiCore/Net/Tls.h` is the interface: `TlsStream` (handshake, read, write, shutdown, protocol name)
+  and `CreateTlsStream`, with `TlsOptions` carrying the host name, whether the server is anonymous and a callback
+  asked when this computer doesn't trust the certificate.
+- `Rfb::Handshake` and `Rfb::Auth` negotiate VeNCrypt (type 19, version 0.2) and prefer it whenever a build can
+  encrypt, choosing a subtype with a certificate over anonymous TLS and never the unencrypted Plain subtype.
+  `Rfb::Client` switches both directions of the connection to the stream and reports `IsEncrypted()`.
+- The viewer shows the certificate's details and fingerprint when it isn't trusted, remembers the fingerprint the
+  user accepts with the saved connection, and shows the encryption state in the status bar.
+- `Tools/TlsStream_OpenSSL.cpp` is a reference implementation of the interface on OpenSSL, run end to end against
+  `fake_vencrypt_server.py` (TLS 1.3 with a certificate, TLS 1.2 anonymous, VNC password and user name logins,
+  certificate refusal). It is not part of the build.
+
+What's left is to implement the interface with each platform's own TLS library, as the engine's `Crypto` module
+does for its other primitives: Schannel on Windows (certificates only; Schannel has no anonymous suites), the
+Security framework on macOS, OpenSSL on Linux. Then `Net/Tls.cpp` returns it, `IsTlsAvailable()` becomes true and
+the rest switches on by itself. The reference file documents the two things an implementation must get right: the
+handshake completes before the trust decision is asked, and `Read` and `Write` may run on two threads at once
+without a writer ever waiting for incoming data.
+
 ## Layout
 
 - `Modules/MarconiCore`: the VNC (RFB) protocol client, with no UI. It covers sockets, the stream, the handshake and
-  authentication, decoders, the framebuffer, the client thread, protocol probing and network discovery (mDNS), and
-  includes no wx headers.
+  authentication (including VeNCrypt and the TLS stream interface), decoders, the framebuffer, the client thread,
+  protocol probing and network discovery (mDNS), and includes no wx headers.
 - `Modules/MarconiUI`: the wxWidgets app. It contains the connections window, the viewer window and canvas, key
   mapping, clipboard sync and the saved connections store.
 - `Tests/MarconiCoreTest`: core tests.

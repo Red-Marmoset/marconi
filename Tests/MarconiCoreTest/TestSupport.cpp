@@ -82,10 +82,26 @@ namespace MarconiTest
 
     void FakeServer::Send(const Rfb::Bytes& data)
     {
+        if (m_send)
+        {
+            m_send(data);
+            return;
+        }
         if (!m_client.SendAll(data.data(), data.size()))
         {
             throw Rfb::RfbError("FakeServer send failed");
         }
+    }
+
+    void FakeServer::Reroute(std::unique_ptr<Rfb::ByteSource> source, std::function<void(const Rfb::Bytes&)> send)
+    {
+        if (m_in->GetBufferedCount() != 0)
+        {
+            throw std::runtime_error("FakeServer::Reroute with unread data buffered");
+        }
+        m_source = std::move(source);
+        m_in = std::make_unique<Rfb::InStream>(*m_source);
+        m_send = std::move(send);
     }
 
     void FakeServer::SendString(const std::string& text)
@@ -208,6 +224,15 @@ namespace MarconiTest
         }
         credentials = credentialsToGive;
         return true;
+    }
+
+    bool RecordingListener::OnUntrustedCertificate(const Net::TlsCertificate& certificate)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++certificateQuestions;
+        lastCertificate = certificate;
+        changed.notify_all();
+        return trustCertificate;
     }
 
     bool RecordingListener::WaitFor(const std::function<bool()>& predicate, int timeoutMs)

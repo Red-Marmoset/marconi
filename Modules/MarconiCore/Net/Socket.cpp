@@ -63,7 +63,11 @@ namespace Marconi
             Close();
         }
 
-        Socket::Socket(Socket&& other) noexcept : m_handle(other.m_handle), m_shutdown(other.m_shutdown.load())
+        Socket::Socket(Socket&& other) noexcept
+            : m_handle(other.m_handle),
+              m_shutdown(other.m_shutdown.load()),
+              m_receiveTimeoutMs(other.m_receiveTimeoutMs.load()),
+              m_timedOut(other.m_timedOut.load())
         {
             other.m_handle = Platform::kInvalidSocket;
         }
@@ -75,6 +79,8 @@ namespace Marconi
                 Close();
                 m_handle = other.m_handle;
                 m_shutdown = other.m_shutdown.load();
+                m_receiveTimeoutMs = other.m_receiveTimeoutMs.load();
+                m_timedOut = other.m_timedOut.load();
                 other.m_handle = Platform::kInvalidSocket;
             }
             return *this;
@@ -400,7 +406,10 @@ namespace Marconi
 
         ptrdiff_t Socket::Receive(void* buffer, size_t length)
         {
+            using Clock = std::chrono::steady_clock;
             int chunk = static_cast<int>(std::min<size_t>(length, INT_MAX));
+            const int timeoutMs = m_receiveTimeoutMs.load();
+            const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
             for (;;)
             {
                 if (m_shutdown)
@@ -410,6 +419,11 @@ namespace Marconi
                 int ready = WaitFor(m_handle, true, 100);
                 if (ready == 0)
                 {
+                    if (timeoutMs > 0 && Clock::now() >= deadline)
+                    {
+                        m_timedOut = true;
+                        return -1;
+                    }
                     continue;
                 }
                 if (ready < 0)
@@ -439,6 +453,12 @@ namespace Marconi
             }
         }
 
+        void Socket::SetReceiveTimeout(int timeoutMs)
+        {
+            m_receiveTimeoutMs = std::max(timeoutMs, 0);
+            m_timedOut = false;
+        }
+
         void Socket::Close()
         {
             if (IsOpen())
@@ -447,6 +467,8 @@ namespace Marconi
                 m_handle = Platform::kInvalidSocket;
             }
             m_shutdown = false;
+            m_receiveTimeoutMs = 0;
+            m_timedOut = false;
         }
 
         bool Socket::IsOpen() const

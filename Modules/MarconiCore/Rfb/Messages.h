@@ -22,6 +22,20 @@ namespace Marconi
             constexpr uint8_t AppleRemoteDesktop = 30;
         } // namespace SecurityType
 
+        // VeNCrypt (security type 19) subtypes. TLS* encrypt with anonymous TLS (the server has no certificate),
+        // X509* with a server certificate. Then None needs no login, Vnc the VNC password and Plain a user name and
+        // password. Plain on its own is unencrypted and is never chosen.
+        namespace VeNCrypt
+        {
+            constexpr uint32_t Plain = 256;
+            constexpr uint32_t TlsNone = 257;
+            constexpr uint32_t TlsVnc = 258;
+            constexpr uint32_t TlsPlain = 259;
+            constexpr uint32_t X509None = 260;
+            constexpr uint32_t X509Vnc = 261;
+            constexpr uint32_t X509Plain = 262;
+        } // namespace VeNCrypt
+
         namespace ClientMessage
         {
             constexpr uint8_t SetPixelFormat = 0;

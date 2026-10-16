@@ -6,35 +6,37 @@
 #include "AppIcon.h"
 #include "Appearance.h"
 #include "ConnectionDialog.h"
+#include "UserData.h"
 #include "ViewerFrame.h"
 
 #include <MarconiCore/Address.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
 #include <MarconiCore/Version.h>
 
+#include <Log/Log.h>
+
 #include <wx/bmpbndl.h>
 #include <wx/button.h>
 #include <wx/choice.h>
+#include <wx/dcbuffer.h>
 #include <wx/dialog.h>
 #include <wx/display.h>
-#include <wx/dcbuffer.h>
-#include <wx/imaglist.h>
 #include <wx/fontenum.h>
-#include <wx/config.h>
-#include <wx/statline.h>
-#include <wx/stdpaths.h>
-#include <wx/tglbtn.h>
-#include <wx/utils.h>
-
-#include <algorithm>
-#include <cstring>
-#include <wx/statbmp.h>
+#include <wx/imaglist.h>
 #include <wx/listctrl.h>
 #include <wx/msgdlg.h>
 #include <wx/panel.h>
 #include <wx/sizer.h>
+#include <wx/statbmp.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
+#include <wx/tglbtn.h>
+#include <wx/toplevel.h>
+#include <wx/utils.h>
+
+#include <algorithm>
+#include <cstring>
+#include <vector>
 
 namespace MarconiUI
 {
@@ -575,13 +577,31 @@ namespace MarconiUI
         layout->Add(help, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, space);
         wxButton* logs = new wxButton(&dialog, wxID_ANY, "Open log folder");
         logs->Bind(wxEVT_BUTTON, [&dialog](wxCommandEvent&) {
-            const wxString path = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs";
+            const wxString path = GetLogDirectory();
             if (!wxLaunchDefaultApplication(path))
             {
                 wxMessageBox("Could not open the log folder: " + path, "Marconi", wxOK | wxICON_WARNING, &dialog);
             }
         });
         layout->Add(logs, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
+
+        // Everything Marconi keeps for this user, gone in one go; also what the Windows uninstaller offers.
+        bool removeEverything = false;
+        wxButton* remove = new wxButton(&dialog, wxID_ANY, "Remove my saved connections, passwords and logs...");
+        remove->Bind(wxEVT_BUTTON, [&dialog, &removeEverything](wxCommandEvent&) {
+            wxMessageDialog confirm(&dialog,
+                                    "This removes everything Marconi has saved for you on this computer: your saved "
+                                    "connections, their passwords from the system keychain, your appearance choice "
+                                    "and Marconi's logs. Marconi then closes.\n\nRemove everything?",
+                                    "Marconi", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+            confirm.SetYesNoLabels("Remove Everything", "Cancel");
+            if (confirm.ShowModal() == wxID_YES)
+            {
+                removeEverything = true;
+                dialog.EndModal(wxID_CANCEL);
+            }
+        });
+        layout->Add(remove, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
         layout->Add(new wxStaticText(&dialog, wxID_ANY,
             "Marconi " + wxString::FromUTF8(Marconi::GetVersionString()) + " / Red Marmoset Studios"),
             0, wxLEFT | wxRIGHT | wxBOTTOM, space);
@@ -592,6 +612,24 @@ namespace MarconiUI
         if (dialog.ShowModal() == wxID_OK)
         {
             ChooseAppearance(appearance->GetSelection());
+        }
+        if (removeEverything)
+        {
+            LOG_INFO("App", "Removing the saved connections, passwords, settings and logs at the user's request");
+            RemoveAllUserData();
+            wxMessageBox("Your saved connections, passwords, settings and logs have been removed. Marconi will now "
+                         "close.",
+                         "Marconi", wxOK | wxICON_INFORMATION, this);
+            // Close every window; the last one closing ends the app, which removes the log folder on its way out.
+            std::vector<wxWindow*> windows(wxTopLevelWindows.begin(), wxTopLevelWindows.end());
+            for (wxWindow* window : windows)
+            {
+                if (window != this)
+                {
+                    window->Close(true);
+                }
+            }
+            Close(true);
         }
     }
 

@@ -5,6 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- The bar at the bottom of a connection window says whether the connection is encrypted.
+- Servers that insist on an encrypted connection get a clear message instead of a failed login.
+- Settings can remove all saved connections, passwords, settings and logs; the Windows uninstaller offers the same.
+- Gives up, and says so, when a server accepts the connection but never answers.
+- Settings and log files are private to the user on macOS and Linux.
+- The README explains what isn't private, where saved data lives and how to remove it.
 - Added this changelog and documented when to bump the version.
 - Added a 96 px Windows icon size.
 - Branded the Windows installer.

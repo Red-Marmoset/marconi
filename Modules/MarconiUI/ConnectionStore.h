@@ -20,6 +20,7 @@ namespace MarconiUI
         wxString detected; // what the last probe found, e.g. "vnc 5900"; empty = probe next time
         wxString username;
         bool rememberPassword = false;
+        wxString certificate; // SHA-256 of a server certificate the user chose to trust, as hex; empty = none
         ScaleMode scaleMode = ScaleMode::Fit;
         bool viewOnly = false;
         bool clipboard = true;

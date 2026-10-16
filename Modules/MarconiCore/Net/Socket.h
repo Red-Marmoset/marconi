@@ -44,8 +44,13 @@ namespace Marconi
             bool SendAll(const void* data, size_t length);
 
             // Blocks until at least one byte arrives. Returns bytes read, 0 on orderly close or after Shutdown(),
-            // -1 on error.
+            // -1 on error, including when the receive timeout passes with nothing arriving (TimedOut() then says so).
             ptrdiff_t Receive(void* buffer, size_t length);
+
+            // How long one Receive may wait for data before giving up, or 0 to wait for ever (the default). Set while
+            // the server is expected to answer promptly, such as during the handshake. Safe to call from any thread.
+            void SetReceiveTimeout(int timeoutMs);
+            bool TimedOut() const { return m_timedOut.load(); }
 
             // True when Receive won't block (data or end of stream is waiting), false after `timeoutMs`.
             bool WaitReadable(int timeoutMs) const;
@@ -64,6 +69,8 @@ namespace Marconi
 
             intptr_t m_handle;
             std::atomic<bool> m_shutdown{false};
+            std::atomic<int> m_receiveTimeoutMs{0};
+            std::atomic<bool> m_timedOut{false};
         };
     } // namespace Net
 } // namespace Marconi

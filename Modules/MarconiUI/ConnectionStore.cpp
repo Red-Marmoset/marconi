@@ -134,6 +134,7 @@ namespace MarconiUI
         out.detected = config->Read(path + "/Detected", wxEmptyString);
         out.username = config->Read(path + "/Username", wxEmptyString);
         out.rememberPassword = config->ReadBool(path + "/RememberPassword", false);
+        out.certificate = config->Read(path + "/Certificate", wxEmptyString);
         out.scaleMode = config->Read(path + "/Scale", "fit") == "100" ? ScaleMode::Actual : ScaleMode::Fit;
         out.viewOnly = config->ReadBool(path + "/ViewOnly", false);
         out.clipboard = config->ReadBool(path + "/Clipboard", true);
@@ -167,6 +168,7 @@ namespace MarconiUI
         config->Write(path + "/Detected", connection.detected);
         config->Write(path + "/Username", connection.username);
         config->Write(path + "/RememberPassword", connection.rememberPassword);
+        config->Write(path + "/Certificate", connection.certificate);
         config->Write(path + "/Scale", connection.scaleMode == ScaleMode::Actual ? "100" : "fit");
         config->Write(path + "/ViewOnly", connection.viewOnly);
         config->Write(path + "/Clipboard", connection.clipboard);

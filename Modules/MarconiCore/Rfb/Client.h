@@ -4,12 +4,14 @@
 #pragma once
 
 #include <MarconiCore/Net/Socket.h>
+#include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Rfb/Decoders/Decoder.h>
 #include <MarconiCore/Rfb/Framebuffer.h>
 #include <MarconiCore/Rfb/Handshake.h>
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -27,7 +29,15 @@ namespace Marconi
             uint16_t port = 5900;
             bool shared = true;
             Credentials credentials; // used first; the listener is asked if they're missing or rejected
+            // How long to wait for the connection, and then for each of the server's answers during the handshake.
             int connectTimeoutMs = 10000;
+            // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
+            // before). Any other certificate this computer doesn't trust goes to the listener's
+            // OnUntrustedCertificate.
+            std::vector<uint8_t> trustedCertificateSha256;
+            // Makes the encrypted stream when a server asks for encryption. Empty means Net::CreateTlsStream; tests
+            // substitute their own.
+            std::function<std::unique_ptr<Net::TlsStream>(Net::Socket&, const Net::TlsOptions&)> createTlsStream;
             std::vector<int32_t> encodings; // preferred order; empty = Marconi's default order
             int compressLevel = 2;           // Tight/ZRLE zlib level hint 0-9, or -1 to let the server choose
             int qualityLevel = 8;            // Tight JPEG quality 0-9, or -1 for lossless only (no JPEG)
@@ -75,6 +85,8 @@ namespace Marconi
             {
                 return false;
             }
+            // Blocking: the server's certificate isn't trusted by this computer. Return true to connect anyway.
+            virtual bool OnUntrustedCertificate(const Net::TlsCertificate& /*certificate*/) { return false; }
         };
 
         // Counts since the last TakeTrafficStats().
@@ -104,6 +116,11 @@ namespace Marconi
             void Disconnect();
             bool IsConnected() const { return m_connected.load(); }
 
+            // Whether the connection is encrypted, and with what (e.g. "TLS 1.3"). Meaningful once connected. Any
+            // thread.
+            bool IsEncrypted() const { return m_encrypted.load(); }
+            std::string GetEncryptionName() const;
+
             Framebuffer& GetFramebuffer() { return m_framebuffer; }
 
             // Input. Safe to call from any thread; silently ignored while not connected.
@@ -122,8 +139,25 @@ namespace Marconi
             static std::vector<int32_t> GetDefaultEncodings();
 
         private:
+            // Reads from the encrypted stream once there is one, else straight from the socket.
+            class ConnectionSource : public ByteSource
+            {
+            public:
+                explicit ConnectionSource(Client& client) : m_client(client) {}
+                ptrdiff_t Read(void* buffer, size_t length) override
+                {
+                    return m_client.ReadFromConnection(buffer, length);
+                }
+
+            private:
+                Client& m_client;
+            };
+
             void Send(const Bytes& data) override;
             void SendIfConnected(const Bytes& data);
+            bool SendRaw(const Bytes& data); // caller holds m_sendMutex
+            ptrdiff_t ReadFromConnection(void* buffer, size_t length);
+            void StartTls(bool anonymous, const ConnectionOptions& options, const InStream& in);
             void Run(ConnectionOptions options);
             void SendPixelFormat();
             void SendSetupMessages(const ConnectionOptions& options);
@@ -156,10 +190,14 @@ namespace Marconi
 
             std::thread m_thread;
             std::mutex m_socketMutex; // guards m_socket's handle against Shutdown() racing with assignment
-            std::mutex m_sendMutex;   // serialises whole messages from the UI and connection threads
+            std::mutex m_sendMutex;   // serialises whole messages from the UI and connection threads; guards m_tls
             Net::Socket m_socket;
+            std::unique_ptr<Net::TlsStream> m_tls; // the encrypted stream once the handshake switched to one
             std::atomic<bool> m_connected{false};
             std::atomic<bool> m_stopping{false};
+            std::atomic<bool> m_encrypted{false};
+            mutable std::mutex m_infoMutex;
+            std::string m_encryptionName; // guarded by m_infoMutex
         };
     } // namespace Rfb
 } // namespace Marconi

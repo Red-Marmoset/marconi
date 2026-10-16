@@ -23,12 +23,18 @@ namespace Marconi
         enum class CredentialsKind
         {
             Password,          // a VNC password
-            Account,           // a user name and password (Apple Remote Desktop)
+            Account,           // a user name and password (Apple Remote Desktop, VeNCrypt Plain)
             PasswordOrAccount, // a Mac offering both: a user name selects the account login, none the VNC password
         };
 
         // Asked for credentials when the server requires them. Returns false if the user cancelled.
         using CredentialsProvider = std::function<bool(CredentialsKind kind, Credentials& inOutCredentials)>;
+
+        // Switches the connection to TLS when a VeNCrypt subtype calls for it: runs the TLS handshake and, from then
+        // on, the stream being read and the sink being written carry the encrypted connection. `anonymous` means the
+        // server presents no certificate. Throws RfbError if encryption can't be set up. Left empty in a build that
+        // can't encrypt, so an encrypted security type is never chosen.
+        using TlsStarter = std::function<void(bool anonymous)>;
 
         struct ServerInit
         {
@@ -44,6 +50,8 @@ namespace Marconi
             int serverMinor = 0;
             int minor = 0; // the 3.x version we speak: 3, 7 or 8
             uint8_t securityType = SecurityType::Invalid;
+            uint32_t veNCryptSubtype = 0; // with VeNCrypt: the VeNCrypt::* subtype in use
+            bool encrypted = false;       // the connection is encrypted from here on
             ServerInit serverInit;
         };
 
@@ -54,7 +62,8 @@ namespace Marconi
             using RfbError::RfbError;
         };
 
-        // Thrown when the user declines to enter credentials; the connection ends without an error message.
+        // Thrown when the user declines to enter credentials or to trust the server's certificate; the connection
+        // ends without an error message.
         class AuthenticationCancelled : public RfbError
         {
         public:
@@ -65,12 +74,15 @@ namespace Marconi
         bool ParseVersion(const std::string& banner, int& major, int& minor);
 
         // Picks the security type we'll use from those the server offers, or Invalid if none is supported.
-        // A Mac with "VNC viewers may control screen with password" offers both its account login and the plain VNC
-        // password; the VNC password wins unless `preferAccountLogin` is set. PerformHandshake decides that by
-        // asking for credentials first: a user name means the account login.
-        uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered, bool preferAccountLogin = false);
+        // An encrypted connection (VeNCrypt) comes first when `tlsAvailable`. A Mac with "VNC viewers may control
+        // screen with password" offers both its account login and the plain VNC password; the VNC password wins
+        // unless `preferAccountLogin` is set. PerformHandshake decides that by asking for credentials first: a user
+        // name means the account login.
+        uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered, bool preferAccountLogin = false,
+                                   bool tlsAvailable = false);
 
         // Runs the whole handshake up to and including ServerInit. Throws RfbError / AuthenticationFailed.
-        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials);
+        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
+                                         const CredentialsProvider& credentials, const TlsStarter& startTls = nullptr);
     } // namespace Rfb
 } // namespace Marconi

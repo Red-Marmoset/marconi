@@ -55,7 +55,7 @@ namespace Marconi
             // Returns the chosen type. When the choice depends on the credentials, they're requested here and
             // `outCredentials` is set, so authentication must not ask again.
             uint8_t NegotiateSecurityType(InStream& in, ByteSink& out, int minor, const CredentialsProvider& provider,
-                                          std::optional<Credentials>& outCredentials)
+                                          bool tlsAvailable, std::optional<Credentials>& outCredentials)
             {
                 if (minor == 3)
                 {
@@ -101,9 +101,14 @@ namespace Marconi
                     preferAccountLogin = !credentials.username.empty();
                     outCredentials = credentials;
                 }
-                uint8_t chosen = ChooseSecurityType(types, preferAccountLogin);
+                uint8_t chosen = ChooseSecurityType(types, preferAccountLogin, tlsAvailable);
                 if (chosen == SecurityType::Invalid)
                 {
+                    if (isOffered(SecurityType::VeNCrypt))
+                    {
+                        throw RfbError("The server requires an encrypted connection, which this build of Marconi "
+                                       "can't make yet (offered security types: " + offeredText + ")");
+                    }
                     throw RfbError("The server requires an authentication method Marconi doesn't support yet "
                                    "(offered security types: " + offeredText + ")");
                 }
@@ -147,16 +152,20 @@ namespace Marconi
             return true;
         }
 
-        uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered, bool preferAccountLogin)
+        uint8_t ChooseSecurityType(const std::vector<uint8_t>& offered, bool preferAccountLogin, bool tlsAvailable)
         {
             auto isOffered = [&offered](uint8_t type) {
                 return std::find(offered.begin(), offered.end(), type) != offered.end();
             };
+            if (tlsAvailable && isOffered(SecurityType::VeNCrypt))
+            {
+                return SecurityType::VeNCrypt;
+            }
             if (preferAccountLogin && isOffered(SecurityType::AppleRemoteDesktop))
             {
                 return SecurityType::AppleRemoteDesktop;
             }
-            for (uint8_t preferred : SupportedSecurityTypes())
+            for (uint8_t preferred : SupportedSecurityTypes(tlsAvailable))
             {
                 for (uint8_t type : offered)
                 {
@@ -169,26 +178,33 @@ namespace Marconi
             return SecurityType::Invalid;
         }
 
-        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared, const CredentialsProvider& credentials)
+        HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
+                                         const CredentialsProvider& credentials, const TlsStarter& startTls)
         {
             HandshakeResult result;
             result.minor = NegotiateVersion(in, out, result);
             std::optional<Credentials> given;
-            result.securityType = NegotiateSecurityType(in, out, result.minor, credentials, given);
+            result.securityType =
+                NegotiateSecurityType(in, out, result.minor, credentials, startTls != nullptr, given);
             LOG_INFO("Rfb", "Using security type %d", result.securityType);
 
             if (given)
             {
                 Credentials answer = *given;
-                Authenticate(result.securityType, in, out, [answer](CredentialsKind, Credentials& answerOut) {
-                    answerOut = answer;
-                    return true;
-                });
+                result.veNCryptSubtype = Authenticate(
+                    result.securityType, in, out,
+                    [answer](CredentialsKind, Credentials& answerOut) {
+                        answerOut = answer;
+                        return true;
+                    },
+                    startTls);
             }
             else
             {
-                Authenticate(result.securityType, in, out, credentials);
+                result.veNCryptSubtype = Authenticate(result.securityType, in, out, credentials, startTls);
             }
+            result.encrypted =
+                result.securityType == SecurityType::VeNCrypt && result.veNCryptSubtype != VeNCrypt::Plain;
 
             // RFB 3.3 and 3.7 send no SecurityResult after "None".
             if (result.securityType != SecurityType::None || result.minor >= 8)

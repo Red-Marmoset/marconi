@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Persistent appearance preferences and the shared desktop UI palette.
+// Light, dark or system appearance: the saved choice, the shared colour palette and applying it to windows
+
 #pragma once
 
 #include <wx/colour.h>

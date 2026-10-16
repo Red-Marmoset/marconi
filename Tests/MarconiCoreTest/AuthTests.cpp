@@ -91,6 +91,18 @@ namespace MarconiTest
             CHECK(Latin1ToUtf8(Utf8ToLatin1("\xc3\xbf")) == "\xc3\xbf");
             CHECK(ToNetworkLineEndings("a\r\nb\nc\r") == "a\nb\nc\r");
         });
+
+        RunTest("Hex conversion for saved fingerprints", []() {
+            CHECK(BytesToHex({0x00, 0xab, 0xff}) == "00abff");
+            CHECK(BytesToHex({}).empty());
+            CHECK(HexToBytes("00abff") == std::vector<uint8_t>({0x00, 0xab, 0xff}));
+            CHECK(HexToBytes("00:AB:FF") == std::vector<uint8_t>({0x00, 0xab, 0xff}));
+            CHECK(HexToBytes("abc").empty());  // odd length
+            CHECK(HexToBytes("zz").empty());   // not hex
+            CHECK(HexToBytes("").empty());
+            std::vector<uint8_t> fingerprint(32, 0x5a);
+            CHECK(HexToBytes(BytesToHex(fingerprint)) == fingerprint);
+        });
     }
 
     void RunAuthTests()

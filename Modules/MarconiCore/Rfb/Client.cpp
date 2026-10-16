@@ -89,10 +89,15 @@ namespace Marconi
             }
         }
 
+        bool Client::SendRaw(const Bytes& data)
+        {
+            return m_tls ? m_tls->Write(data.data(), data.size()) : m_socket.SendAll(data.data(), data.size());
+        }
+
         void Client::Send(const Bytes& data)
         {
             std::lock_guard<std::mutex> lock(m_sendMutex);
-            if (!m_socket.SendAll(data.data(), data.size()))
+            if (!SendRaw(data))
             {
                 throw RfbError("Connection lost while sending");
             }
@@ -106,7 +111,72 @@ namespace Marconi
             }
             std::lock_guard<std::mutex> lock(m_sendMutex);
             // A failure here is reported by the connection thread when its next read fails.
-            m_socket.SendAll(data.data(), data.size());
+            SendRaw(data);
+        }
+
+        ptrdiff_t Client::ReadFromConnection(void* buffer, size_t length)
+        {
+            // Connection thread only, which is also the thread that sets m_tls (in StartTls).
+            ptrdiff_t got = m_tls ? m_tls->Read(buffer, length) : m_socket.Receive(buffer, length);
+            if (got < 0 && m_socket.TimedOut())
+            {
+                throw RfbError("The server stopped responding");
+            }
+            return got;
+        }
+
+        std::string Client::GetEncryptionName() const
+        {
+            std::lock_guard<std::mutex> lock(m_infoMutex);
+            return m_encryptionName;
+        }
+
+        void Client::StartTls(bool anonymous, const ConnectionOptions& options, const InStream& in)
+        {
+            if (in.GetBufferedCount() != 0)
+            {
+                throw RfbError("The server sent data before encryption started");
+            }
+            bool declined = false;
+            Net::TlsOptions tlsOptions;
+            tlsOptions.hostName = options.host;
+            tlsOptions.anonymous = anonymous;
+            tlsOptions.trustDecision = [this, &options, &declined](const Net::TlsCertificate& certificate) {
+                const std::vector<uint8_t>& remembered = options.trustedCertificateSha256;
+                if (!remembered.empty() && certificate.sha256 == remembered)
+                {
+                    return true;
+                }
+                bool trusted = m_listener.OnUntrustedCertificate(certificate);
+                declined = !trusted;
+                return trusted;
+            };
+            std::unique_ptr<Net::TlsStream> tls = options.createTlsStream
+                                                      ? options.createTlsStream(m_socket, tlsOptions)
+                                                      : Net::CreateTlsStream(m_socket, tlsOptions);
+            if (!tls)
+            {
+                throw RfbError("This build of Marconi can't make encrypted connections yet");
+            }
+            std::string error;
+            if (!tls->Handshake(error))
+            {
+                if (declined)
+                {
+                    throw AuthenticationCancelled("The server's certificate was not accepted");
+                }
+                throw RfbError("Could not set up the encrypted connection: " + error);
+            }
+            std::string name = tls->GetProtocolName();
+            {
+                std::lock_guard<std::mutex> lock(m_sendMutex);
+                m_tls = std::move(tls);
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_encryptionName = name;
+            }
+            m_encrypted = true;
         }
 
         void Client::SendPointerEvent(int x, int y, uint8_t buttonMask)
@@ -255,6 +325,11 @@ namespace Marconi
         {
             DisconnectInfo info;
             std::string& error = info.error;
+            m_encrypted = false;
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_encryptionName.clear();
+            }
             try
             {
                 LOG_INFO("Rfb", "Connecting to %s:%u", options.host.c_str(), options.port);
@@ -272,7 +347,7 @@ namespace Marconi
                     }
                 }
 
-                SocketSource source(m_socket);
+                ConnectionSource source(*this);
                 InStream in(source);
 
                 Credentials credentials = options.credentials;
@@ -289,7 +364,15 @@ namespace Marconi
                     return true;
                 };
 
-                HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider);
+                TlsStarter startTls;
+                if (options.createTlsStream || Net::IsTlsAvailable())
+                {
+                    startTls = [this, &options, &in](bool anonymous) { StartTls(anonymous, options, in); };
+                }
+                // A server that accepts the connection but then says nothing mustn't leave us waiting for ever.
+                m_socket.SetReceiveTimeout(options.connectTimeoutMs);
+                HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider, startTls);
+                m_socket.SetReceiveTimeout(0);
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
                 m_appleServer = handshake.serverMajor == 3 && handshake.serverMinor == 889;
                 {
@@ -322,6 +405,11 @@ namespace Marconi
             {
                 std::lock_guard<std::mutex> sendLock(m_sendMutex);
                 std::lock_guard<std::mutex> socketLock(m_socketMutex);
+                if (m_tls)
+                {
+                    m_tls->Shutdown();
+                    m_tls.reset();
+                }
                 m_socket.Close();
             }
             if (m_stopping)
