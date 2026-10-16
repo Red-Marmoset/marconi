@@ -28,6 +28,7 @@ namespace MarconiUI
         int zoomPercent = 100; // with ScaleMode::Fixed
         bool viewOnly = false;
         bool clipboard = true;
+        bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
         wxDateTime lastUsed;
 
         wxString GetDisplayName() const { return name.empty() ? address : name; }

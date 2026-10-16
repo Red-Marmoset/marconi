@@ -4,6 +4,8 @@
 #include "ConnectionDialog.h"
 #include "Appearance.h"
 
+#include "SystemKeys.h"
+
 #include <MarconiCore/Zoom.h>
 #include <MarconiCore/Address.h>
 
@@ -75,6 +77,15 @@ namespace MarconiUI
         m_clipboard = new wxCheckBox(view->GetStaticBox(), wxID_ANY, "Share the clipboard");
         m_clipboard->SetValue(connection.clipboard);
         view->Add(m_clipboard, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
+        m_systemKeys = new wxCheckBox(view->GetStaticBox(), wxID_ANY,
+                                      "Send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer");
+        m_systemKeys->SetValue(connection.systemKeys && SystemKeyCapture::IsSupported());
+        if (!SystemKeyCapture::IsSupported())
+        {
+            m_systemKeys->Disable();
+            m_systemKeys->SetToolTip(wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
+        }
+        view->Add(m_systemKeys, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
         outer->Add(view, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(20));
 
         outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(20));
@@ -127,6 +138,7 @@ namespace MarconiUI
         }
         connection.viewOnly = m_viewOnly->GetValue();
         connection.clipboard = m_clipboard->GetValue();
+        connection.systemKeys = m_systemKeys->GetValue();
         return connection;
     }
 

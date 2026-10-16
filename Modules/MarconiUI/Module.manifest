@@ -5,5 +5,8 @@
     "description": "wxWidgets front end for Marconi",
     "dependencies": ["MarconiCore", "Platform", "Log"],
     "externalDependencies": ["wxwidgets"],
+    "platformLibraries": {
+        "macOS": ["-framework ApplicationServices"]
+    },
     "platforms": ["Windows", "Linux", "macOS"]
 }

@@ -67,9 +67,18 @@ namespace MarconiUI
             ID_SEND_CLIPBOARD,
             ID_GET_CLIPBOARD,
             ID_SEND_CTRL_ALT_DEL,
+            ID_SEND_ALT_TAB,
+            ID_SEND_ALT_F4,
+            ID_SEND_WINDOWS_KEY,
+            ID_SEND_CTRL_ESC,
+            ID_SEND_CTRL_SHIFT_ESC,
+            ID_SEND_PRINT_SCREEN,
+            ID_SEND_CMD_TAB,
             ID_SEND_F8,
             ID_SEND_F9,
             ID_SEND_F10,
+            ID_SEND_KEYS,   // the toolbar button that opens the Send Keys menu
+            ID_SYSTEM_KEYS, // send system shortcuts to the other computer
             ID_SHOW_TOOLBAR,
             ID_FILES,
             ID_REFRESH,
@@ -166,8 +175,11 @@ namespace MarconiUI
         m_canvas->SetViewOnly(options.viewOnly);
         m_clipboard.SetEnabled(options.clipboard);
         m_clipboard.SetStatusHandler([this](const wxString& message) { SetStatusText(message); });
+        m_sendSystemKeys = options.systemKeys && SystemKeyCapture::IsSupported();
         Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
             event.Skip();
+            m_active = event.GetActive();
+            UpdateSystemKeyCapture();
             if (event.GetActive())
             {
                 // Windows gives an activated frame the focus itself, and keys typed at the frame go nowhere:
@@ -233,6 +245,7 @@ namespace MarconiUI
         options.zoomPercent = connection.zoomPercent;
         options.viewOnly = connection.viewOnly;
         options.clipboard = connection.clipboard;
+        options.systemKeys = connection.systemKeys;
         options.layout = connection.layout;
         options.sshHostKey = connection.sshHostKey;
         options.dropFolder = connection.dropFolder;
@@ -707,6 +720,7 @@ namespace MarconiUI
             ToggleFullScreen();
         }
         UpdateControls();
+        UpdateSystemKeyCapture();
         UpdateStatus();
         m_canvas->SetFocus();
         SyncClipboardToServer();
@@ -839,6 +853,7 @@ namespace MarconiUI
         m_clipboardTimer.Stop();
         m_canvas->ReleaseInput();
         m_connected = false;
+        UpdateSystemKeyCapture();
         UpdateControls();
         if (!info.error.empty() && m_usingRemembered && !m_reprobed && !info.wasConnected &&
             !info.authenticationFailed)
@@ -932,6 +947,8 @@ namespace MarconiUI
                            wxITEM_CHECK);
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+Del", wxNullBitmap, "Send Ctrl+Alt+Del");
+        m_toolBar->AddTool(ID_SEND_KEYS, "Send Keys", wxNullBitmap,
+                           "Send a shortcut the remote computer can't otherwise receive (Alt+Tab, the Windows key...)");
         // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
         m_toolBar->AddTool(ID_SEND_F8, "F8", wxNullBitmap, "Send F8 to the remote computer");
         m_toolBar->AddTool(ID_SEND_F9, "F9", wxNullBitmap, "Send F9 to the remote computer");
@@ -978,10 +995,15 @@ namespace MarconiUI
         menu->Append(ID_SEND_CLIPBOARD, "Send Clipboard to the Other Computer");
         menu->Append(ID_GET_CLIPBOARD, "Get Clipboard from the Other Computer");
         menu->AppendSeparator();
-        menu->Append(ID_SEND_CTRL_ALT_DEL, "Send Ctrl+Alt+&Del");
-        menu->Append(ID_SEND_F8, "Send F&8");
-        menu->Append(ID_SEND_F9, "Send F&9");
-        menu->Append(ID_SEND_F10, "Send F1&0");
+        menu->AppendSubMenu(CreateSendKeysMenu(), "Send &Keys");
+        wxString systemKeysLabel = "Send System Shortcuts (Alt+Tab, Windows Key) to the Other Computer";
+#if defined(__WXOSX__)
+        systemKeysLabel = "Send System Shortcuts (Cmd+Tab, Cmd+Space) to the Other Computer";
+#endif
+        menu->AppendCheckItem(ID_SYSTEM_KEYS, systemKeysLabel,
+                              SystemKeyCapture::IsSupported()
+                                  ? wxString()
+                                  : wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
         menu->Append(ID_REFRESH, "&Refresh Screen");
         menu->AppendSeparator();
         menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
@@ -1006,15 +1028,74 @@ namespace MarconiUI
         menu->Check(ID_FULL_SCREEN, IsFullScreen());
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
+        menu->Check(ID_SYSTEM_KEYS, m_sendSystemKeys);
+        menu->Enable(ID_SYSTEM_KEYS, SystemKeyCapture::IsSupported());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
         menu->Check(ID_FILES, m_files->IsShown());
-        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10, ID_REFRESH})
+        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_ALT_TAB, ID_SEND_ALT_F4, ID_SEND_WINDOWS_KEY, ID_SEND_CTRL_ESC,
+                       ID_SEND_CTRL_SHIFT_ESC, ID_SEND_PRINT_SCREEN, ID_SEND_CMD_TAB, ID_SEND_F8, ID_SEND_F9,
+                       ID_SEND_F10, ID_REFRESH})
         {
             menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
         }
         menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
         menu->Enable(ID_GET_CLIPBOARD, m_connected);
         return menu;
+    }
+
+    wxMenu* ViewerFrame::CreateSendKeysMenu() const
+    {
+        // Shortcuts the local system would act on itself, so they can't simply be typed.
+        wxMenu* keys = new wxMenu();
+        keys->Append(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+&Del");
+        keys->Append(ID_SEND_ALT_TAB, "Alt+&Tab");
+        keys->Append(ID_SEND_ALT_F4, "Alt+F&4");
+        keys->Append(ID_SEND_WINDOWS_KEY, "&Windows Key");
+        keys->Append(ID_SEND_CTRL_ESC, "Ctrl+&Esc");
+        keys->Append(ID_SEND_CTRL_SHIFT_ESC, "Ctrl+&Shift+Esc");
+        keys->Append(ID_SEND_PRINT_SCREEN, "&Print Screen");
+        keys->Append(ID_SEND_CMD_TAB, "&Cmd+Tab (Mac)");
+        keys->AppendSeparator();
+        // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
+        keys->Append(ID_SEND_F8, "F&8");
+        keys->Append(ID_SEND_F9, "F&9");
+        keys->Append(ID_SEND_F10, "F1&0");
+        return keys;
+    }
+
+    void ViewerFrame::UpdateSystemKeyCapture()
+    {
+        bool wanted = m_sendSystemKeys && m_connected && m_active && !m_canvas->IsViewOnly() &&
+                      SystemKeyCapture::IsSupported() && !m_options.headless;
+        if (!wanted)
+        {
+            if (m_systemKeys)
+            {
+                m_systemKeys->Stop();
+            }
+            return;
+        }
+        if (!m_systemKeys)
+        {
+            m_systemKeys = SystemKeyCapture::Create([this](uint32_t keysym, bool down) {
+                if (m_connected && !m_canvas->IsViewOnly())
+                {
+                    m_client.SendKeyEvent(keysym, down);
+                }
+            });
+        }
+        if (!m_systemKeys || m_systemKeys->IsActive())
+        {
+            return;
+        }
+        std::string problem;
+        if (!m_systemKeys->Start(problem))
+        {
+            LOG_INFO("Viewer", "Can't send system shortcuts: %s", problem.c_str());
+            m_sendSystemKeys = false;
+            wxMessageBox("Marconi can't send system shortcuts to the other computer: " + wxString::FromUTF8(problem),
+                         "Marconi", wxOK | wxICON_INFORMATION, this);
+        }
     }
 
     void ViewerFrame::ShowMenu()
@@ -1048,6 +1129,7 @@ namespace MarconiUI
             break;
         case ID_VIEW_ONLY:
             m_canvas->SetViewOnly(!m_canvas->IsViewOnly());
+            UpdateSystemKeyCapture();
             break;
         case ID_CLIPBOARD:
             m_clipboard.SetEnabled(!m_clipboard.IsEnabled());
@@ -1065,6 +1147,45 @@ namespace MarconiUI
             return;
         case ID_SEND_CTRL_ALT_DEL:
             SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Alt_L, Marconi::Keysym::Delete});
+            break;
+        case ID_SEND_ALT_TAB:
+            SendKeyCombination({Marconi::Keysym::Alt_L, Marconi::Keysym::Tab});
+            break;
+        case ID_SEND_ALT_F4:
+            SendKeyCombination({Marconi::Keysym::Alt_L, Marconi::Keysym::F1 + 3});
+            break;
+        case ID_SEND_WINDOWS_KEY:
+            SendKeyCombination({Marconi::Keysym::Super_L});
+            break;
+        case ID_SEND_CTRL_ESC:
+            SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Escape});
+            break;
+        case ID_SEND_CTRL_SHIFT_ESC:
+            SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Shift_L, Marconi::Keysym::Escape});
+            break;
+        case ID_SEND_PRINT_SCREEN:
+            SendKeyCombination({Marconi::Keysym::Print});
+            break;
+        case ID_SEND_CMD_TAB:
+            SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Tab});
+            break;
+        case ID_SEND_KEYS:
+        {
+            std::unique_ptr<wxMenu> keys(CreateSendKeysMenu());
+            for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_ALT_TAB, ID_SEND_ALT_F4, ID_SEND_WINDOWS_KEY, ID_SEND_CTRL_ESC,
+                           ID_SEND_CTRL_SHIFT_ESC, ID_SEND_PRINT_SCREEN, ID_SEND_CMD_TAB, ID_SEND_F8, ID_SEND_F9,
+                           ID_SEND_F10})
+            {
+                keys->Enable(id, m_connected && !m_canvas->IsViewOnly());
+            }
+            m_canvas->ReleaseInput();
+            wxRect tool = m_toolBar->GetToolRect(ID_SEND_KEYS);
+            m_toolBar->PopupMenu(keys.get(), tool.GetBottomLeft());
+            break;
+        }
+        case ID_SYSTEM_KEYS:
+            m_sendSystemKeys = !m_sendSystemKeys;
+            UpdateSystemKeyCapture();
             break;
         case ID_SEND_F8:
             SendKeyCombination({Marconi::Keysym::F1 + 7});
@@ -1177,7 +1298,7 @@ namespace MarconiUI
         m_toolBar->ToggleTool(ID_SCALE_FIT, m_canvas->GetScaleMode() == ScaleMode::Fit);
         m_toolBar->ToggleTool(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         m_toolBar->ToggleTool(ID_CLIPBOARD, m_clipboard.IsEnabled());
-        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10})
+        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_KEYS, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10})
         {
             m_toolBar->EnableTool(id, m_connected && !m_canvas->IsViewOnly());
         }
@@ -1241,6 +1362,10 @@ namespace MarconiUI
         {
             status += " - view only";
         }
+        if (m_systemKeys && m_systemKeys->IsActive())
+        {
+            status += " - system shortcuts go to the other computer";
+        }
         SetStatusText(status);
     }
 
@@ -1257,6 +1382,7 @@ namespace MarconiUI
         saved.zoomPercent = m_canvas->GetZoomPercent();
         saved.viewOnly = m_canvas->IsViewOnly();
         saved.clipboard = m_clipboard.IsEnabled();
+        saved.systemKeys = m_sendSystemKeys;
         saved.layout = GetLayout();
         store.Save(saved);
     }
@@ -1289,6 +1415,10 @@ namespace MarconiUI
         m_questionChanged.notify_all();
         StopProbe();
         StopTimers();
+        if (m_systemKeys)
+        {
+            m_systemKeys->Stop();
+        }
         m_canvas->ReleaseInput();
         m_client.Disconnect();
         event.Skip(); // default handler destroys the frame

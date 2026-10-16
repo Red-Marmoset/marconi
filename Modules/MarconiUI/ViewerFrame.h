@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ClipboardSync.h"
+#include "SystemKeys.h"
 #include "VncCanvas.h"
 
 #include <MarconiCore/Address.h>
@@ -42,6 +43,7 @@ namespace MarconiUI
         bool viewOnly = false;
         bool fullScreen = false;
         bool clipboard = true;
+        bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
         wxString savedId;       // the saved connection this window was opened from, if any
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
@@ -123,6 +125,8 @@ namespace MarconiUI
         void UpdateControls();
         void UpdateStatus();
         void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
+        wxMenu* CreateSendKeysMenu() const;
+        void UpdateSystemKeyCapture();
         void ToggleFullScreen();
         void ToggleToolbar();
         void ToggleFiles();
@@ -150,6 +154,9 @@ namespace MarconiUI
         wxString m_desktopName;
         wxSize m_connectedSize;
         bool m_connected = false;
+        bool m_active = false;          // the window is the active one (system shortcuts are only caught then)
+        bool m_sendSystemKeys = false;  // the user wants Alt+Tab, the Windows key and the like sent to the server
+        std::unique_ptr<SystemKeyCapture> m_systemKeys;
         wxTimer m_pictureTimer;   // re-asks for the desktop if a fresh connection still shows nothing
         int m_pictureRetries = 0;
         bool m_waitingForPicture = false; // no pixels since connecting or the last resize
