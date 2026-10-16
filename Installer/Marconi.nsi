@@ -14,6 +14,9 @@
 !define APP_EXE "Marconi.exe"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 !define APP_ICON "..\Modules\MarconiUI\Resources\Marconi.ico"
+; Branding bitmaps from Tools/make_installer_art.py; rerun it after changing the icon, colours or fonts.
+!define WIZARD_BITMAP "Art\Wizard.bmp"
+!define HEADER_BITMAP "Art\Header.bmp"
 
 Unicode true
 ManifestDPIAware true
@@ -24,7 +27,7 @@ Name "${APP_NAME}"
 OutFile "${OUT_FILE}"
 InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "${UNINSTALL_KEY}" "InstallLocation"
-BrandingText "${APP_NAME} ${VERSION}"
+BrandingText "${APP_NAME} ${VERSION}  |  ${PUBLISHER}"
 
 ; The setup executable's own version information (Explorer > Properties > Details).
 VIProductVersion "${VERSION}"
@@ -43,8 +46,22 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
 !define MUI_ABORTWARNING
+!define MUI_UNABORTWARNING
+
+; The red panel on the welcome and finish pages and the logo in the header of the others.
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${WIZARD_BITMAP}"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "${WIZARD_BITMAP}"
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_HEADERIMAGE_BITMAP "${HEADER_BITMAP}"
+!define MUI_HEADERIMAGE_UNBITMAP "${HEADER_BITMAP}"
+
+!define MUI_WELCOMEPAGE_TITLE "Welcome to ${APP_NAME} ${VERSION}"
+!define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME}, the VNC client from ${PUBLISHER}, on your computer.$\r$\n$\r$\nIf ${APP_NAME} is running, close it before continuing. Your saved connections are kept when upgrading.$\r$\n$\r$\nClick Next to continue."
+!define MUI_FINISHPAGE_TITLE "${APP_NAME} is ready"
+!define MUI_FINISHPAGE_TEXT "${APP_NAME} ${VERSION} has been installed on your computer.$\r$\n$\r$\nClick Finish to close Setup."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME}"
+!define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME} now"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "..\LICENSE"
@@ -53,8 +70,11 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
+!define MUI_WELCOMEPAGE_TEXT "This will remove ${APP_NAME} from your computer. Your saved connections, stored passwords and logs are kept.$\r$\n$\r$\nClose ${APP_NAME} before continuing, then click Next."
+!insertmacro MUI_UNPAGE_WELCOME
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_UNPAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "English"
 

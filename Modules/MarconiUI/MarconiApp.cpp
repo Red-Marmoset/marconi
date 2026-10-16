@@ -49,9 +49,16 @@ namespace MarconiUI
         LOG_INFO("App", "Marconi %s (%s) starting", Marconi::GetVersionString(), Marconi::GetVersionCommit());
 #if wxUSE_PRIVATE_FONTS
         // Load before creating the wordmark or enumerating font faces. The font belongs to this process only.
+        // Windows and development builds keep the fonts beside the executable; the macOS bundle keeps them in
+        // Contents/Resources.
         for (const auto* fontFile : {"NebulaSans-Black.ttf", "NebulaSans-Semibold.ttf"})
         {
-            const wxFileName brandFont(wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath(), fontFile);
+            wxFileName brandFont(wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath(), fontFile);
+            if (!brandFont.FileExists())
+            {
+                brandFont.AssignDir(wxStandardPaths::Get().GetResourcesDir());
+                brandFont.SetFullName(fontFile);
+            }
             bool fontLoaded = false;
             if (brandFont.FileExists())
             {

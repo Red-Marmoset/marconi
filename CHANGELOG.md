@@ -8,6 +8,9 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Documented when to bump the version, for people (README) and for coding agents (CLAUDE.md, AGENTS.md).
 - Added this changelog.
 - Added the 96 px size to the Windows icon file, to match the icon bundle used at runtime.
+- The Windows installer is branded: a red welcome panel with the Marconi and Red Marmoset logos, a header logo, and
+  welcome and finish pages for the uninstaller too.
+- Added `Package.sh`, which makes a macOS disk image with `Marconi.app` and a Mac-style icon.
 
 ## 0.2.0
 

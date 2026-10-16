@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Copyright (c) 2026 Red Marmoset Studios Ltd. -->
+<!-- Info.plist for Marconi.app. Package.sh fills in the @VERSION@, @SHORT_VERSION@ and @MIN_MACOS@ placeholders. -->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Marconi</string>
+    <key>CFBundleExecutable</key>
+    <string>Marconi</string>
+    <key>CFBundleIconFile</key>
+    <string>Marconi</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.redmarmoset.Marconi</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Marconi</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@SHORT_VERSION@</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>@MIN_MACOS@</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright (c) 2026 Red Marmoset Studios Ltd.</string>
+    <!-- macOS 15 asks before an app connects to devices on the local network; this is the reason it shows. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Marconi connects to VNC and Screen Sharing servers on your local network.</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSSupportsAutomaticGraphicsSwitching</key>
+    <true/>
+</dict>
+</plist>
