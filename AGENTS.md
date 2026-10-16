@@ -31,9 +31,10 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
   version bump renames "Unreleased" to that version and starts a new, empty "Unreleased" section.
   - Keep entries terse and minimal (the owner's rule): one short line saying what changed, with no explanation of
     how or why, and no sub-bullets.
-  - Use plain words anyone can follow; no jargon-metaphors such as load-bearing, seam, cadence, substrate, spine,
-    blast radius, anchored, byte-identical, "that's not nothing", surface (as a verb), land (for merge), plumbing,
-    footgun or happy path.
+- **Public-facing text** (the changelog, README, the app's UI text and the installer) uses plain words anyone can
+  follow (the owner's rule). No jargon-metaphors such as load-bearing, seam, cadence, substrate, spine, blast radius,
+  anchored, byte-identical, "that's not nothing", surface (as a verb), land (for merge), plumbing, footgun or happy
+  path, and no technical names a reader may not know (say what it does instead).
 - **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
   `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local. Its branding bitmaps (`Installer/Art/`) come from
   `python Tools/make_installer_art.py`; rerun it after changing the icon, accent colour or fonts.

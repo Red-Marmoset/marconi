@@ -2,95 +2,126 @@
 
 **M**ulti-protocol **A**ccess and **R**emote **CON**trol **I**nterface.
 
-A free, cross-platform VNC client for Windows, macOS and Linux, built on the una engine with a wxWidgets UI.
+Marconi lets you see and control another computer's screen from your own, as if you were sitting in front of it.
+It's free, and runs on Windows, macOS and Linux.
 
-It works with macOS Screen Sharing (Apple account login) and with standard RFB servers: TightVNC, TigerVNC,
-RealVNC, x11vnc, UltraVNC and others.
+It works with:
 
-## Features
+- **Macs**, through the Mac's built-in Screen Sharing;
+- **Windows and Linux computers** running a VNC server, such as TightVNC, TigerVNC, RealVNC, UltraVNC or x11vnc.
 
-- **Authentication:** none, VNC password, and Apple Remote Desktop account login (macOS Screen Sharing).
-- **Encodings:** Tight (including JPEG), ZRLE, Hextile, RRE, CopyRect and Raw, with configurable compression and JPEG
-  quality.
-- **Display:** the server's cursor is drawn locally, so the pointer doesn't lag. Remote resolution changes are
-  followed (DesktopSize and ExtendedDesktopSize).
-- **Viewing:** scale to fit the window or show at actual size, full screen, and view-only mode.
-- **Clipboard:** text is shared in both directions.
-- **Keyboard:** layout-correct key mapping. On a Mac, Command becomes Super on the remote side. Keys are released
-  when the window loses focus, so none get stuck. You can send Ctrl+Alt+Del.
-- **Saved connections:** an address book with passwords in the system keychain (Windows Credential Manager, macOS
-  Keychain, libsecret on Linux). Each connection remembers its view settings.
+## What it can do
 
-## Using it
+- See the other computer's screen, scaled to fit your window or at full size, in a window or full screen.
+- Use its keyboard and mouse. Keys match your keyboard layout, and a Mac's Command key works as expected.
+- Copy and paste text between the two computers, in either direction.
+- Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
+  Credential Manager, the macOS Keychain, or your Linux desktop's keyring).
+- Find computers on your home or office network by itself.
+- Just watch, without sending any keyboard or mouse input ("view only").
+- Send Ctrl+Alt+Del to a Windows computer.
 
-Run `marconi` to open the connection window. Type an address and press Enter, pick a saved connection, or
-double-click a machine under **On this network**.
+## Before you start: set up the other computer
 
-### Connecting
+**A Mac:** on the Mac, open *System Settings > General > Sharing* and turn on **Screen Sharing**. You'll log in with
+an account on that Mac, the same name and password you use to log in there.
 
-You don't choose a protocol. Marconi looks at what the machine offers (VNC on 5900, Remote Desktop on 3389 and SSH
-on 22, all at once) and uses the best one it can. A saved connection remembers what it found, so the next connection
-starts straight away; if that stops working, Marconi looks again once.
+**Windows or Linux:** install a VNC server on that computer (TightVNC is a free choice for Windows) and set a
+password for it.
 
-Remote Desktop (RDP) and SSH are detected but not supported yet. When a machine only offers one of those, Marconi
-says so instead of reporting a failed connection.
+## Connecting
 
-**On this network** lists the machines that advertise Screen Sharing (VNC), Remote Desktop or SSH on the local
-network (mDNS, as Macs do), and refreshes every 10 seconds.
+Open Marconi. In the window that appears, either:
 
-Addresses can be written as:
+- type the other computer's name or address (for example `studio-mac.local` or `192.168.1.20`) and press Enter;
+- pick a computer you've saved before; or
+- double-click a computer listed under **On this network**.
 
-| You type | Connects to |
+You don't need to know what kind of connection the other computer uses. Marconi checks what it offers and picks the
+best option it supports. It remembers what it found, so connecting next time is quicker.
+
+**On this network** lists computers nearby that announce themselves, as Macs with Screen Sharing do. The list
+updates every 10 seconds.
+
+Some computers offer Remote Desktop (built into Windows) or SSH (a text-only connection) instead. Marconi recognises
+these, but can't use them yet, and tells you so.
+
+### Ways to write an address
+
+Most of the time a name or address on its own is all you need. For special cases:
+
+| You type | What it means |
 |---|---|
-| `host` | whatever the machine offers |
-| `host:1` | VNC display 1, which is port 5901 (numbers below 100 are display numbers) |
-| `host::5901` | port 5901, whatever answers there |
-| `[fe80::1]:1` | an IPv6 address with a display number |
-| `vnc://host`, `vnc://host:5901` | VNC only, on port 5900 or the port given |
-| `rdp://host`, `ssh://host` | force Remote Desktop or SSH (detected, not supported yet) |
-| `name@host` | any of the above, logging in with the account `name` (Mac account login) |
+| `studio-mac.local` | connect however the computer allows |
+| `studio-mac.local:1` | VNC screen number 1 (used by some Linux servers) |
+| `studio-mac.local::5901` | a specific port number, here 5901 |
+| `alice@studio-mac.local` | log in to a Mac as the user `alice` |
+| `vnc://studio-mac.local` | VNC only |
+| `rdp://drips`, `ssh://drips` | Remote Desktop or SSH only (recognised, not supported yet) |
+| `[fe80::1]:1` | an IPv6 address, in square brackets |
 
-From the command line:
+## While you're connected
 
-    marconi [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] host[:display]
+Press **F8** to open Marconi's menu, even in full screen. From it you can:
 
-Open a saved connection with `--saved NAME` (its name, address or id), using its keychain password.
+- switch between fitting the window and full size;
+- go full screen or back;
+- turn view-only and clipboard sharing on or off;
+- send Ctrl+Alt+Del (or F8 itself) to the other computer;
+- refresh the picture, or disconnect.
 
-**Headless mode** (testing and automation) runs a connection without a window or dialogs. It logs and saves what
-the viewer would show as PNGs in the log folder, then exits:
+## Appearance and settings
 
-    marconi --saved "Studio Mac" --headless --view-only --snapshot-every 5 --quit-after 60
+Marconi follows your system's light or dark appearance, or you can choose **Light** or **Dark** at the bottom of the
+connections window. **Settings** has the same choice, and a button that opens Marconi's log folder.
 
-While connected, **F8** opens the menu, which still works in full screen. From it you can change scaling, switch
-full screen, view-only and clipboard sharing, send Ctrl+Alt+Del or F8, refresh, or disconnect.
+On Windows, a few parts (menus and the title bar) only change colour after you restart Marconi.
 
-To connect to a Mac, turn on *System Settings > General > Sharing > Screen Sharing* on the Mac. Then log in with an
-account on that Mac.
+## If something goes wrong
 
-Logs are written to the user data folder:
+Marconi keeps a log of what it did, which helps when reporting a problem. Open it from **Settings > Open log
+folder**, or find it here:
 
-| Platform | Log folder |
+| System | Log folder |
 |---|---|
 | Windows | `%LOCALAPPDATA%\marconi\logs` |
 | macOS | `~/Library/Application Support/marconi/logs` |
 | Linux | `~/.local/share/marconi/logs` |
 
-Marconi used to be called rmvnc. On first start it copies rmvnc's saved connections and passwords; the old ones are
-left in place.
+Marconi used to be called rmvnc. The first time it starts, it copies rmvnc's saved computers and passwords, and
+leaves the originals as they were.
 
-## Appearance
+## Not available yet
 
-The connections window includes search by name or address and a **System / Light / Dark** selector.
-Your appearance choice is remembered between launches. The main window updates immediately; on Windows,
-restart Marconi to finish updating native menus and title bars. **Settings** also provides appearance selection
-and access to the log folder. Connection and credential dialogs use the same palette.
+- **Encrypted connections.** Your password is protected when you log in, but the screen picture and your typing are
+  not encrypted after that. Use Marconi on networks you trust, such as your home network.
+- **Remote Desktop and SSH** connections (recognised, but not supported yet).
+- **File transfer.**
+- Copying text in some languages and symbols (the clipboard only carries Western European characters for now).
+- Changing the other computer's screen resolution from Marconi.
+- Apple's newest login methods. The one every recent macOS version offers works.
+
+---
+
+# For developers
+
+## Command line
+
+    marconi [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
+
+`--saved NAME` opens a saved connection by its name, address or id, using its stored password.
+
+**Headless mode**, for testing and automation, runs a connection without a window or dialogs. It logs what happens
+and saves what the viewer would show as PNG files in the log folder, then exits:
+
+    marconi --saved "Studio Mac" --headless --view-only --snapshot-every 5 --quit-after 60
 
 ## Building
 
 You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildTool bootstrapped.
 
-**Windows.** Any PowerShell or cmd window works; the MSVC environment is set up automatically and needs
-toolset 14.44 or newer.
+**Windows.** Any PowerShell or cmd window works. The MSVC environment is set up automatically and needs toolset
+14.44 or newer.
 
     .\Build.ps1                       # Release app  -> Build\Marconi\Release\Marconi.exe
     .\Build.ps1 -Config Debug
@@ -107,14 +138,14 @@ toolset 14.44 or newer.
                      libxxf86vm-dev libxtst-dev libsm-dev
     ./Build.sh
 
-> Incremental builds rely on BuildTool's header dependency tracking (engine commit 3d0ce07 or later). With an older BuildTool, build with `-Clean` after editing a header.
+Incremental builds rely on BuildTool's header dependency tracking (engine commit 3d0ce07 or later). With an older
+BuildTool, build with `-Clean` after editing a header.
 
 ## Versions
 
-Versions are `MAJOR.MINOR.PATCH.REVISION`, for example `0.1.0.27`:
+Versions are `MAJOR.MINOR.PATCH.REVISION`, for example `0.2.0.48`:
 
-- `MAJOR.MINOR.PATCH` follows semantic versioning and is set in `Project.json`. To start a new release line, change
-  it there.
+- `MAJOR.MINOR.PATCH` follows semantic versioning and is set in `Project.json`.
 - `REVISION` is the commit's position in the history: the first commit is 1, the second is 2, and so on
   (`git rev-list --count HEAD`). Each commit on `main` gets a higher number than the last.
 
@@ -123,6 +154,8 @@ When to change `MAJOR.MINOR.PATCH`:
 - A big feature bumps MINOR (0.2.0 to 0.3.0) in the change that adds it.
 - Marconi stays on 0.x until its own server component exists, even if something breaks backwards compatibility.
 - 1.0 is the owner's call, made when Marconi feels complete, not when a rule says so.
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 `Build.ps1` and `Build.sh` write the version to `Modules/MarconiCore/BuildVersion.h`, a generated file that isn't
 committed, before every build. Marconi logs its version and commit when it starts. On Windows the version is also
@@ -133,13 +166,13 @@ clone gets a revision that is too low.
 
 The installer is built with [NSIS 3](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`):
 
-    .\Package.ps1                     # -> Build\Installer\Marconi-0.1.0.27-win64-setup.exe
+    .\Package.ps1                     # -> Build\Installer\Marconi-0.2.0.48-win64-setup.exe
 
 It builds the Release app, then packages `Marconi.exe` with the Visual C++ runtime DLLs from your Visual Studio, so
-users don't need the separate redistributable. It also bundles Nebula Sans Black and Semibold and their SIL Open Font License.
-The font loads privately for Marconi, so branding works without a system font installation and uninstalling
-Marconi does not affect fonts used by other applications. Then it prints the installer's SHA-256 and the command to tag the
-release (`v0.1.0.27`). It refuses a shallow clone, and refuses uncommitted changes to tracked files unless you pass
+users don't need the separate redistributable. It also bundles Nebula Sans Black and Semibold and their SIL Open
+Font License. The fonts load privately for Marconi, so branding works without installing them, and uninstalling
+Marconi doesn't affect other applications. It then prints the installer's SHA-256 and the command to tag the release
+(`v0.2.0.48`). It refuses a shallow clone, and refuses uncommitted changes to tracked files unless you pass
 `-AllowDirty` for a test package. `-SkipBuild` packages the existing build if it matches the current version.
 
 The installer installs to `Program Files\Marconi`, with a Start menu shortcut and an optional desktop one. It also
@@ -154,7 +187,7 @@ saved connections, passwords and logs. `Uninstall.exe /S` uninstalls silently, a
 
 ## Releasing (macOS)
 
-    ./Package.sh                      # -> Build/Installer/Marconi-0.1.0.27-macos-arm64.dmg
+    ./Package.sh                      # -> Build/Installer/Marconi-0.2.0.48-macos-arm64.dmg
 
 It builds the Release app, wraps it in `Marconi.app` with the icon, Nebula Sans and `Installer/macOS/Info.plist`,
 signs it, and makes a disk image to drag it to Applications from. It takes `--clean`, `--skip-build` and
@@ -169,13 +202,14 @@ ID Application certificate, and set `MARCONI_NOTARY_PROFILE` to a profile from `
 
 ## Testing
 
-`Tests/MarconiCoreTest` covers the protocol core:
+`Tests/MarconiCoreTest` covers the core:
 
 - address parsing and text conversion;
 - streams;
 - the handshake, VNC auth and Apple auth against a scripted fake server on loopback;
 - every decoder, using hand-built encoded data;
-- the client message loop.
+- the client message loop;
+- connecting, probing for protocols, DNS messages and network discovery, against local fake services.
 
 The exit code is the number of failures.
 
@@ -187,21 +221,14 @@ authentication and logs every key, pointer and clipboard event it receives:
 
 ## Layout
 
-- `Modules/MarconiCore`: the headless RFB client. It covers sockets, the stream, the handshake and authentication,
-  decoders, the framebuffer and the client thread, and includes no wx headers.
+- `Modules/MarconiCore`: the VNC (RFB) protocol client, with no UI. It covers sockets, the stream, the handshake and
+  authentication, decoders, the framebuffer, the client thread, protocol probing and network discovery (mDNS), and
+  includes no wx headers.
 - `Modules/MarconiUI`: the wxWidgets app. It contains the connections window, the viewer window and canvas, key
   mapping, clipboard sync and the saved connections store.
 - `Tests/MarconiCoreTest`: core tests.
-- `Installer/`: the Windows installer script (NSIS), built by `Package.ps1`.
+- `Installer/`: the Windows installer script (NSIS) and the macOS app bundle files.
 - `Tools/`: development helpers.
 
 Marconi also uses the una engine's `Crypto` module, which provides DES, AES, MD5, Diffie-Hellman and random numbers
 through each platform's own crypto library.
-
-## Not yet supported
-
-- Encrypted connections (VeNCrypt/TLS). Tunnel over SSH if you need encryption: VNC password and Apple
-  authentication protect the login, not the session.
-- Apple's newer authentication types (33, 35 and 36). Type 30, which all recent macOS versions offer, is
-  supported.
-- File transfer, the extended (UTF-8) clipboard, and resizing the remote desktop from the client.

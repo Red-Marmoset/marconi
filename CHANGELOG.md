@@ -9,6 +9,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Added a 96 px Windows icon size.
 - Branded the Windows installer.
 - Added a macOS disk image (`Package.sh`).
+- Rewrote the README in plain language, with the developer notes at the end.
 
 ## 0.2.0
 
