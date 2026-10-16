@@ -217,7 +217,7 @@ namespace MarconiUI
         SetStatusText("Connecting to " + wxString::FromUTF8(Marconi::FormatAddress(m_options.address)) + "...");
         Marconi::Rfb::ConnectionOptions connection;
         connection.host = m_options.address.host;
-        connection.port = m_options.address.port;
+        connection.port = Marconi::EffectivePort(m_options.address);
         connection.credentials = m_options.credentials;
         connection.encodings = m_options.encodings;
         connection.exactEncodings = !m_options.encodings.empty();
