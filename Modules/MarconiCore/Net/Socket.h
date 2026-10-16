@@ -7,6 +7,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
+
+struct addrinfo;
 
 namespace Marconi
 {
@@ -28,6 +31,9 @@ namespace Marconi
             // If `cancel` becomes true while waiting, gives up promptly.
             bool Connect(const std::string& host, uint16_t port, int timeoutMs, std::string& error,
                          const std::atomic<bool>* cancel = nullptr);
+            // As Connect, for numeric addresses tried in the given order (tests; resolving is skipped).
+            bool ConnectAddresses(const std::vector<std::string>& numericHosts, uint16_t port, int timeoutMs,
+                                  std::string& error, const std::atomic<bool>* cancel = nullptr);
 
             // Listens on `bindAddress`:`port` (port 0 picks a free one; see GetLocalPort).
             bool Listen(const std::string& bindAddress, uint16_t port, std::string& error);
@@ -50,6 +56,9 @@ namespace Marconi
             static std::string GetLastErrorString();
 
         private:
+            void ConnectFirst(const std::vector<const addrinfo*>& addresses, const std::string& target, int timeoutMs,
+                              std::string& error, const std::atomic<bool>* cancel);
+
             intptr_t m_handle;
             std::atomic<bool> m_shutdown{false};
         };
