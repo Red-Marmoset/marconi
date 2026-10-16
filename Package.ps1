@@ -1,7 +1,20 @@
 # Package.ps1 - Build the Windows installer: Build\Installer\Marconi-<version>-win64-setup.exe
 #
 # Builds the Release app with Build.ps1, stages Marconi.exe with the MSVC runtime DLLs it links against (/MD), and
-# compiles Installer\Marconi.nsi with NSIS 3 (winget install NSIS.NSIS).
+# compiles Installer\Marconi.nsi with NSIS 3.08 or newer (winget install NSIS.NSIS).
+#
+# The installer's "Start Marconi now" uses the ShellExecAsUser NSIS plug-in, so Marconi starts as the signed-in user
+# rather than as administrator. Install its Unicode build as ShellExecAsUser.dll in the NSIS installation's
+# Plugins\x86-unicode folder (C:\Program Files (x86)\NSIS\Plugins\x86-unicode by default). It's on the NSIS wiki:
+# https://nsis.sourceforge.io/ShellExecAsUser_plug-in
+#
+# Signing: unsigned by default, which makes Windows warn before running the installer and Marconi. To publish, sign
+# with a code-signing certificate from the current user's certificate store (where a hardware token's certificate
+# shows up):
+#   MARCONI_SIGN_THUMBPRINT=<the certificate's SHA-1 thumbprint>
+#   MARCONI_SIGN_TIMESTAMP_URL=<RFC 3161 timestamp server>   optional; http://timestamp.digicert.com by default
+# signtool (Windows SDK) then signs Marconi.exe, the uninstaller and the setup executable, with a timestamp so the
+# signatures outlive the certificate.
 #
 # The version is MAJOR.MINOR.PATCH from Project.json plus the revision, the number of commits in the history (see
 # README.md). Release builds should come from a clean, full clone so the version identifies the source exactly.
@@ -80,6 +93,28 @@ function Find-Makensis {
     return $null
 }
 
+# signtool.exe from the Windows SDK: on PATH in a Visual Studio developer shell (Build.ps1 sets one up), otherwise
+# the newest installed SDK's x64 one.
+function Find-Signtool {
+    $command = Get-Command "signtool.exe" -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    foreach ($dir in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+        if ($dir) {
+            $candidates = @(Get-ChildItem -Directory -Path (Join-Path $dir "Windows Kits\10\bin") -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } |
+                Sort-Object { [version]$_.Name } -Descending |
+                ForEach-Object { Join-Path $_.FullName "x64\signtool.exe" } |
+                Where-Object { Test-Path $_ })
+            if ($candidates) {
+                return $candidates[0]
+            }
+        }
+    }
+    return $null
+}
+
 # Check the source before spending time on a build.
 if ((Invoke-Git rev-parse --is-shallow-repository) -eq "true") {
     Fail "this is a shallow clone, so the revision would be wrong. Fetch the full history (git fetch --unshallow)."
@@ -90,7 +125,32 @@ if ($dirty -and -not $AllowDirty) {
 }
 $makensis = Find-Makensis
 if (-not $makensis) {
-    Fail "makensis.exe not found. Install NSIS 3 (winget install NSIS.NSIS) or put makensis.exe on PATH."
+    Fail "makensis.exe not found. Install NSIS 3.08 or newer (winget install NSIS.NSIS) or put makensis.exe on PATH."
+}
+$plugin = Join-Path (Split-Path -Parent $makensis) "Plugins\x86-unicode\ShellExecAsUser.dll"
+if (-not (Test-Path $plugin)) {
+    Fail "the ShellExecAsUser NSIS plug-in wasn't found at $plugin. Download its Unicode build from https://nsis.sourceforge.io/ShellExecAsUser_plug-in and copy ShellExecAsUser.dll there (see the top of Package.ps1)."
+}
+
+# Signing is optional; when configured, everything it needs must be there before the build starts.
+$thumbprint = $env:MARCONI_SIGN_THUMBPRINT
+$signtool = $null
+if ($thumbprint) {
+    $thumbprint = $thumbprint -replace '\s', ''
+    if ($thumbprint -notmatch '^[0-9A-Fa-f]{40}$') {
+        Fail "MARCONI_SIGN_THUMBPRINT must be the certificate's SHA-1 thumbprint: 40 hexadecimal digits."
+    }
+    $signtool = Find-Signtool
+    if (-not $signtool) {
+        Fail "signtool.exe not found, so the package can't be signed. Install the Windows SDK (Windows 10 SDK signing tools) or put signtool.exe on PATH, or unset MARCONI_SIGN_THUMBPRINT for an unsigned package."
+    }
+    if (-not (Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -eq $thumbprint.ToUpperInvariant() })) {
+        Fail "no certificate with thumbprint $thumbprint in the current user's certificate store (certmgr.msc > Personal > Certificates)."
+    }
+    $timestampUrl = $env:MARCONI_SIGN_TIMESTAMP_URL
+    if (-not $timestampUrl) {
+        $timestampUrl = "http://timestamp.digicert.com"
+    }
 }
 
 if (-not $SkipBuild) {
@@ -133,6 +193,21 @@ if (Test-Path $stageDir) {
 }
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item $exe $appDir
+
+# Sign.cmd signs the file given as its argument. Package.ps1 runs it on the staged Marconi.exe, and makensis runs it
+# on the uninstaller and the setup executable (the SIGN_SCRIPT define in Marconi.nsi).
+$signScript = $null
+if ($thumbprint) {
+    $signScript = Join-Path $stageDir "Sign.cmd"
+    $signCommand = "`"$signtool`" sign /fd SHA256 /sha1 $thumbprint /tr $timestampUrl /td SHA256 %1"
+    # In cmd.exe's own code page, with no byte order mark, which it would read as part of the first command.
+    $oem = [Text.Encoding]::GetEncoding([Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+    [IO.File]::WriteAllLines($signScript, [string[]]@("@echo off", $signCommand, "exit /b %errorlevel%"), $oem)
+    & $signScript (Join-Path $appDir "Marconi.exe")
+    if ($LASTEXITCODE -ne 0) {
+        Fail "signing Marconi.exe failed (signtool exit code $LASTEXITCODE)."
+    }
+}
 # Explicit sources also make -SkipBuild packages independent of development asset staging.
 Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Black.ttf") -Destination $appDir
 Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Semibold.ttf") -Destination $appDir
@@ -149,8 +224,17 @@ if (Test-Path $outFile) {
 Write-Host "[Package.ps1] Version=$version"
 Write-Host "[Package.ps1] Runtime=$crtDir"
 Write-Host "[Package.ps1] NSIS=$makensis"
+if ($thumbprint) {
+    Write-Host "[Package.ps1] Signing=$thumbprint via $signtool, timestamps from $timestampUrl"
+} else {
+    Write-Host "[Package.ps1] Signing=none"
+}
 
-& $makensis /V2 /WX "/DVERSION=$version" "/DSTAGE_DIR=$stageDir" "/DOUT_FILE=$outFile" (Join-Path $root "Installer\Marconi.nsi")
+$defines = @("/DVERSION=$version", "/DSTAGE_DIR=$stageDir", "/DOUT_FILE=$outFile")
+if ($signScript) {
+    $defines += "/DSIGN_SCRIPT=$signScript"
+}
+& $makensis /V2 /WX @defines (Join-Path $root "Installer\Marconi.nsi")
 if ($LASTEXITCODE -ne 0) {
     Fail "makensis failed with exit code $LASTEXITCODE."
 }
@@ -161,6 +245,8 @@ Write-Host "Installer: $outFile" -ForegroundColor Green
 Write-Host "SHA256:    $hash"
 if ($dirty) {
     Write-Host "WARNING: built with uncommitted changes; don't publish this one." -ForegroundColor Yellow
+} elseif (-not $thumbprint) {
+    Write-Host "Unsigned: fine for testing, but Windows will warn before running it. Set MARCONI_SIGN_THUMBPRINT to sign a release (see the top of Package.ps1)." -ForegroundColor Yellow
 } else {
     Write-Host "To mark the release: git tag v$version; git push origin v$version"
 }
