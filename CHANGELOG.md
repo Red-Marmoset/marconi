@@ -5,24 +5,24 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
-- The bar at the bottom of a connection window says whether the connection is encrypted.
-- Servers that insist on an encrypted connection get a clear message instead of a failed login.
-- Settings can remove all saved connections, passwords, settings and logs; the Windows uninstaller offers the same.
-- Gives up, and says so, when a server accepts the connection but never answers.
-- Settings and log files are private to the user on macOS and Linux.
-- The README explains what isn't private, where saved data lives and how to remove it.
-- Added this changelog and documented when to bump the version.
-- Added a 96 px Windows icon size.
+- Shows whether the connection is encrypted.
+- Says so when a server requires an encrypted connection.
+- Settings can delete all saved data; so can the Windows uninstaller.
+- Gives up, and says so, when a server never answers.
+- Settings and logs are private to the user on macOS and Linux.
+- The README explains what isn't private and how to remove saved data.
+- Only shares copied text while the Marconi window is in front.
+- No longer saves pictures of the other computer's screen during normal use.
+- An incomplete picture is no longer reported as a closed connection.
+- The toolbar can be moved to any edge or floated; F9 shows or hides it.
+- Added buttons that send F8, F9 and F10.
+- Saved connections remember where the toolbar was.
+- The installer starts Marconi without administrator rights and can be signed.
 - Branded the Windows installer.
-- Added a macOS disk image (`Package.sh`).
-- Rewrote the README in plain language, with the developer notes at the end.
-- Copied text is only shared with the remote computer while the Marconi window is in front.
-- No longer saves pictures of the other computer's screen in the log folder during normal use.
-- The installer now starts Marconi without administrator rights, only upgrades a copy in Program Files, and can be signed.
-- An incomplete picture from the server is no longer reported as the server closing the connection.
-- The toolbar can be moved to any edge of the window or floated, and F9 shows or hides it.
-- Added buttons that send F8, F9 and F10 to the other computer.
-- Each saved connection remembers where its toolbar was.
+- Added a macOS disk image.
+- Added a 96 px Windows icon.
+- Rewrote the README in plain language.
+- Added this changelog.
 
 ## 0.2.0
 
