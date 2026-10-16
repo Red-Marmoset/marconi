@@ -535,7 +535,12 @@ namespace MarconiUI
         {
             return false;
         }
+        wxString oldAddress = connection.address;
         connection = dialog.GetConnection();
+        if (connection.address != oldAddress)
+        {
+            connection.detected.clear(); // a different machine, or a different protocol: probe again
+        }
         m_store.Save(connection);
         if (connection.rememberPassword && !dialog.GetPassword().empty())
         {

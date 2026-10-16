@@ -7,6 +7,7 @@
 #include "VncCanvas.h"
 
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Net/Probe.h>
 #include <MarconiCore/Rfb/Client.h>
 
 #include <wx/frame.h>
@@ -16,10 +17,10 @@
 class wxMenu;
 class wxToolBar;
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <vector>
 #include <vector>
 
 namespace MarconiUI
@@ -32,7 +33,9 @@ namespace MarconiUI
         bool viewOnly = false;
         bool fullScreen = false;
         bool clipboard = true;
-        wxString savedId; // the saved connection this window was opened from, if any
+        wxString savedId;       // the saved connection this window was opened from, if any
+        wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
+        bool skipProbe = false; // the address's protocol and port are already known (e.g. found on the network)
 
         // Headless (testing and automation): no window and no dialogs. Saves the picture the viewer would show
         // to the log folder every `snapshotEverySeconds`, and closes after `quitAfterSeconds`.
@@ -73,6 +76,11 @@ namespace MarconiUI
 
         // UI thread
         void Connect();
+        void StartProbe();
+        void StopProbe();
+        void HandleProbe(const std::vector<Marconi::Net::ProbeResult>& results);
+        void ConnectVnc(uint16_t port);
+        void RememberDetected(const wxString& detected);
         void HandleConnected(const Marconi::Rfb::ServerInit& serverInit);
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
         void AskForCredentials(Marconi::Rfb::CredentialsKind kind);
@@ -123,6 +131,11 @@ namespace MarconiUI
         wxTimer m_clipboardTimer; // sends local clipboard changes while connected
         long m_clipboardChangeCount = -1;
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in
+        std::thread m_probeThread;       // finds which protocol the machine offers, before connecting
+        std::atomic<bool> m_probeCancel{false};
+        bool m_usingRemembered = false; // connecting with ViewerOptions::detected, not a fresh probe
+        bool m_reprobed = false;        // a remembered result failed and we probed again; don't loop
+        uint16_t m_port = 0;            // the port we connect to
 
         // Hand-off between the connection thread (waiting for credentials) and the UI thread (asking the user).
         std::mutex m_credentialsMutex;
