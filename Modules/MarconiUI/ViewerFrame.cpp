@@ -91,8 +91,6 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { CheckForPicture(); }, m_pictureTimer.GetId());
         m_statsTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { LogTraffic(); }, m_statsTimer.GetId());
-        m_snapshotTimer.SetOwner(this);
-        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { SaveSnapshot(); }, m_snapshotTimer.GetId());
         m_clipboardTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
@@ -188,7 +186,6 @@ namespace MarconiUI
     {
         m_pictureTimer.Stop();
         m_statsTimer.Stop();
-        m_snapshotTimer.Stop();
         m_clipboardTimer.Stop();
         m_headlessSnapshotTimer.Stop();
         m_quitTimer.Stop();
@@ -357,7 +354,6 @@ namespace MarconiUI
             // the window jumping around with it is disorienting. It was fitted to the desktop on connecting.
             m_canvas->SetDesktopSize(width, height);
             WaitForPicture();
-            m_snapshotTimer.StartOnce(3000);
         });
     }
 
@@ -481,7 +477,6 @@ namespace MarconiUI
         m_statsTimer.Start(10000);
         m_clipboardChangeCount = GetClipboardChangeCount();
         m_clipboardTimer.Start(500);
-        m_snapshotTimer.StartOnce(3000);
     }
 
     void ViewerFrame::WatchClipboard()
@@ -496,43 +491,6 @@ namespace MarconiUI
             m_clipboardChangeCount = count;
             SyncClipboardToServer();
         }
-    }
-
-    void ViewerFrame::SaveSnapshot()
-    {
-        // Diagnostics: what the framebuffer holds after connecting and after a resize, saved next to the logs.
-        constexpr int kMaxSnapshots = 10;
-        if (!m_connected || m_snapshots >= kMaxSnapshots)
-        {
-            return;
-        }
-        wxImage image;
-        {
-            Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
-            std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
-            if (framebuffer.GetWidth() <= 0 || framebuffer.GetHeight() <= 0)
-            {
-                return;
-            }
-            image.Create(framebuffer.GetWidth(), framebuffer.GetHeight(), false);
-            unsigned char* out = image.GetData();
-            for (int y = 0; y < framebuffer.GetHeight(); ++y)
-            {
-                const uint32_t* row = framebuffer.Row(y);
-                for (int x = 0; x < framebuffer.GetWidth(); ++x)
-                {
-                    *out++ = static_cast<unsigned char>(row[x] >> 16);
-                    *out++ = static_cast<unsigned char>(row[x] >> 8);
-                    *out++ = static_cast<unsigned char>(row[x]);
-                }
-            }
-        }
-        ++m_snapshots;
-        wxString path = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs" + wxFILE_SEP_PATH +
-                        wxDateTime::Now().Format("snapshot_%Y-%m-%d_%H-%M-%S_") +
-                        wxString::Format("%dx%d.png", image.GetWidth(), image.GetHeight());
-        LOG_INFO("Viewer", "Saving a snapshot of the desktop to %s", path.utf8_string().c_str());
-        SavePngInBackground(image, path);
     }
 
     void ViewerFrame::LogTraffic()
@@ -611,14 +569,12 @@ namespace MarconiUI
             m_connected = false;
             m_pictureTimer.Stop();
             m_statsTimer.Stop();
-            m_snapshotTimer.Stop();
             m_clipboardTimer.Stop();
             ConnectVnc(m_port);
             return;
         }
         m_pictureTimer.Stop();
         m_statsTimer.Stop();
-        m_snapshotTimer.Stop();
         m_clipboardTimer.Stop();
         m_canvas->ReleaseInput();
         m_connected = false;
