@@ -7,6 +7,7 @@
 #include "ClipboardWatch.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
+#include "ForegroundWindow.h"
 #include "VncCanvas.h"
 
 #include <MarconiCore/Keysyms.h>
@@ -372,7 +373,9 @@ namespace MarconiUI
 
     void ViewerFrame::SyncClipboardToServer()
     {
-        if (m_connected && !m_canvas->IsViewOnly())
+        // Only while the user is working in this window: what they copy in other programs (a password, say) isn't
+        // meant for the remote computer. Coming back to the viewer sends the clipboard as it is then.
+        if (m_connected && !m_canvas->IsViewOnly() && IsForegroundWindow(*this))
         {
             m_clipboard.SendIfChanged();
         }
@@ -484,7 +487,9 @@ namespace MarconiUI
     void ViewerFrame::WatchClipboard()
     {
         // Copying while the viewer is in front doesn't change focus, so watch for changes rather than waiting
-        // for the window to be activated again.
+        // for the window to be activated again. The count is recorded even when nothing is sent (another window
+        // is in front), so a change made elsewhere is never sent later on its account: activation sends the
+        // clipboard once instead.
         long count = GetClipboardChangeCount();
         if (count >= 0 && count != m_clipboardChangeCount)
         {
