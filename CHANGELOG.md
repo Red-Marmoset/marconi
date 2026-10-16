@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.3.6
+
+- The Windows installer asks whether to install just for you (no administrator permission needed) or for everyone on the PC.
+
 ## 0.3.5
 
 - Fixed a warning about old Windows controls when starting an installed copy of Marconi.
