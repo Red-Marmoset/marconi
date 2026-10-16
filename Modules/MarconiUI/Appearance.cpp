@@ -96,11 +96,20 @@ namespace MarconiUI
         window->SetBackgroundColour(palette.background);
         window->SetForegroundColour(palette.text);
         if (wxDynamicCast(window, wxTextCtrl) || wxDynamicCast(window, wxListCtrl) ||
-            wxDynamicCast(window, wxButton))
+            wxDynamicCast(window, wxButton) || window->GetName() == "MarconiTextField")
         {
             window->SetBackgroundColour(palette.surface);
         }
-        if (wxDynamicCast(window, wxStaticLine))
+        if (window->GetName() == "MarconiFieldHint")
+        {
+            window->SetBackgroundColour(palette.surface);
+            window->SetForegroundColour(palette.muted);
+        }
+        if (window->GetName() == "MarconiTableHeader" || window->GetName() == "MarconiHeaderLabel")
+        {
+            window->SetBackgroundColour(palette.surface);
+        }
+        if (wxDynamicCast(window, wxStaticLine) || window->GetName() == "MarconiDivider")
         {
             window->SetForegroundColour(palette.border);
             window->SetBackgroundColour(palette.border);
