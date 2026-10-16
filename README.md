@@ -127,8 +127,25 @@ adds an entry to Settings > Apps. Installing a newer version replaces the old on
 saved connections, passwords and logs. `Uninstall.exe /S` uninstalls silently, and the installer accepts `/S` and
 `/D=<folder>` too.
 
-`Installer/Marconi.nsi` is the installer script. The icon, `Modules/MarconiUI/Resources/Marconi.ico`, is rendered by
-`python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`.
+`Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico` and
+`Marconi.icns`, are rendered by `python Tools/make_app_icon.py` from the same drawing as the window icon in
+`AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from
+`python Tools/make_installer_art.py`.
+
+## Releasing (macOS)
+
+    ./Package.sh                      # -> Build/Installer/Marconi-0.1.0.27-macos-arm64.dmg
+
+It builds the Release app, wraps it in `Marconi.app` with the icon, Nebula Sans and `Installer/macOS/Info.plist`,
+signs it, and makes a disk image to drag it to Applications from. It takes `--clean`, `--skip-build` and
+`--allow-dirty`, which work like the Windows options. The app is built for the Mac's own architecture, and it needs
+that Mac's macOS version or newer.
+
+By default the app is signed ad-hoc, which is enough on the Mac that built it. On another Mac, macOS blocks a
+downloaded copy the first time. Try to open it, then click *Open Anyway* in *System Settings > Privacy & Security*.
+Copies shared by AirDrop or USB stick may be blocked too. For a release, set `MARCONI_SIGN_IDENTITY` to a Developer
+ID Application certificate, and set `MARCONI_NOTARY_PROFILE` to a profile from `xcrun notarytool store-credentials`.
+`Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the ticket.
 
 ## Testing
 
