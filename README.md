@@ -12,7 +12,8 @@ It works with:
 
 ## What it can do
 
-- See the other computer's screen, scaled to fit your window or at full size, in a window or full screen.
+- See the other computer's screen, scaled to fit your window or zoomed from 50% to 200%, in a window or full
+  screen.
 - Use its keyboard and mouse. Keys match your keyboard layout, and a Mac's Command key works as expected.
 - Copy and paste text between the two computers, in either direction, and pictures with servers that allow it.
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
@@ -67,7 +68,8 @@ Most of the time a name or address on its own is all you need. For special cases
 
 Press **F8** to open Marconi's menu, even in full screen. From it you can:
 
-- switch between fitting the window and full size;
+- zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same; in full screen,
+  a zoomed-in picture scrolls when the pointer rests at the edge of the screen);
 - go full screen or back;
 - turn view-only and clipboard sharing on or off, or send your clipboard to the other computer and get its
   clipboard by hand;
@@ -174,7 +176,7 @@ On macOS and Linux these files can only be read by your own account.
 
 ## Command line
 
-    marconi [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
+    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
     marconi --remove-my-data
 
 `--saved NAME` opens a saved connection by its name, address or id, using its stored password. `--remove-my-data`

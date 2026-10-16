@@ -5,6 +5,9 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Zoom levels from 50% to 200% besides fitting the window: Ctrl and the mouse wheel, Ctrl and + or -, or the menu.
+- A zoomed-in picture scrolls in full screen when the pointer rests at the edge of the screen.
+- Each saved connection remembers its zoom level.
 - Encrypted connections on macOS and Linux, with servers that offer them with a certificate.
 - Connects without encryption, and says so, when a server only offers encryption without a certificate.
 - Copied text in any language travels between the computers with servers that support it (TigerVNC, UltraVNC).

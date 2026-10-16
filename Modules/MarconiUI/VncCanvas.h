@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// View of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer: actual size with
-// scrollbars, or scaled to fit the window
+// View of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer: scaled to fit the
+// window, or at a fixed zoom level with scrollbars
 
 #pragma once
 
@@ -13,6 +13,7 @@
 #include <wx/image.h>
 #include <wx/region.h>
 #include <wx/scrolwin.h>
+#include <wx/timer.h>
 
 #include <functional>
 #include <vector>
@@ -21,8 +22,8 @@ namespace MarconiUI
 {
     enum class ScaleMode
     {
-        Fit,    // scale the whole desktop into the window, keeping its aspect ratio
-        Actual, // one desktop pixel per screen pixel, scroll if needed
+        Fit,   // scale the whole desktop into the window, keeping its aspect ratio
+        Fixed, // a zoom level from Marconi::Zoom::kLevels (100 = one desktop pixel per screen pixel), scroll if needed
     };
 
     class VncCanvas : public wxScrolledCanvas
@@ -43,10 +44,17 @@ namespace MarconiUI
 
         wxSize GetDesktopSize() const { return m_desktopSize; }
 
-        void SetScaleMode(ScaleMode mode);
+        // Fit, or a fixed zoom level. The level is kept while fitting, for when fitting is switched off again.
+        void SetZoom(ScaleMode mode, int zoomPercent);
+        void SetScaleMode(ScaleMode mode) { SetZoom(mode, m_zoomPercent); }
         ScaleMode GetScaleMode() const { return m_scaleMode; }
-        // Current desktop-to-window scale factor (1 in Actual mode).
+        int GetZoomPercent() const { return m_zoomPercent; }
+        // Steps to the next level up or down from what's shown now, keeping the desktop point under `around` (a
+        // window position) where it is.
+        void ZoomStep(bool in, const wxPoint& around);
+        // Current desktop-to-window scale factor, and the same as a percentage (what the status bar shows).
         double GetScale() const { return m_scale; }
+        int GetShownPercent() const;
 
         // View-only ignores local input (and releases anything held when switched on).
         void SetViewOnly(bool viewOnly);
@@ -57,8 +65,13 @@ namespace MarconiUI
 
         // UI thread only. Shows the server's cursor shape as our local cursor.
         void SetRemoteCursor(const Marconi::Rfb::CursorShape& cursor);
+        // The server's cursor shape and where the pointer last was on the desktop (for screenshots that include it).
+        bool HasRemoteCursor() const { return m_hasRemoteCursor && m_remoteCursor.width > 0; }
+        const Marconi::Rfb::CursorShape& GetRemoteCursor() const { return m_remoteCursor; }
+        wxPoint GetLastPointer() const { return m_lastPointer; }
 
-        // Called instead of sending a key the viewer keeps for itself (F8 for the menu, F9 for the toolbar).
+        // Called instead of sending a key the viewer keeps for itself (F8 for the menu, F9 for the toolbar, the
+        // zoom shortcuts).
         void SetLocalCommandHandler(std::function<void(Marconi::LocalCommand)> handler)
         {
             m_localCommandHandler = std::move(handler);
@@ -75,6 +88,10 @@ namespace MarconiUI
         void CopyFromFramebuffer(const Marconi::Rfb::Rect& rect);
         void OnPaint(wxPaintEvent& event);
         void OnSize(wxSizeEvent& event);
+        wxSize GetShownSize() const;
+        void ZoomAround(int zoomPercent, const wxPoint& around);
+        void UpdateEdgeScrolling(const wxPoint& windowPoint);
+        void OnEdgeScroll();
 
         // Window (client) coordinates <-> desktop coordinates, for the current mode, scroll position and scale.
         wxPoint ToDesktop(const wxPoint& windowPoint) const;
@@ -98,8 +115,12 @@ namespace MarconiUI
         wxRegion m_coverage;     // what the server has sent since the resize
 
         ScaleMode m_scaleMode = ScaleMode::Fit;
+        int m_zoomPercent = 100;
         double m_scale = 1.0;
-        wxPoint m_offset; // top-left of the scaled desktop inside the window (Fit mode letterboxing)
+        wxPoint m_offset; // top-left of the scaled desktop in virtual (unscrolled) coordinates: centred when smaller
+        wxTimer m_edgeScrollTimer; // full screen: the picture scrolls while the pointer rests at a window edge
+        wxPoint m_edgeScrollPoint;
+        int m_zoomWheel = 0; // Ctrl+wheel rotation not yet turned into a zoom step
 
         KeyMapper m_keys;
         bool m_viewOnly = false;

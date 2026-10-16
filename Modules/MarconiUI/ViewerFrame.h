@@ -38,6 +38,7 @@ namespace MarconiUI
         Marconi::Address address;
         Marconi::Rfb::Credentials credentials;
         ScaleMode scaleMode = ScaleMode::Fit;
+        int zoomPercent = 100; // with ScaleMode::Fixed: one of Marconi::Zoom::kLevels
         bool viewOnly = false;
         bool fullScreen = false;
         bool clipboard = true;

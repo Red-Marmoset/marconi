@@ -14,6 +14,7 @@
 #include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
 #include <MarconiCore/Text.h>
+#include <MarconiCore/Zoom.h>
 
 #include <Log/Log.h>
 
@@ -56,7 +57,10 @@ namespace MarconiUI
         enum CommandId
         {
             ID_SCALE_FIT = wxID_HIGHEST + 100,
-            ID_SCALE_ACTUAL,
+            ID_ZOOM_IN,
+            ID_ZOOM_OUT,
+            ID_ZOOM_LEVEL_FIRST, // one id per Marconi::Zoom::kLevels entry
+            ID_ZOOM_LEVEL_LAST = ID_ZOOM_LEVEL_FIRST + static_cast<int>(Marconi::Zoom::kLevelCount) - 1,
             ID_FULL_SCREEN,
             ID_VIEW_ONLY,
             ID_CLIPBOARD,
@@ -131,20 +135,34 @@ namespace MarconiUI
         SetClientSize(FromDIP(wxSize(800, 600)));
 
         m_canvas->SetLocalCommandHandler([this](Marconi::LocalCommand command) {
-            if (command == Marconi::LocalCommand::Menu)
+            switch (command)
             {
+            case Marconi::LocalCommand::Menu:
                 ShowMenu();
-            }
-            else if (command == Marconi::LocalCommand::Toolbar)
-            {
+                break;
+            case Marconi::LocalCommand::Toolbar:
                 ToggleToolbar();
-            }
-            else if (command == Marconi::LocalCommand::Files)
-            {
+                break;
+            case Marconi::LocalCommand::Files:
                 ToggleFiles();
+                break;
+            case Marconi::LocalCommand::ZoomIn:
+            case Marconi::LocalCommand::ZoomOut:
+                m_canvas->ZoomStep(command == Marconi::LocalCommand::ZoomIn,
+                                   m_canvas->ScreenToClient(wxGetMousePosition()));
+                UpdateControls();
+                UpdateStatus();
+                break;
+            case Marconi::LocalCommand::ZoomReset:
+                m_canvas->SetZoom(ScaleMode::Fixed, 100);
+                UpdateControls();
+                UpdateStatus();
+                break;
+            default:
+                break;
             }
         });
-        m_canvas->SetScaleMode(options.scaleMode);
+        m_canvas->SetZoom(options.scaleMode, options.zoomPercent);
         m_canvas->SetViewOnly(options.viewOnly);
         m_clipboard.SetEnabled(options.clipboard);
         m_clipboard.SetStatusHandler([this](const wxString& message) { SetStatusText(message); });
@@ -212,6 +230,7 @@ namespace MarconiUI
             options.credentials.password = password.utf8_string();
         }
         options.scaleMode = connection.scaleMode;
+        options.zoomPercent = connection.zoomPercent;
         options.viewOnly = connection.viewOnly;
         options.clipboard = connection.clipboard;
         options.layout = connection.layout;
@@ -878,6 +897,11 @@ namespace MarconiUI
         int displayIndex = wxDisplay::GetFromWindow(this);
         wxRect available = wxDisplay(displayIndex == wxNOT_FOUND ? 0u : static_cast<unsigned>(displayIndex)).GetClientArea();
         wxSize desktop = m_canvas->GetDesktopSize();
+        if (m_canvas->GetScaleMode() == ScaleMode::Fixed)
+        {
+            desktop.x = static_cast<int>(std::lround(desktop.x * m_canvas->GetZoomPercent() / 100.0));
+            desktop.y = static_cast<int>(std::lround(desktop.y * m_canvas->GetZoomPercent() / 100.0));
+        }
         wxSize decorations = GetSize() - m_canvas->GetSize(); // frame, status bar and any docked panels
         wxSize wanted = desktop + decorations;
         wanted.x = std::min(wanted.x, available.width);
@@ -897,7 +921,10 @@ namespace MarconiUI
         m_toolBar = new wxAuiToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                      wxAUI_TB_TEXT | wxAUI_TB_HORZ_LAYOUT | wxAUI_TB_GRIPPER | wxAUI_TB_OVERFLOW);
         m_toolBar->AddTool(ID_SCALE_FIT, "Scale to Fit", wxNullBitmap,
-                           "Scale the remote desktop to fit the window (otherwise show it at 100%)", wxITEM_CHECK);
+                           "Scale the remote desktop to fit the window (otherwise show it at the chosen zoom level)",
+                           wxITEM_CHECK);
+        m_toolBar->AddTool(ID_ZOOM_IN, "Zoom In", wxNullBitmap, "Zoom in (Ctrl and +, or Ctrl and the mouse wheel)");
+        m_toolBar->AddTool(ID_ZOOM_OUT, "Zoom Out", wxNullBitmap, "Zoom out (Ctrl and -, or Ctrl and the mouse wheel)");
         m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap, "Full screen (F8 opens the menu)");
         m_toolBar->AddTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, "Watch without sending mouse or keyboard input",
                            wxITEM_CHECK);
@@ -929,8 +956,22 @@ namespace MarconiUI
     wxMenu* ViewerFrame::CreateMenu() const
     {
         wxMenu* menu = new wxMenu();
-        menu->AppendRadioItem(ID_SCALE_FIT, "Scale to &Fit");
-        menu->AppendRadioItem(ID_SCALE_ACTUAL, "&Actual Size (100%)");
+        wxMenu* zoom = new wxMenu();
+        zoom->AppendRadioItem(ID_SCALE_FIT, "Scale to &Fit the Window");
+        for (size_t i = 0; i < Marconi::Zoom::kLevelCount; ++i)
+        {
+            int level = Marconi::Zoom::kLevels[i];
+            wxString label = wxString::Format("%d%%", level);
+            if (level == 100)
+            {
+                label = "&Actual Size (100%)\tCtrl+0";
+            }
+            zoom->AppendRadioItem(ID_ZOOM_LEVEL_FIRST + static_cast<int>(i), label);
+        }
+        zoom->AppendSeparator();
+        zoom->Append(ID_ZOOM_IN, "Zoom &In\tCtrl++");
+        zoom->Append(ID_ZOOM_OUT, "Zoom &Out\tCtrl+-");
+        menu->AppendSubMenu(zoom, "&Zoom");
         menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
         menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
         menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
@@ -948,8 +989,20 @@ namespace MarconiUI
         menu->AppendSeparator();
         menu->Append(ID_DISCONNECT, "Dis&connect");
 
-        bool fit = m_canvas->GetScaleMode() == ScaleMode::Fit;
-        menu->Check(fit ? ID_SCALE_FIT : ID_SCALE_ACTUAL, true);
+        if (m_canvas->GetScaleMode() == ScaleMode::Fit)
+        {
+            zoom->Check(ID_SCALE_FIT, true);
+        }
+        else
+        {
+            for (size_t i = 0; i < Marconi::Zoom::kLevelCount; ++i)
+            {
+                if (Marconi::Zoom::kLevels[i] == m_canvas->GetZoomPercent())
+                {
+                    zoom->Check(ID_ZOOM_LEVEL_FIRST + static_cast<int>(i), true);
+                }
+            }
+        }
         menu->Check(ID_FULL_SCREEN, IsFullScreen());
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
@@ -980,12 +1033,16 @@ namespace MarconiUI
         {
         case ID_SCALE_FIT:
             // The toolbar button toggles; the menu's radio item always selects Fit.
-            m_canvas->SetScaleMode(event.GetEventType() == wxEVT_TOOL && !event.IsChecked() ? ScaleMode::Actual
+            m_canvas->SetScaleMode(event.GetEventType() == wxEVT_TOOL && !event.IsChecked() ? ScaleMode::Fixed
                                                                                             : ScaleMode::Fit);
             break;
-        case ID_SCALE_ACTUAL:
-            m_canvas->SetScaleMode(ScaleMode::Actual);
+        case ID_ZOOM_IN:
+        case ID_ZOOM_OUT:
+        {
+            wxSize client = m_canvas->GetClientSize();
+            m_canvas->ZoomStep(event.GetId() == ID_ZOOM_IN, wxPoint(client.x / 2, client.y / 2));
             break;
+        }
         case ID_FULL_SCREEN:
             ToggleFullScreen();
             break;
@@ -1031,6 +1088,10 @@ namespace MarconiUI
             Close();
             return;
         default:
+            if (event.GetId() >= ID_ZOOM_LEVEL_FIRST && event.GetId() <= ID_ZOOM_LEVEL_LAST)
+            {
+                m_canvas->SetZoom(ScaleMode::Fixed, Marconi::Zoom::kLevels[event.GetId() - ID_ZOOM_LEVEL_FIRST]);
+            }
             break;
         }
         UpdateControls();
@@ -1175,10 +1236,7 @@ namespace MarconiUI
         {
             status += " - waiting for the screen...";
         }
-        if (m_canvas->GetScaleMode() == ScaleMode::Fit)
-        {
-            status += wxString::Format(" - %d%%", static_cast<int>(m_canvas->GetScale() * 100.0 + 0.5));
-        }
+        status += wxString::Format(" - %d%%", m_canvas->GetShownPercent());
         if (m_canvas->IsViewOnly())
         {
             status += " - view only";
@@ -1196,6 +1254,7 @@ namespace MarconiUI
             return;
         }
         saved.scaleMode = m_canvas->GetScaleMode();
+        saved.zoomPercent = m_canvas->GetZoomPercent();
         saved.viewOnly = m_canvas->IsViewOnly();
         saved.clipboard = m_clipboard.IsEnabled();
         saved.layout = GetLayout();

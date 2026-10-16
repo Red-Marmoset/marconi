@@ -138,7 +138,18 @@ namespace MarconiUI
         out.layout = config->Read(path + "/Layout", wxEmptyString);
         out.sshHostKey = config->Read(path + "/SshHostKey", wxEmptyString);
         out.dropFolder = config->Read(path + "/DropFolder", wxEmptyString);
-        out.scaleMode = config->Read(path + "/Scale", "fit") == "100" ? ScaleMode::Actual : ScaleMode::Fit;
+        // "fit", or a zoom percentage (older builds wrote "100" for actual size).
+        wxString scale = config->Read(path + "/Scale", "fit");
+        long percent = 0;
+        if (scale != "fit" && scale.ToLong(&percent) && percent > 0)
+        {
+            out.scaleMode = ScaleMode::Fixed;
+            out.zoomPercent = static_cast<int>(percent);
+        }
+        else
+        {
+            out.scaleMode = ScaleMode::Fit;
+        }
         out.viewOnly = config->ReadBool(path + "/ViewOnly", false);
         out.clipboard = config->ReadBool(path + "/Clipboard", true);
         long long lastUsed = config->ReadLongLong(path + "/LastUsed", 0);
@@ -175,7 +186,9 @@ namespace MarconiUI
         config->Write(path + "/Layout", connection.layout);
         config->Write(path + "/SshHostKey", connection.sshHostKey);
         config->Write(path + "/DropFolder", connection.dropFolder);
-        config->Write(path + "/Scale", connection.scaleMode == ScaleMode::Actual ? "100" : "fit");
+        config->Write(path + "/Scale", connection.scaleMode == ScaleMode::Fixed
+                                           ? wxString::Format("%d", connection.zoomPercent)
+                                           : wxString("fit"));
         config->Write(path + "/ViewOnly", connection.viewOnly);
         config->Write(path + "/Clipboard", connection.clipboard);
         config->Write(path + "/LastUsed",
