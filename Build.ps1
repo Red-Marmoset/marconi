@@ -211,4 +211,10 @@ if ($rc -ne 0) {
     Write-Host "Build failed with exit code $rc." -ForegroundColor Red
     exit $rc
 }
+# Keep the app's private font and its license alongside the executable for development builds too.
+if ([IO.Path]::GetFullPath($projectFile) -eq [IO.Path]::GetFullPath((Join-Path $scriptDir "Project.json"))) {
+    $appOutput = Join-Path $scriptDir "Build\Marconi\$Config"
+    Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-Bold.ttf") -Destination $appOutput
+    Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-LICENSE.txt") -Destination $appOutput
+}
 Write-Host "Marconi build complete." -ForegroundColor Green
