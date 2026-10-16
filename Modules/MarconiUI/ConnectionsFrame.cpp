@@ -149,18 +149,31 @@ namespace MarconiUI
         wxStaticText* title = label("Marconi");
         wxFont brandFont = title->GetFont().Scaled(2.1f).Bold();
         // Windows registers Nebula's individual weights as separate font families.
-        if (wxFontEnumerator::IsValidFacename("Nebula Sans Bold"))
+        if (wxFontEnumerator::IsValidFacename("Nebula Sans Black"))
         {
-            brandFont.SetFaceName("Nebula Sans Bold");
+            brandFont.SetFaceName("Nebula Sans Black");
             brandFont.SetWeight(wxFONTWEIGHT_NORMAL); // The selected face already contains the bold outlines.
         }
         else if (wxFontEnumerator::IsValidFacename("Nebula Sans"))
         {
             brandFont.SetFaceName("Nebula Sans");
+            brandFont.SetWeight(wxFONTWEIGHT_HEAVY);
         }
         title->SetFont(brandFont);
         wordmark->Add(title);
         wxStaticText* subtitle = label("Multi-protocol Access and Remote Control Interface", false, true);
+        wxFont subtitleFont = subtitle->GetFont();
+        subtitleFont.SetWeight(wxFONTWEIGHT_SEMIBOLD);
+        if (wxFontEnumerator::IsValidFacename("Nebula Sans Semibold"))
+        {
+            subtitleFont.SetFaceName("Nebula Sans Semibold");
+            subtitleFont.SetWeight(wxFONTWEIGHT_NORMAL); // This face already contains the semibold outlines.
+        }
+        else if (wxFontEnumerator::IsValidFacename("Nebula Sans"))
+        {
+            subtitleFont.SetFaceName("Nebula Sans");
+        }
+        subtitle->SetFont(subtitleFont);
         subtitle->Wrap(FromDIP(450));
         wordmark->Add(subtitle, 0, wxTOP, FromDIP(4));
         brand->Add(wordmark, 1, wxALIGN_CENTER_VERTICAL);
