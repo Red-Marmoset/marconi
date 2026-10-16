@@ -23,17 +23,31 @@ RealVNC, x11vnc, UltraVNC and others.
 
 ## Using it
 
-Run `marconi` to open the connection window. Type an address and press Enter, or pick a saved connection.
+Run `marconi` to open the connection window. Type an address and press Enter, pick a saved connection, or
+double-click a machine under **On this network**.
+
+### Connecting
+
+You don't choose a protocol. Marconi looks at what the machine offers (VNC on 5900, Remote Desktop on 3389 and SSH
+on 22, all at once) and uses the best one it can. A saved connection remembers what it found, so the next connection
+starts straight away; if that stops working, Marconi looks again once.
+
+Remote Desktop (RDP) and SSH are detected but not supported yet. When a machine only offers one of those, Marconi
+says so instead of reporting a failed connection.
+
+**On this network** lists the machines that advertise Screen Sharing (VNC), Remote Desktop or SSH on the local
+network (mDNS, as Macs do), and refreshes every 10 seconds.
 
 Addresses can be written as:
 
 | You type | Connects to |
 |---|---|
-| `host` | port 5900 |
-| `host:1` | display 1, which is port 5901 (numbers below 100 are display numbers) |
-| `host::5901` | port 5901 |
+| `host` | whatever the machine offers |
+| `host:1` | VNC display 1, which is port 5901 (numbers below 100 are display numbers) |
+| `host::5901` | port 5901, whatever answers there |
 | `[fe80::1]:1` | an IPv6 address with a display number |
-| `vnc://host:5901` | URL form, where the number is a port |
+| `vnc://host`, `vnc://host:5901` | VNC only, on port 5900 or the port given |
+| `rdp://host`, `ssh://host` | force Remote Desktop or SSH (detected, not supported yet) |
 | `name@host` | any of the above, logging in with the account `name` (Mac account login) |
 
 From the command line:
@@ -103,6 +117,12 @@ Versions are `MAJOR.MINOR.PATCH.REVISION`, for example `0.1.0.27`:
   it there.
 - `REVISION` is the commit's position in the history: the first commit is 1, the second is 2, and so on
   (`git rev-list --count HEAD`). Each commit on `main` gets a higher number than the last.
+
+When to change `MAJOR.MINOR.PATCH`:
+
+- A big feature bumps MINOR (0.2.0 to 0.3.0) in the change that adds it.
+- Marconi stays on 0.x until its own server component exists, even if something breaks backwards compatibility.
+- 1.0 is the owner's call, made when Marconi feels complete, not when a rule says so.
 
 `Build.ps1` and `Build.sh` write the version to `Modules/MarconiCore/BuildVersion.h`, a generated file that isn't
 committed, before every build. Marconi logs its version and commit when it starts. On Windows the version is also

@@ -15,7 +15,7 @@ import os
 
 from PIL import Image, ImageDraw
 
-SIZES = [16, 20, 24, 32, 48, 64, 128, 256]
+SIZES = [16, 20, 24, 32, 48, 64, 96, 128, 256]
 MAC_SIZES = [16, 32, 64, 128, 256, 512, 1024]
 SUPERSAMPLE = 8
 MAC_SUPERSAMPLE = 4

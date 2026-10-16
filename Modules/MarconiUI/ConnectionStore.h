@@ -17,6 +17,7 @@ namespace MarconiUI
         wxString id; // stable config key, never shown
         wxString name;
         wxString address; // as typed: host, host:display, host::port
+        wxString detected; // what the last probe found, e.g. "vnc 5900"; empty = probe next time
         wxString username;
         bool rememberPassword = false;
         ScaleMode scaleMode = ScaleMode::Fit;

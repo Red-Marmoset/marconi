@@ -6,8 +6,10 @@
 #include "SocketPlatform.h"
 
 #include <algorithm>
+#include <chrono>
 #include <climits>
 #include <cstring>
+#include <vector>
 
 namespace Marconi
 {
@@ -100,76 +102,204 @@ namespace Marconi
 #endif
                 return false;
             }
-
-            error = "No addresses for '" + host + "'";
-            for (addrinfo* address = results; address != nullptr; address = address->ai_next)
+            std::vector<const addrinfo*> addresses;
+            for (const addrinfo* address = results; address != nullptr; address = address->ai_next)
             {
-                intptr_t handle = static_cast<intptr_t>(socket(address->ai_family, address->ai_socktype, address->ai_protocol));
-                if (handle == Platform::kInvalidSocket)
-                {
-                    error = "socket() failed: " + Platform::ErrorString(Platform::LastError());
-                    continue;
-                }
-
-                Platform::SetNonBlocking(handle, true);
-                bool connected = connect(Native(handle), address->ai_addr, static_cast<socklen_t>(address->ai_addrlen)) == 0;
-                if (!connected)
-                {
-                    int connectError = Platform::LastError();
-                    if (Platform::IsConnectInProgress(connectError))
-                    {
-                        // Wait in short slices so a cancel request is noticed quickly.
-                        int ready = 0;
-                        for (int waited = 0; ready == 0 && waited < timeoutMs; waited += 100)
-                        {
-                            if (cancel != nullptr && cancel->load())
-                            {
-                                break;
-                            }
-                            ready = WaitFor(handle, false, std::min(100, timeoutMs - waited));
-                        }
-                        if (cancel != nullptr && cancel->load())
-                        {
-                            Platform::CloseSocket(handle);
-                            error = "Cancelled";
-                            break;
-                        }
-                        if (ready > 0)
-                        {
-                            int socketError = 0;
-                            socklen_t length = sizeof(socketError);
-                            getsockopt(Native(handle), SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&socketError), &length);
-                            connected = socketError == 0;
-                            if (!connected)
-                            {
-                                error = "Could not connect to " + host + ":" + service + ": " + Platform::ErrorString(socketError);
-                            }
-                        }
-                        else
-                        {
-                            error = ready == 0 ? "Timed out connecting to " + host + ":" + service
-                                               : "Could not connect to " + host + ":" + service + ": " +
-                                                     Platform::ErrorString(Platform::LastError());
-                        }
-                    }
-                    else
-                    {
-                        error = "Could not connect to " + host + ":" + service + ": " + Platform::ErrorString(connectError);
-                    }
-                }
-
-                if (connected)
-                {
-                    Platform::SetNonBlocking(handle, false);
-                    ConfigureConnected(handle);
-                    m_handle = handle;
-                    error.clear();
-                    break;
-                }
-                Platform::CloseSocket(handle);
+                addresses.push_back(address);
             }
+            error = "No addresses for '" + host + "'";
+            ConnectFirst(addresses, host + ":" + service, timeoutMs, error, cancel);
             freeaddrinfo(results);
             return IsOpen();
+        }
+
+        bool Socket::ConnectAddresses(const std::vector<std::string>& numericHosts, uint16_t port, int timeoutMs,
+                                      std::string& error, const std::atomic<bool>* cancel)
+        {
+            Close();
+            addrinfo hints = {};
+            hints.ai_family = AF_UNSPEC;
+            hints.ai_socktype = SOCK_STREAM;
+            hints.ai_protocol = IPPROTO_TCP;
+            hints.ai_flags = AI_NUMERICHOST;
+            std::string service = std::to_string(port);
+            std::vector<addrinfo*> owned;
+            std::vector<const addrinfo*> addresses;
+            for (const std::string& host : numericHosts)
+            {
+                addrinfo* result = nullptr;
+                if (getaddrinfo(host.c_str(), service.c_str(), &hints, &result) == 0 && result != nullptr)
+                {
+                    owned.push_back(result);
+                    addresses.push_back(result);
+                }
+            }
+            error = "No usable addresses";
+            ConnectFirst(addresses, "port " + service, timeoutMs, error, cancel);
+            for (addrinfo* result : owned)
+            {
+                freeaddrinfo(result);
+            }
+            return IsOpen();
+        }
+
+        void Socket::ConnectFirst(const std::vector<const addrinfo*>& addresses, const std::string& target,
+                                  int timeoutMs, std::string& error, const std::atomic<bool>* cancel)
+        {
+            // "Happy Eyeballs" (RFC 8305): an address that never answers (often a host's firewalled IPv6 address,
+            // listed first) mustn't hold up the others. Start the next attempt if the current ones haven't
+            // connected within kAttemptDelay, alternating address families, and keep whichever connects first.
+            using Clock = std::chrono::steady_clock;
+            constexpr std::chrono::milliseconds kAttemptDelay(250);
+
+            std::vector<const addrinfo*> ordered;
+            {
+                std::vector<const addrinfo*> first;
+                std::vector<const addrinfo*> other;
+                for (const addrinfo* address : addresses)
+                {
+                    (address->ai_family == addresses.front()->ai_family ? first : other).push_back(address);
+                }
+                for (size_t i = 0; i < first.size() || i < other.size(); ++i)
+                {
+                    if (i < first.size())
+                    {
+                        ordered.push_back(first[i]);
+                    }
+                    if (i < other.size())
+                    {
+                        ordered.push_back(other[i]);
+                    }
+                }
+            }
+
+            const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
+            Clock::time_point nextAttempt = Clock::now();
+            size_t next = 0;
+            std::vector<intptr_t> pending;
+            intptr_t winner = Platform::kInvalidSocket;
+            bool timedOut = false;
+            auto closePending = [&pending]() {
+                for (intptr_t handle : pending)
+                {
+                    Platform::CloseSocket(handle);
+                }
+                pending.clear();
+            };
+
+            while (winner == Platform::kInvalidSocket)
+            {
+                if (cancel != nullptr && cancel->load())
+                {
+                    closePending();
+                    error = "Cancelled";
+                    return;
+                }
+                Clock::time_point now = Clock::now();
+                if (next < ordered.size() && (now >= nextAttempt || pending.empty()))
+                {
+                    const addrinfo* address = ordered[next++];
+                    nextAttempt = now + kAttemptDelay;
+                    intptr_t handle =
+                        static_cast<intptr_t>(socket(address->ai_family, address->ai_socktype, address->ai_protocol));
+                    if (handle == Platform::kInvalidSocket)
+                    {
+                        error = "socket() failed: " + Platform::ErrorString(Platform::LastError());
+                        nextAttempt = now;
+                        continue;
+                    }
+                    Platform::SetNonBlocking(handle, true);
+                    if (connect(Native(handle), address->ai_addr, static_cast<socklen_t>(address->ai_addrlen)) == 0)
+                    {
+                        winner = handle;
+                        break;
+                    }
+                    int connectError = Platform::LastError();
+                    if (!Platform::IsConnectInProgress(connectError))
+                    {
+                        error = "Could not connect to " + target + ": " + Platform::ErrorString(connectError);
+                        Platform::CloseSocket(handle);
+                        nextAttempt = now;
+                        continue;
+                    }
+                    pending.push_back(handle);
+                }
+                if (pending.empty())
+                {
+                    if (next >= ordered.size())
+                    {
+                        break; // every address failed; `error` says why the last one did
+                    }
+                    continue;
+                }
+                if (now >= deadline)
+                {
+                    timedOut = true;
+                    break;
+                }
+
+                // Wait in short slices so a cancel request is noticed quickly.
+                Clock::duration wait = std::min<Clock::duration>(std::chrono::milliseconds(100), deadline - now);
+                if (next < ordered.size())
+                {
+                    wait = std::min<Clock::duration>(wait, std::max<Clock::duration>(nextAttempt - now, {}));
+                }
+                long long waitMs = std::max<long long>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(wait).count(), 1);
+                fd_set writeSet;
+                fd_set errorSet;
+                FD_ZERO(&writeSet);
+                FD_ZERO(&errorSet);
+                int width = 0;
+                for (intptr_t handle : pending)
+                {
+                    FD_SET(Native(handle), &writeSet);
+                    FD_SET(Native(handle), &errorSet);
+                    width = std::max(width, Platform::SelectWidth(handle));
+                }
+                timeval timeout;
+                timeout.tv_sec = static_cast<long>(waitMs / 1000);
+                timeout.tv_usec = static_cast<long>((waitMs % 1000) * 1000);
+                // Windows reports a failed non-blocking connect via the except set rather than the write set.
+                if (select(width, nullptr, &writeSet, &errorSet, &timeout) <= 0)
+                {
+                    continue;
+                }
+                for (size_t i = 0; i < pending.size();)
+                {
+                    intptr_t handle = pending[i];
+                    if (!FD_ISSET(Native(handle), &writeSet) && !FD_ISSET(Native(handle), &errorSet))
+                    {
+                        ++i;
+                        continue;
+                    }
+                    int socketError = 0;
+                    socklen_t length = sizeof(socketError);
+                    getsockopt(Native(handle), SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&socketError), &length);
+                    pending.erase(pending.begin() + static_cast<ptrdiff_t>(i));
+                    if (socketError == 0 && FD_ISSET(Native(handle), &writeSet))
+                    {
+                        winner = handle;
+                        break;
+                    }
+                    error = "Could not connect to " + target + ": " + Platform::ErrorString(socketError);
+                    Platform::CloseSocket(handle);
+                    nextAttempt = Clock::now(); // a refusal is an answer: try the next address straight away
+                }
+            }
+            closePending();
+            if (winner == Platform::kInvalidSocket)
+            {
+                if (timedOut)
+                {
+                    error = "Timed out connecting to " + target;
+                }
+                return;
+            }
+            Platform::SetNonBlocking(winner, false);
+            ConfigureConnected(winner);
+            m_handle = winner;
+            error.clear();
         }
 
         bool Socket::Listen(const std::string& bindAddress, uint16_t port, std::string& error)
@@ -261,6 +391,11 @@ namespace Marconi
                 length -= static_cast<size_t>(sent);
             }
             return true;
+        }
+
+        bool Socket::WaitReadable(int timeoutMs) const
+        {
+            return IsOpen() && WaitFor(m_handle, true, timeoutMs) > 0;
         }
 
         ptrdiff_t Socket::Receive(void* buffer, size_t length)

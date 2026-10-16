@@ -131,6 +131,7 @@ namespace MarconiUI
         out.id = id;
         out.name = config->Read(path + "/Name", wxEmptyString);
         out.address = config->Read(path + "/Address", wxEmptyString);
+        out.detected = config->Read(path + "/Detected", wxEmptyString);
         out.username = config->Read(path + "/Username", wxEmptyString);
         out.rememberPassword = config->ReadBool(path + "/RememberPassword", false);
         out.scaleMode = config->Read(path + "/Scale", "fit") == "100" ? ScaleMode::Actual : ScaleMode::Fit;
@@ -163,6 +164,7 @@ namespace MarconiUI
         wxString path = PathFor(connection.id);
         config->Write(path + "/Name", connection.name);
         config->Write(path + "/Address", connection.address);
+        config->Write(path + "/Detected", connection.detected);
         config->Write(path + "/Username", connection.username);
         config->Write(path + "/RememberPassword", connection.rememberPassword);
         config->Write(path + "/Scale", connection.scaleMode == ScaleMode::Actual ? "100" : "fit");

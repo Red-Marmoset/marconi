@@ -104,4 +104,8 @@ namespace MarconiTest
     void RunClientTests();
     void RunDecoderTests();
     void RunVersionTests();
+    void RunSocketTests();
+    void RunProbeTests();
+    void RunChoiceTests();
+    void RunDiscoveryTests();
 } // namespace MarconiTest
