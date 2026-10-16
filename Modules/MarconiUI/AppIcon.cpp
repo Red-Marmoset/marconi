@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// The Marconi window icon, drawn at runtime (BuildTool has no resource compiler step)
+// The Marconi window icon, drawn at runtime on every platform. Resources/Marconi.ico (Tools/make_app_icon.py) is
+// the same picture for the Windows executable and installer.
 
 #include "AppIcon.h"
 

@@ -41,7 +41,7 @@ namespace MarconiUI
         wxString logDir = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs";
         wxFileName::Mkdir(logDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
         Log::InitializeFileLogging(logDir.utf8_string(), "marconi");
-        LOG_INFO("App", "Marconi %s starting", Marconi::GetVersionString());
+        LOG_INFO("App", "Marconi %s (%s) starting", Marconi::GetVersionString(), Marconi::GetVersionCommit());
         ConnectionStore::MigrateFromRmvnc();
 
         // "marconi [options] host[:display]" connects straight away.

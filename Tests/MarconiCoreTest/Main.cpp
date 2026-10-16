@@ -16,6 +16,7 @@ namespace Test
         MarconiTest::RunHandshakeTests();
         MarconiTest::RunClientTests();
         MarconiTest::RunDecoderTests();
+        MarconiTest::RunVersionTests();
 
         printf("\nMarconiCoreTest: %d passed, %d failed\n", MarconiTest::g_passed, MarconiTest::g_failed);
         return MarconiTest::g_failed;

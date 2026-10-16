@@ -88,6 +88,39 @@ toolset 14.44 or newer.
 
 > Incremental builds rely on BuildTool's header dependency tracking (engine commit 3d0ce07 or later). With an older BuildTool, build with `-Clean` after editing a header.
 
+## Versions
+
+Versions are `MAJOR.MINOR.PATCH.REVISION`, for example `0.1.0.27`:
+
+- `MAJOR.MINOR.PATCH` follows semantic versioning and is set in `Project.json`. To start a new release line, change
+  it there.
+- `REVISION` is the commit's position in the history: the first commit is 1, the second is 2, and so on
+  (`git rev-list --count HEAD`). Each commit on `main` gets a higher number than the last.
+
+`Build.ps1` and `Build.sh` write the version to `Modules/MarconiCore/BuildVersion.h`, a generated file that isn't
+committed, before every build. Marconi logs its version and commit when it starts. On Windows the version is also
+in the executable's properties. A build without git history (such as a source zip) gets revision 0, and a shallow
+clone gets a revision that is too low.
+
+## Releasing (Windows)
+
+The installer is built with [NSIS 3](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`):
+
+    .\Package.ps1                     # -> Build\Installer\Marconi-0.1.0.27-win64-setup.exe
+
+It builds the Release app, then packages `Marconi.exe` with the Visual C++ runtime DLLs from your Visual Studio, so
+users don't need the separate redistributable. Then it prints the installer's SHA-256 and the command to tag the
+release (`v0.1.0.27`). It refuses a shallow clone, and refuses uncommitted changes to tracked files unless you pass
+`-AllowDirty` for a test package. `-SkipBuild` packages the existing build if it matches the current version.
+
+The installer installs to `Program Files\Marconi`, with a Start menu shortcut and an optional desktop one. It also
+adds an entry to Settings > Apps. Installing a newer version replaces the old one. Uninstalling keeps each user's
+saved connections, passwords and logs. `Uninstall.exe /S` uninstalls silently, and the installer accepts `/S` and
+`/D=<folder>` too.
+
+`Installer/Marconi.nsi` is the installer script. The icon, `Modules/MarconiUI/Resources/Marconi.ico`, is rendered by
+`python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`.
+
 ## Testing
 
 `Tests/MarconiCoreTest` covers the protocol core:
@@ -113,6 +146,7 @@ authentication and logs every key, pointer and clipboard event it receives:
 - `Modules/MarconiUI`: the wxWidgets app. It contains the connections window, the viewer window and canvas, key
   mapping, clipboard sync and the saved connections store.
 - `Tests/MarconiCoreTest`: core tests.
+- `Installer/`: the Windows installer script (NSIS), built by `Package.ps1`.
 - `Tools/`: development helpers.
 
 Marconi also uses the una engine's `Crypto` module, which provides DES, AES, MD5, Diffie-Hellman and random numbers
