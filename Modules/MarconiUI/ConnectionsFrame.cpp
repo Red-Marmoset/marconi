@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Start window: quick connect box plus the address book of saved connections
+// Start window: quick connect box, the address book of saved connections, and machines found on the network
 
 #include "ConnectionsFrame.h"
 
@@ -9,6 +9,7 @@
 #include "ViewerFrame.h"
 
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Net/ProtocolChoice.h>
 #include <MarconiCore/Version.h>
 
 #include <wx/bmpbndl.h>
@@ -24,6 +25,7 @@
 #include <wx/tglbtn.h>
 #include <wx/utils.h>
 
+#include <algorithm>
 #include <cstring>
 #include <wx/statbmp.h>
 #include <wx/listctrl.h>
@@ -209,52 +211,67 @@ namespace MarconiUI
 
         // Native Windows header backgrounds retain their startup theme. Keep this strip in wx so
         // both colours change immediately, while retaining the native list for rows and selection.
-        wxPanel* tableHeader = new wxPanel(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 36)));
-        tableHeader->SetName("MarconiTableHeader");
-        tableHeader->DisableFocusFromKeyboard();
-        tableHeader->SetBackgroundStyle(wxBG_STYLE_PAINT);
-        std::vector<wxStaticText*> headings;
-        for (const wxString& name : {wxString("Name"), wxString("Address"), wxString("Last used")})
-        {
-            wxStaticText* heading = new wxStaticText(tableHeader, wxID_ANY, name);
-            heading->SetName("MarconiHeaderLabel");
-            heading->SetFont(heading->GetFont().Bold());
-            headings.push_back(heading);
-        }
-        tableHeader->Bind(wxEVT_SIZE, [tableHeader, headings](wxSizeEvent& event) {
-            const wxSize bounds = tableHeader->GetClientSize();
-            const int starts[] = {0, bounds.x * 32 / 100, bounds.x * 74 / 100};
-            for (int i = 0; i < 3; ++i)
+        auto tableHeader = [&](const wxString (&names)[3]) {
+            wxPanel* strip = new wxPanel(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 36)));
+            strip->SetName("MarconiTableHeader");
+            strip->DisableFocusFromKeyboard();
+            strip->SetBackgroundStyle(wxBG_STYLE_PAINT);
+            std::vector<wxStaticText*> headings;
+            for (const wxString& name : names)
             {
-                headings[i]->SetPosition(wxPoint(starts[i] + tableHeader->FromDIP(7),
-                    (bounds.y - headings[i]->GetBestSize().y) / 2));
+                wxStaticText* heading = new wxStaticText(strip, wxID_ANY, name);
+                heading->SetName("MarconiHeaderLabel");
+                heading->SetFont(heading->GetFont().Bold());
+                headings.push_back(heading);
             }
-            event.Skip();
-        });
-        tableHeader->Bind(wxEVT_PAINT, [tableHeader](wxPaintEvent&) {
-            const ThemePalette palette = GetThemePalette();
-            wxAutoBufferedPaintDC dc(tableHeader);
-            dc.SetBackground(wxBrush(palette.surface));
-            dc.Clear();
-            dc.SetPen(wxPen(palette.border));
-            dc.SetBrush(*wxTRANSPARENT_BRUSH);
-            dc.DrawRectangle(tableHeader->GetClientRect());
-        });
-        outer->Add(tableHeader, 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+            strip->Bind(wxEVT_SIZE, [strip, headings](wxSizeEvent& event) {
+                const wxSize bounds = strip->GetClientSize();
+                const int starts[] = {0, bounds.x * 32 / 100, bounds.x * 74 / 100};
+                for (int i = 0; i < 3; ++i)
+                {
+                    headings[i]->SetPosition(wxPoint(starts[i] + strip->FromDIP(7),
+                        (bounds.y - headings[i]->GetBestSize().y) / 2));
+                }
+                event.Skip();
+            });
+            strip->Bind(wxEVT_PAINT, [strip](wxPaintEvent&) {
+                const ThemePalette palette = GetThemePalette();
+                wxAutoBufferedPaintDC dc(strip);
+                dc.SetBackground(wxBrush(palette.surface));
+                dc.Clear();
+                dc.SetPen(wxPen(palette.border));
+                dc.SetBrush(*wxTRANSPARENT_BRUSH);
+                dc.DrawRectangle(strip->GetClientRect());
+            });
+            outer->Add(strip, 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+        };
+        auto list = [&](const wxString& name, const wxString (&columns)[3], int height) {
+            wxListView* view = new wxListView(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(650, height)),
+                                              wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_NO_HEADER | wxBORDER_SIMPLE);
+            view->SetName(name);
+            view->AppendColumn(columns[0], wxLIST_FORMAT_LEFT, FromDIP(205));
+            view->AppendColumn(columns[1], wxLIST_FORMAT_LEFT, FromDIP(280));
+            view->AppendColumn(columns[2], wxLIST_FORMAT_LEFT, FromDIP(150));
+            // A transparent image sets a comfortable row height without custom-drawing the accessible native list.
+            wxImage blank(1, FromDIP(34));
+            blank.InitAlpha();
+            memset(blank.GetAlpha(), 0, blank.GetHeight());
+            wxImageList* rowImages = new wxImageList(1, blank.GetHeight(), true);
+            rowImages->Add(wxBitmap(blank));
+            view->AssignImageList(rowImages, wxIMAGE_LIST_SMALL);
+            view->Bind(wxEVT_SIZE, [this, view](wxSizeEvent& event) {
+                event.Skip();
+                const int width = view->GetClientSize().x;
+                view->SetColumnWidth(0, width * 32 / 100);
+                view->SetColumnWidth(1, width * 42 / 100);
+                view->SetColumnWidth(2, width - width * 32 / 100 - width * 42 / 100 - FromDIP(4));
+            });
+            return view;
+        };
 
-        m_list = new wxListView(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(650, 180)),
-                                wxLC_REPORT | wxLC_SINGLE_SEL | wxLC_NO_HEADER | wxBORDER_SIMPLE);
-        m_list->SetName("Saved connections");
-        m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(205));
-        m_list->AppendColumn("Address", wxLIST_FORMAT_LEFT, FromDIP(280));
-        m_list->AppendColumn("Last used", wxLIST_FORMAT_LEFT, FromDIP(150));
-        // A transparent image sets a comfortable row height without custom-drawing the accessible native list.
-        wxImage blank(1, FromDIP(34));
-        blank.InitAlpha();
-        memset(blank.GetAlpha(), 0, blank.GetHeight());
-        wxImageList* rowImages = new wxImageList(1, blank.GetHeight(), true);
-        rowImages->Add(wxBitmap(blank));
-        m_list->AssignImageList(rowImages, wxIMAGE_LIST_SMALL);
+        const wxString savedColumns[3] = {"Name", "Address", "Last used"};
+        tableHeader(savedColumns);
+        m_list = list("Saved connections", savedColumns, 180);
         outer->Add(m_list, 1, wxEXPAND | wxLEFT | wxRIGHT, border);
         m_empty = label("", false, true);
         m_empty->Hide();
@@ -271,6 +288,17 @@ namespace MarconiUI
         buttons->AddStretchSpacer();
         buttons->Add(m_connect, 0);
         outer->Add(buttons, 0, wxEXPAND | wxALL, border);
+        divider();
+
+        outer->Add(label("On this network", true), 0, wxLEFT | wxRIGHT | wxTOP, border);
+        outer->AddSpacer(gap);
+        const wxString networkColumns[3] = {"Name", "Address", "Type"};
+        tableHeader(networkColumns);
+        m_network = list("On this network", networkColumns, 112);
+        outer->Add(m_network, 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+        m_networkEmpty = label(wxString::FromUTF8("Searching your network\xE2\x80\xA6"), false, true);
+        outer->Add(m_networkEmpty, 0, wxLEFT | wxRIGHT | wxTOP, border);
+        outer->AddSpacer(border);
         divider();
 
         wxBoxSizer* footer = new wxBoxSizer(wxHORIZONTAL);
@@ -295,21 +323,14 @@ namespace MarconiUI
         wxBoxSizer* frameSizer = new wxBoxSizer(wxVERTICAL);
         frameSizer->Add(panel, 1, wxEXPAND);
         SetSizer(frameSizer);
-        SetClientSize(FromDIP(wxSize(740, 800)));
-        SetMinClientSize(FromDIP(wxSize(720, 800)));
+        SetClientSize(FromDIP(wxSize(740, 980)));
+        SetMinClientSize(FromDIP(wxSize(720, 900)));
         Centre();
         settings->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { ShowSettings(); });
         m_search->Bind(wxEVT_TEXT, [this](wxCommandEvent& event) { Reload(); event.Skip(); });
         Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
             event.Skip();
             ApplyAppearance();
-        });
-        m_list->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
-            event.Skip();
-            const int width = m_list->GetClientSize().x;
-            m_list->SetColumnWidth(0, width * 32 / 100);
-            m_list->SetColumnWidth(1, width * 42 / 100);
-            m_list->SetColumnWidth(2, width - width * 32 / 100 - width * 42 / 100 - FromDIP(4));
         });
 
         quickConnect->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnQuickConnect, this);
@@ -322,6 +343,9 @@ namespace MarconiUI
         m_list->Bind(wxEVT_LIST_KEY_DOWN, &ConnectionsFrame::OnListKey, this);
         m_list->Bind(wxEVT_LIST_ITEM_SELECTED, [this](wxListEvent&) { UpdateButtons(); });
         m_list->Bind(wxEVT_LIST_ITEM_DESELECTED, [this](wxListEvent&) { UpdateButtons(); });
+        m_network->Bind(wxEVT_LIST_ITEM_ACTIVATED, &ConnectionsFrame::OnNetworkActivated, this);
+        m_discoveryTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { StartDiscovery(); }, m_discoveryTimer.GetId());
         // Viewers update "last used" and their settings; show that when we come back here.
         Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
             event.Skip();
@@ -335,6 +359,114 @@ namespace MarconiUI
         Reload();
         ApplyAppearance();
         m_address->SetFocus();
+        StartDiscovery();
+        m_discoveryTimer.Start(10000);
+    }
+
+    ConnectionsFrame::~ConnectionsFrame()
+    {
+        m_discoveryTimer.Stop();
+        m_discoveryCancel = true;
+        if (m_discoveryThread.joinable())
+        {
+            m_discoveryThread.join();
+        }
+    }
+
+    void ConnectionsFrame::StartDiscovery()
+    {
+        if (m_discovering.exchange(true))
+        {
+            return; // the previous round is still running
+        }
+        if (m_discoveryThread.joinable())
+        {
+            m_discoveryThread.join();
+        }
+        m_discoveryThread = std::thread([this]() {
+            std::vector<Marconi::Net::DiscoveredService> services =
+                Marconi::Net::Discover(1500, "224.0.0.251", 5353, &m_discoveryCancel);
+            if (!m_discoveryCancel)
+            {
+                CallAfter([this, services]() { HandleDiscovery(services); });
+            }
+            m_discovering = false;
+        });
+    }
+
+    void ConnectionsFrame::HandleDiscovery(const std::vector<Marconi::Net::DiscoveredService>& services)
+    {
+        for (NetworkEntry& entry : m_networkEntries)
+        {
+            ++entry.missedRounds;
+        }
+        for (const Marconi::Net::DiscoveredService& service : services)
+        {
+            auto same = [&service](const NetworkEntry& entry) {
+                return entry.service.instance == service.instance && entry.service.protocol == service.protocol;
+            };
+            auto found = std::find_if(m_networkEntries.begin(), m_networkEntries.end(), same);
+            if (found != m_networkEntries.end())
+            {
+                found->service = service;
+                found->missedRounds = 0;
+            }
+            else
+            {
+                m_networkEntries.push_back({service, 0});
+            }
+        }
+        m_networkEntries.erase(std::remove_if(m_networkEntries.begin(), m_networkEntries.end(),
+                                              [](const NetworkEntry& entry) { return entry.missedRounds >= 3; }),
+                               m_networkEntries.end());
+        ShowNetwork();
+    }
+
+    void ConnectionsFrame::ShowNetwork()
+    {
+        long selected = m_network->GetFirstSelected();
+        m_network->Freeze();
+        m_network->DeleteAllItems();
+        for (const NetworkEntry& entry : m_networkEntries)
+        {
+            const Marconi::Net::DiscoveredService& service = entry.service;
+            const std::string& address = service.hostName.empty() ? service.ipv4 : service.hostName;
+            const long row = m_network->InsertItem(m_network->GetItemCount(), wxString::FromUTF8(service.instance), 0);
+            m_network->SetItem(row, 1, wxString::FromUTF8(address));
+            m_network->SetItem(row, 2, wxString::FromUTF8(Marconi::ProtocolName(service.protocol)));
+        }
+        if (selected >= 0 && selected < m_network->GetItemCount())
+        {
+            m_network->Select(selected);
+            m_network->Focus(selected);
+        }
+        m_network->Thaw();
+        m_networkEmpty->SetLabel(m_networkEntries.empty() ? "Nothing found on your network yet." : "");
+        m_networkEmpty->Show(m_networkEntries.empty());
+        Layout();
+    }
+
+    void ConnectionsFrame::OnNetworkActivated(wxListEvent& event)
+    {
+        long row = event.GetIndex();
+        if (row < 0 || row >= static_cast<long>(m_networkEntries.size()))
+        {
+            return;
+        }
+        const Marconi::Net::DiscoveredService& service = m_networkEntries[static_cast<size_t>(row)].service;
+        if (!Marconi::Net::IsSupported(service.protocol))
+        {
+            wxMessageBox(wxString::FromUTF8(service.instance + " offers " + Marconi::ProtocolName(service.protocol) +
+                                            ", which Marconi doesn't support yet."),
+                         "Marconi", wxOK | wxICON_INFORMATION, this);
+            return;
+        }
+        ViewerOptions options;
+        options.address.host = service.ipv4.empty() ? service.hostName : service.ipv4;
+        options.address.port = service.port;
+        options.address.protocol = service.protocol;
+        options.skipProbe = true;
+        (new ViewerFrame(options))->Show();
     }
 
     void ConnectionsFrame::Reload(const wxString& selectId)
