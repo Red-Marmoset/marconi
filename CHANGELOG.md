@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.3.1
+
+- Fixed an error alert when the other computer hides its mouse pointer.
+- Fixed copying new files to TightVNC servers.
+
 ## 0.3.0
 
 - Copies files to and from Macs with Remote Login on: F10 opens the file panel.

@@ -164,6 +164,9 @@ namespace MarconiUI
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_SWITCH, nullptr, "files", "open the file transfer panel straight away", wxCMD_LINE_VAL_NONE,
              wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "files-check",
+             "headless diagnostics: copy a small file to a TightVNC server and back over the VNC connection, tidy up",
+             wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_SWITCH, nullptr, "sftp-check",
              "diagnostics: log in over SFTP with the connection's account, copy a small file there and back, tidy up",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
@@ -225,6 +228,16 @@ namespace MarconiUI
             return false;
         }
         const bool headless = parser.Found("headless");
+        if (headless || parser.Found("sftp-check"))
+        {
+            // No window and nobody watching: a failed wxWidgets check goes to the log instead of an alert.
+            wxSetAssertHandler([](const wxString& file, int line, const wxString& function, const wxString& condition,
+                                  const wxString& message) {
+                LOG_WARNING("App", "wxWidgets check failed at %s:%d in %s: %s %s", file.utf8_string().c_str(), line,
+                            function.utf8_string().c_str(), condition.utf8_string().c_str(),
+                            message.utf8_string().c_str());
+            });
+        }
         wxString savedName;
         const bool fromSaved = parser.Found("saved", &savedName);
         if (parser.GetParamCount() > 0 || fromSaved)
@@ -295,6 +308,7 @@ namespace MarconiUI
                     }
                     options.resendPixelFormatOnResize = !parser.Found("no-pixel-format-resend");
                     options.recovery = !parser.Found("no-recovery");
+                    options.filesCheck = parser.Found("files-check");
                 }
                 if (parser.Found("sftp-check"))
                 {

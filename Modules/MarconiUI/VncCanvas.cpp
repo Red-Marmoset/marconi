@@ -350,7 +350,12 @@ namespace MarconiUI
         const Marconi::Rfb::CursorShape& cursor = m_remoteCursor;
         if (cursor.width <= 0 || cursor.height <= 0)
         {
-            SetCursor(wxCursor(wxCURSOR_BLANK));
+            // The server hid its pointer (TightVNC does). A fully transparent 1x1 image: wxCURSOR_BLANK would need
+            // wxWidgets' own resource file on Windows.
+            wxImage blank(1, 1);
+            blank.InitAlpha();
+            blank.SetAlpha(0, 0, 0);
+            SetCursor(wxCursor(blank));
             return;
         }
 

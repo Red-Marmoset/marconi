@@ -269,7 +269,9 @@ namespace Marconi
                 return nullptr;
             }
             Ft::Reply reply;
-            if (!Request(Ft::EncodeUploadStartRequest(path, overwrite), reply, error))
+            // Always with the overwrite flag: without it TightVNC only opens a file that already exists, and doesn't
+            // empty it. Whether replacing is allowed was decided above.
+            if (!Request(Ft::EncodeUploadStartRequest(path, true), reply, error))
             {
                 error = "Couldn't create " + path + ": " + error;
                 return nullptr;

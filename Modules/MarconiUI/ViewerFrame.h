@@ -47,6 +47,7 @@ namespace MarconiUI
         wxString sshHostKey;    // from the saved connection: the SSH host key trusted for file transfer
         wxString dropFolder;    // from the saved connection: where files dropped on a TightVNC screen go
         bool showFiles = false; // open the file panel straight away (--files)
+        bool filesCheck = false; // headless: copy a small file to the server and back over TightVNC, then quit
         bool skipProbe = false; // the address's protocol and port are already known (e.g. found on the network)
         std::vector<uint8_t> trustedCertificateSha256; // a server certificate the user accepted before
 

@@ -607,6 +607,47 @@ namespace MarconiUI
                 files->OnReply(reply);
             });
             m_files->SetTightFiles(files, GetServerDisplayName());
+            if (m_options.filesCheck)
+            {
+                // Diagnostics: a real round trip over TightVNC file transfer, on a worker like the panel's copies.
+                m_saveThreads.emplace_back([this, files]() {
+                    const std::string folder = "/C:/Users/Public/Marconi files check";
+                    const std::string file = folder + "/check.txt";
+                    const std::string content = "Marconi TightVNC files check " + std::to_string(std::rand());
+                    std::string error;
+                    std::vector<Marconi::Files::FileEntry> drives;
+                    bool listed = files->List("/", drives, error);
+                    LOG_INFO("Viewer", "Files check: listed / (%zu entries): %s", drives.size(),
+                             listed ? "ok" : error.c_str());
+                    bool ok = listed && files->MakeFolder(folder, error);
+                    if (ok)
+                    {
+                        std::unique_ptr<Marconi::Files::FileWriter> writer = files->OpenWrite(file, false, error);
+                        ok = writer && writer->Write(content.data(), content.size(), error) && writer->Finish(error);
+                        LOG_INFO("Viewer", "Files check: upload %s %s", ok ? "ok" : "failed:", error.c_str());
+                    }
+                    std::string readBack;
+                    if (ok)
+                    {
+                        std::unique_ptr<Marconi::Files::FileReader> reader = files->OpenRead(file, error);
+                        char buffer[256];
+                        ptrdiff_t got = 0;
+                        while (reader && (got = reader->Read(buffer, sizeof(buffer), error)) > 0)
+                        {
+                            readBack.append(buffer, static_cast<size_t>(got));
+                        }
+                        ok = reader && got == 0 && readBack == content;
+                        LOG_INFO("Viewer", "Files check: download %s %s", ok ? "ok" : "failed:", error.c_str());
+                    }
+                    std::string ignored;
+                    files->Remove(file, ignored);
+                    files->RemoveFolder(folder, ignored);
+                    Marconi::Files::FileEntry leftover;
+                    bool tidy = !files->Stat(folder, leftover, ignored);
+                    LOG_INFO("Viewer", "Files check: %s (tidied up: %s)", ok ? "passed" : "failed", tidy ? "yes" : "no");
+                    CallAfter([this]() { Close(true); });
+                });
+            }
         }
         if (m_rememberPassword)
         {

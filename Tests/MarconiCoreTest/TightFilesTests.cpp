@@ -152,12 +152,17 @@ namespace MarconiTest
                     {
                         m_uploadPath = ReadText(in);
                         uint8_t flags = in.U8();
-                        if (m_disk.count(m_uploadPath) && !(flags & 1))
+                        // Like TightVNC 2.8: without the overwrite flag it only opens a file that already exists
+                        // (and doesn't empty it); with the flag it creates or empties the file.
+                        if (!(flags & 1) && !m_disk.count(m_uploadPath))
                         {
-                            reply = Failed("Already exists");
+                            reply = Failed("The system cannot find the file specified");
                             break;
                         }
-                        m_disk[m_uploadPath].clear();
+                        if (flags & 1)
+                        {
+                            m_disk[m_uploadPath].clear();
+                        }
                         reply.id = Ft::UploadStartReply;
                         break;
                     }
