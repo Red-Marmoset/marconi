@@ -107,4 +107,5 @@ namespace MarconiTest
     void RunSocketTests();
     void RunProbeTests();
     void RunChoiceTests();
+    void RunDiscoveryTests();
 } // namespace MarconiTest
