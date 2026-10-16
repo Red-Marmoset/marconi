@@ -35,6 +35,10 @@ namespace Marconi
         // Probes every target in parallel and returns one result per target, in the same order. Never authenticates.
         std::vector<ProbeResult> Probe(const std::string& host, const std::vector<ProbeTarget>& targets, int timeoutMs,
                                        const std::atomic<bool>* cancel = nullptr);
+        // As Probe, for numeric addresses tried in the given order (tests; resolving is skipped).
+        std::vector<ProbeResult> ProbeAddresses(const std::vector<std::string>& numericHosts,
+                                                const std::vector<ProbeTarget>& targets, int timeoutMs,
+                                                const std::atomic<bool>* cancel = nullptr);
 
         Protocol IdentifyGreeting(const std::string& greeting);
         bool IsRdpConnectionConfirm(const uint8_t* data, size_t size);

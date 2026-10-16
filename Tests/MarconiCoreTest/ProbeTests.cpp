@@ -203,6 +203,19 @@ namespace MarconiTest
             CHECK(MillisecondsSince(start) < 1300);
         });
 
+        RunTest("Probe gives the greeting its full time after a slow connect", []() {
+            // A slow lookup or connect (here: a first address that never answers, so the second starts 250 ms
+            // later) mustn't eat into the time a server has to send its banner.
+            FakeService vnc([](Net::Socket& s, std::string& got) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(450));
+                Send(s, "RFB 003.008\n");
+                Drain(s, got, 300);
+            });
+            std::vector<Net::ProbeResult> results =
+                Net::ProbeAddresses({"10.255.255.1", "127.0.0.1"}, {{vnc.GetPort(), Protocol::Vnc}}, 600);
+            CHECK(results.size() == 1 && results[0].protocol == Protocol::Vnc);
+        });
+
         RunTest("Probe stops promptly when cancelled", []() {
             std::atomic<bool> cancel{true};
             auto start = std::chrono::steady_clock::now();

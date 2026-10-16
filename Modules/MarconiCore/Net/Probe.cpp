@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <functional>
 #include <thread>
 
 namespace Marconi
@@ -70,20 +71,24 @@ namespace Marconi
                 return text.substr(0, end);
             }
 
-            ProbeResult ProbeOne(const std::string& host, const ProbeTarget& target, int timeoutMs,
+            // Connects `socket` to the target's port, within the timeout. False (with `error`) if nothing accepted.
+            using ConnectFunction = std::function<bool(Socket& socket, uint16_t port, std::string& error)>;
+
+            ProbeResult ProbeOne(const ConnectFunction& connect, const ProbeTarget& target, int timeoutMs,
                                  const std::atomic<bool>* cancel)
             {
                 ProbeResult result;
                 result.port = target.port;
-                Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
                 Socket socket;
                 std::string error;
-                if (!socket.Connect(host, target.port, timeoutMs, error, cancel))
+                if (!connect(socket, target.port, error))
                 {
                     result.detail = error;
                     return result;
                 }
                 result.reachable = true;
+                // From here, not from before connecting: a slow lookup mustn't leave a server no time to answer.
+                Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
 
                 if (target.expected != Protocol::Rdp)
                 {
@@ -142,20 +147,42 @@ namespace Marconi
                     {DefaultPort(Protocol::Ssh), Protocol::Ssh}};
         }
 
+        namespace
+        {
+            std::vector<ProbeResult> ProbeAll(const ConnectFunction& connect, const std::vector<ProbeTarget>& targets,
+                                              int timeoutMs, const std::atomic<bool>* cancel)
+            {
+                std::vector<ProbeResult> results(targets.size());
+                std::vector<std::thread> threads;
+                for (size_t i = 0; i < targets.size(); ++i)
+                {
+                    threads.emplace_back([&, i]() { results[i] = ProbeOne(connect, targets[i], timeoutMs, cancel); });
+                }
+                for (std::thread& thread : threads)
+                {
+                    thread.join();
+                }
+                return results;
+            }
+        } // namespace
+
         std::vector<ProbeResult> Probe(const std::string& host, const std::vector<ProbeTarget>& targets, int timeoutMs,
                                        const std::atomic<bool>* cancel)
         {
-            std::vector<ProbeResult> results(targets.size());
-            std::vector<std::thread> threads;
-            for (size_t i = 0; i < targets.size(); ++i)
-            {
-                threads.emplace_back([&, i]() { results[i] = ProbeOne(host, targets[i], timeoutMs, cancel); });
-            }
-            for (std::thread& thread : threads)
-            {
-                thread.join();
-            }
-            return results;
+            ConnectFunction connect = [&](Socket& socket, uint16_t port, std::string& error) {
+                return socket.Connect(host, port, timeoutMs, error, cancel);
+            };
+            return ProbeAll(connect, targets, timeoutMs, cancel);
+        }
+
+        std::vector<ProbeResult> ProbeAddresses(const std::vector<std::string>& numericHosts,
+                                                const std::vector<ProbeTarget>& targets, int timeoutMs,
+                                                const std::atomic<bool>* cancel)
+        {
+            ConnectFunction connect = [&](Socket& socket, uint16_t port, std::string& error) {
+                return socket.ConnectAddresses(numericHosts, port, timeoutMs, error, cancel);
+            };
+            return ProbeAll(connect, targets, timeoutMs, cancel);
         }
 
         Protocol IdentifyGreeting(const std::string& greeting)
