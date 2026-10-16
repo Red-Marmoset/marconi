@@ -266,7 +266,7 @@ namespace MarconiUI
             m_back->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { GoBack(); });
             m_forward->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { GoForward(); });
             m_up->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { GoUp(); });
-            refresh->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Refresh(); });
+            refresh->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { Reload(); });
             m_tree->Bind(wxEVT_TREE_ITEM_EXPANDING, [this](wxTreeEvent& event) { LoadTreeItem(event.GetItem()); });
             m_tree->Bind(wxEVT_TREE_SEL_CHANGED, [this](wxTreeEvent& event) {
                 if (!m_syncingTree && event.GetItem().IsOk())
@@ -366,7 +366,7 @@ namespace MarconiUI
             });
         }
 
-        void Refresh() { Navigate(m_folder, false); }
+        void Reload() { Navigate(m_folder, false); }
 
         std::vector<std::string> GetSelectedPaths() const
         {
@@ -672,7 +672,7 @@ namespace MarconiUI
             }
             else if (event.GetKeyCode() == WXK_F5)
             {
-                Refresh();
+                Reload();
             }
             else if (event.GetKeyCode() == 'A' && event.ControlDown())
             {
@@ -764,7 +764,7 @@ namespace MarconiUI
             {
                 wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
             }
-            Refresh();
+            Reload();
         }
 
         void RenameSelected()
@@ -785,7 +785,7 @@ namespace MarconiUI
             {
                 wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
             }
-            Refresh();
+            Reload();
         }
 
         void DeleteSelected()
@@ -811,7 +811,7 @@ namespace MarconiUI
                     break;
                 }
             }
-            Refresh();
+            Reload();
         }
 
         bool DeleteTree(const std::string& path, std::string& error)
@@ -1389,7 +1389,7 @@ namespace MarconiUI
             auto refresh = m_refreshWhenDone.find(status.id);
             if (refresh != m_refreshWhenDone.end())
             {
-                refresh->second->Refresh(); // once, when the copy's last item finishes
+                refresh->second->Reload(); // once, when the copy's last item finishes
                 m_refreshWhenDone.erase(refresh);
             }
         }

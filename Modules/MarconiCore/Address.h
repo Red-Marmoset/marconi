@@ -20,7 +20,7 @@ namespace Marconi
     {
         std::string host;
         uint16_t port = 0;    // 0 = the protocol's usual port (all of them for Auto)
-        std::string username; // from "user@host": log in with that account
+        std::string username = {}; // from "user@host": log in with that account
         Protocol protocol = Protocol::Auto;
     };
 
