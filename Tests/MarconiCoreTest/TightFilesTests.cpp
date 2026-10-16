@@ -275,6 +275,31 @@ namespace MarconiTest
             CHECK(sink.sent.size() == 12 + 1 + 1);
         });
 
+        RunTest("A Tight login that breaks says so, so the next try goes without", []() {
+            for (bool allowTight : {true, false})
+            {
+                FakeServer server;
+                RecordingListener listener;
+                Rfb::Client client{listener};
+                Rfb::ConnectionOptions options;
+                options.host = "127.0.0.1";
+                options.port = server.GetPort();
+                options.allowTight = allowTight;
+                client.Connect(options);
+                CHECK(server.AcceptClient());
+                server.SendString("RFB 003.008\n");
+                server.In().ReadString(12);
+                Rfb::OutBuffer types;
+                types.U8(2).U8(Rfb::SecurityType::VncAuth).U8(Rfb::SecurityType::Tight);
+                server.Send(types);
+                uint8_t chosen = server.In().U8();
+                CHECK(chosen == (allowTight ? Rfb::SecurityType::Tight : Rfb::SecurityType::VncAuth));
+                server.Close(); // a server that breaks off here
+                CHECK(listener.WaitFor([&]() { return listener.disconnected; }));
+                CHECK(listener.tightFailed == allowTight);
+            }
+        });
+
         RunTest("File transfer messages: a request and a folder listing", []() {
             CHECK(Ft::EncodeFileListRequest("/C:/x") == HexBytes("fc000102 00 00000006 2f433a2f7800"));
             Rfb::OutBuffer reply;

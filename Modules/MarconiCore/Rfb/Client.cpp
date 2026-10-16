@@ -103,6 +103,22 @@ namespace Marconi
             }
         }
 
+        bool Client::SendFileTransferRequest(const Bytes& request)
+        {
+            if (!m_connected || !m_fileTransfer)
+            {
+                return false;
+            }
+            std::lock_guard<std::mutex> lock(m_sendMutex);
+            return SendRaw(request);
+        }
+
+        void Client::SetFileTransferHandler(std::function<void(const FileTransfer::Reply&)> handler)
+        {
+            std::lock_guard<std::mutex> lock(m_fileTransferMutex);
+            m_fileTransferHandler = std::move(handler);
+        }
+
         void Client::SendIfConnected(const Bytes& data)
         {
             if (!m_connected)
@@ -325,6 +341,8 @@ namespace Marconi
         {
             DisconnectInfo info;
             std::string& error = info.error;
+            bool choseTight = false;  // the server and we agreed on TightVNC's own login
+            bool handshaking = false; // between connecting and ServerInit
             m_encrypted = false;
             {
                 std::lock_guard<std::mutex> lock(m_infoMutex);
@@ -349,6 +367,7 @@ namespace Marconi
 
                 ConnectionSource source(*this);
                 InStream in(source);
+                handshaking = true;
 
                 Credentials credentials = options.credentials;
                 CredentialsProvider provider = [this, &credentials](CredentialsKind kind, Credentials& out) {
@@ -371,7 +390,9 @@ namespace Marconi
                 }
                 // A server that accepts the connection but then says nothing mustn't leave us waiting for ever.
                 m_socket.SetReceiveTimeout(options.connectTimeoutMs);
-                HandshakeResult handshake = PerformHandshake(in, *this, options.shared, provider, startTls);
+                HandshakeResult handshake =
+                    PerformHandshake(in, *this, options.shared, provider, startTls, options.allowTight, &choseTight);
+                m_fileTransfer = handshake.tightFileTransfer;
                 m_socket.SetReceiveTimeout(0);
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
                 m_appleServer = handshake.serverMajor == 3 && handshake.serverMinor == 889;
@@ -383,6 +404,7 @@ namespace Marconi
                 m_detailedUpdates = kDetailedUpdates;
                 m_connected = true;
                 info.wasConnected = true;
+                handshaking = false;
                 m_listener.OnConnected(handshake.serverInit);
                 SendUpdateRequest(false);
                 MessageLoop(in);
@@ -399,9 +421,12 @@ namespace Marconi
             catch (const std::exception& exception)
             {
                 error = exception.what();
+                // Something about TightVNC's own login went wrong (not the password): the next attempt goes without.
+                info.tightFailed = choseTight && handshaking;
             }
 
             m_connected = false;
+            m_fileTransfer = false;
             {
                 std::lock_guard<std::mutex> sendLock(m_sendMutex);
                 std::lock_guard<std::mutex> socketLock(m_socketMutex);
@@ -453,6 +478,22 @@ namespace Marconi
                 case ServerMessage::ServerCutText:
                     HandleServerCutText(in);
                     break;
+                case 0xFC: // TightVNC extension messages: a 4-byte id starting 0xFC
+                {
+                    uint32_t id = 0xFC000000u | static_cast<uint32_t>(in.U8()) << 16;
+                    id |= in.U16();
+                    if (!m_fileTransfer || !FileTransfer::IsReply(id))
+                    {
+                        throw RfbError("The server sent an unknown TightVNC message");
+                    }
+                    FileTransfer::Reply reply = FileTransfer::ReadReply(id, in);
+                    std::lock_guard<std::mutex> lock(m_fileTransferMutex);
+                    if (m_fileTransferHandler)
+                    {
+                        m_fileTransferHandler(reply);
+                    }
+                    break;
+                }
                 default:
                     throw RfbError("The server sent an unknown message type " + std::to_string(type));
                 }

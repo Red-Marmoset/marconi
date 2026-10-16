@@ -89,6 +89,7 @@ namespace MarconiTest
         bool disconnected = false;
         std::string disconnectError;
         bool authenticationFailed = false;
+        bool tightFailed = false;
         Marconi::Rfb::ServerInit serverInit;
         int updates = 0;
         int bells = 0;

@@ -87,6 +87,6 @@ namespace Marconi
         // lists). Throws RfbError / AuthenticationFailed.
         HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
                                          const CredentialsProvider& credentials, const TlsStarter& startTls = nullptr,
-                                         bool allowTight = false);
+                                         bool allowTight = false, bool* outChoseTight = nullptr);
     } // namespace Rfb
 } // namespace Marconi

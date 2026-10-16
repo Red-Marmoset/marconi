@@ -8,6 +8,7 @@
 #include <MarconiCore/Rfb/Decoders/Decoder.h>
 #include <MarconiCore/Rfb/Framebuffer.h>
 #include <MarconiCore/Rfb/Handshake.h>
+#include <MarconiCore/Rfb/TightFileTransfer.h>
 
 #include <atomic>
 #include <chrono>
@@ -45,6 +46,8 @@ namespace Marconi
             bool exactEncodings = false;
             // Repeat SetPixelFormat after the server resizes the desktop.
             bool resendPixelFormatOnResize = true;
+            // Use TightVNC's own login when a server offers it: it logs in the same way, and adds file transfer.
+            bool allowTight = true;
         };
 
         // Cursor image for local rendering: ARGB pixels (alpha 0 or 255), hotspot in pixels. Empty = hidden.
@@ -62,6 +65,7 @@ namespace Marconi
             std::string error;                 // empty for a clean, locally requested or cancelled disconnect
             bool authenticationFailed = false; // the server rejected the credentials; retrying may help
             bool wasConnected = false;         // got as far as ServerInit
+            bool tightFailed = false;          // the TightVNC login went wrong (not the password): retry without it
         };
 
         // Callbacks arrive on the connection thread. UI implementations should marshal to the UI thread.
@@ -119,6 +123,13 @@ namespace Marconi
             // Whether the connection is encrypted, and with what (e.g. "TLS 1.3"). Meaningful once connected. Any
             // thread.
             bool IsEncrypted() const { return m_encrypted.load(); }
+
+            // TightVNC file transfer on this connection (the server offered it during the Tight login).
+            bool HasFileTransfer() const { return m_fileTransfer.load(); }
+            // Any thread. False if not connected.
+            bool SendFileTransferRequest(const Bytes& request);
+            // Called on the connection thread with each file transfer reply.
+            void SetFileTransferHandler(std::function<void(const FileTransfer::Reply&)> handler);
             std::string GetEncryptionName() const;
 
             Framebuffer& GetFramebuffer() { return m_framebuffer; }
@@ -194,6 +205,9 @@ namespace Marconi
             Net::Socket m_socket;
             std::unique_ptr<Net::TlsStream> m_tls; // the encrypted stream once the handshake switched to one
             std::atomic<bool> m_connected{false};
+        std::atomic<bool> m_fileTransfer{false};
+        std::mutex m_fileTransferMutex;
+        std::function<void(const FileTransfer::Reply&)> m_fileTransferHandler;
             std::atomic<bool> m_stopping{false};
             std::atomic<bool> m_encrypted{false};
             mutable std::mutex m_infoMutex;

@@ -249,7 +249,7 @@ namespace Marconi
 
         HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
                                          const CredentialsProvider& credentials, const TlsStarter& startTls,
-                                         bool allowTight)
+                                         bool allowTight, bool* outChoseTight)
         {
             HandshakeResult result;
             result.minor = NegotiateVersion(in, out, result);
@@ -257,6 +257,10 @@ namespace Marconi
             result.securityType =
                 NegotiateSecurityType(in, out, result.minor, credentials, startTls != nullptr, allowTight, given);
             LOG_INFO("Rfb", "Using security type %d", result.securityType);
+            if (outChoseTight != nullptr)
+            {
+                *outChoseTight = result.securityType == SecurityType::Tight;
+            }
             // Tight wraps a plain login: after its own negotiation, that login runs as usual.
             uint8_t login = result.securityType == SecurityType::Tight ? NegotiateTight(in, out) : result.securityType;
 

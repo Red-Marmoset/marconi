@@ -228,6 +228,7 @@ namespace MarconiTest
         disconnected = true;
         disconnectError = info.error;
         authenticationFailed = info.authenticationFailed;
+        tightFailed = info.tightFailed;
         changed.notify_all();
     }
 

@@ -63,6 +63,7 @@ namespace MarconiTest
                 options.host = "127.0.0.1";
                 options.port = server.GetPort();
                 options.credentials.password = initialPassword;
+                options.allowTight = false; // these test the plain VNC password; TightFilesTests covers the Tight login
                 client.Connect(options);
                 if (!server.AcceptClient())
                 {
