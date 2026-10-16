@@ -10,10 +10,13 @@
 #include "ViewerFrame.h"
 
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Files/SftpFiles.h>
 #include <MarconiCore/Net/Discovery.h>
 #include <MarconiCore/Version.h>
 
 #include <Log/Log.h>
+
+#include <cstdlib>
 
 #include <wx/arrstr.h>
 #include <wx/cmdline.h>
@@ -32,6 +35,75 @@
 
 namespace MarconiUI
 {
+    namespace
+    {
+        // Proves file transfer end to end without a window: everything it creates on the remote computer is removed.
+        void RunSftpCheck(const ViewerOptions& options)
+        {
+            Marconi::Files::SftpFiles remote;
+            std::string error;
+            std::string host = options.address.host;
+            if (!remote.Connect(host, 22, 10000, error))
+            {
+                LOG_WARNING("App", "SFTP check: couldn't connect to %s: %s", host.c_str(), error.c_str());
+                return;
+            }
+            LOG_INFO("App", "SFTP check: %s host key %s %s", host.c_str(), remote.GetHostKey().algorithm.c_str(),
+                     remote.GetHostKey().fingerprint.c_str());
+            if (!remote.Login(options.credentials.username, options.credentials.password, error))
+            {
+                LOG_WARNING("App", "SFTP check: login as '%s' failed: %s", options.credentials.username.c_str(),
+                            error.c_str());
+                return;
+            }
+            std::vector<Marconi::Files::FileEntry> entries;
+            if (!remote.List(remote.GetHome(), entries, error))
+            {
+                LOG_WARNING("App", "SFTP check: couldn't list %s: %s", remote.GetHome().c_str(), error.c_str());
+                return;
+            }
+            LOG_INFO("App", "SFTP check: home is %s with %zu items", remote.GetHome().c_str(), entries.size());
+
+            const std::string folder = Marconi::Files::JoinPath(remote.GetHome(), "Marconi SFTP check");
+            const std::string file = Marconi::Files::JoinPath(folder, "check.txt");
+            const std::string content = "Marconi SFTP check " + std::to_string(std::rand());
+            bool ok = remote.MakeFolder(folder, error);
+            std::unique_ptr<Marconi::Files::FileWriter> writer;
+            if (ok)
+            {
+                writer = remote.OpenWrite(file, false, error);
+                ok = writer && writer->Write(content.data(), content.size(), error) && writer->Finish(error);
+                writer.reset();
+            }
+            std::string readBack;
+            if (ok)
+            {
+                std::unique_ptr<Marconi::Files::FileReader> reader = remote.OpenRead(file, error);
+                char buffer[256];
+                ptrdiff_t got = 0;
+                while (reader && (got = reader->Read(buffer, sizeof(buffer), error)) > 0)
+                {
+                    readBack.append(buffer, static_cast<size_t>(got));
+                }
+                ok = reader && got == 0;
+            }
+            std::string ignored;
+            remote.Remove(file, ignored);
+            remote.RemoveFolder(folder, ignored);
+            Marconi::Files::FileEntry leftover;
+            bool tidy = !remote.Stat(folder, leftover, ignored);
+            if (ok && readBack == content && tidy)
+            {
+                LOG_INFO("App", "SFTP check: passed (wrote, read back and removed %zu bytes)", content.size());
+            }
+            else
+            {
+                LOG_WARNING("App", "SFTP check: failed: %s (read back %zu bytes, tidied up: %s)", error.c_str(),
+                            readBack.size(), tidy ? "yes" : "no");
+            }
+        }
+    } // namespace
+
     bool MarconiApp::OnInit()
     {
 #if !defined(__WINDOWS__)
@@ -89,6 +161,9 @@ namespace MarconiUI
              "headless diagnostics: never re-request the desktop or reconnect when no picture arrives",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_SWITCH, nullptr, "discover", "diagnostics: log the machines found on the network, then exit",
+             wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "sftp-check",
+             "diagnostics: log in over SFTP with the connection's account, copy a small file there and back, tidy up",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_PARAM, nullptr, nullptr, "host[:display] | host::port", wxCMD_LINE_VAL_STRING,
              wxCMD_LINE_PARAM_OPTIONAL},
@@ -217,6 +292,11 @@ namespace MarconiUI
                     }
                     options.resendPixelFormatOnResize = !parser.Found("no-pixel-format-resend");
                     options.recovery = !parser.Found("no-recovery");
+                }
+                if (parser.Found("sftp-check"))
+                {
+                    RunSftpCheck(options);
+                    return false;
                 }
                 ViewerFrame* viewer = new ViewerFrame(options);
                 if (!headless)

@@ -5,6 +5,8 @@
 
 #include <MarconiCore/Files/FileSource.h>
 #include <MarconiCore/Files/LocalFiles.h>
+#include <MarconiCore/Files/SftpFiles.h>
+#include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/Files/TransferQueue.h>
 
 #include <atomic>
@@ -47,21 +49,30 @@ namespace MarconiTest
             fs::path m_path;
         };
 
+        fs::path ToPath(const std::string& path)
+        {
+#if defined(__cpp_char8_t)
+            return fs::path(std::u8string(path.begin(), path.end()));
+#else
+            return fs::u8path(path);
+#endif
+        }
+
         void WriteFile(const std::string& path, const std::string& content)
         {
-            std::ofstream out(fs::u8path(path), std::ios::binary);
+            std::ofstream out(ToPath(path), std::ios::binary);
             out << content;
         }
 
         std::string ReadFile(const std::string& path)
         {
-            std::ifstream in(fs::u8path(path), std::ios::binary);
+            std::ifstream in(ToPath(path), std::ios::binary);
             return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
         }
 
         bool Exists(const std::string& path)
         {
-            return fs::exists(fs::u8path(path));
+            return fs::exists(ToPath(path));
         }
 
         // Collects statuses and answers conflicts with a fixed reply, counting how often it was asked.
@@ -173,7 +184,7 @@ namespace MarconiTest
             TempFolder from;
             TempFolder to;
             WriteFile(from.Path() + "/one.txt", "1");
-            fs::create_directories(fs::u8path(from.Path() + "/folder/inner"));
+            fs::create_directories(ToPath(from.Path() + "/folder/inner"));
             WriteFile(from.Path() + "/folder/two.txt", "22");
             WriteFile(from.Path() + "/folder/inner/three.txt", std::string(100000, 'x'));
             Files::LocalFiles local;
@@ -265,6 +276,42 @@ namespace MarconiTest
             CHECK(recorder.Final(ids[0]) == Files::TransferState::Failed);
             CHECK(recorder.Final(ids[1]) == Files::TransferState::Done);
             CHECK(ReadFile(to.Path() + "/ok.txt") == "ok");
+        });
+
+        RunTest("SftpFiles fails cleanly without an SSH server", []() {
+            uint16_t closedPort = 0;
+            {
+                Net::Socket unused;
+                std::string error;
+                unused.Listen("127.0.0.1", 0, error);
+                closedPort = unused.GetLocalPort();
+            }
+            std::string error;
+            Files::SftpFiles refused;
+            CHECK(!refused.Connect("127.0.0.1", closedPort, 2000, error) && !error.empty());
+
+            Net::Socket listener;
+            CHECK(listener.Listen("127.0.0.1", 0, error));
+            std::thread web([&listener]() {
+                Net::Socket client;
+                std::string ignored;
+                if (listener.Accept(client, 3000, ignored))
+                {
+                    const char reply[] = "HTTP/1.1 400 Bad Request\r\n\r\n";
+                    client.SendAll(reply, sizeof(reply) - 1);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                }
+            });
+            Files::SftpFiles notSsh;
+            error.clear();
+            CHECK(!notSsh.Connect("127.0.0.1", listener.GetLocalPort(), 2000, error) && !error.empty());
+            web.join();
+
+            Files::SftpFiles never;
+            std::vector<Files::FileEntry> entries;
+            error.clear();
+            CHECK(!never.Login("user", "password", error) && !error.empty());
+            CHECK(!never.List("/", entries, error));
         });
     }
 } // namespace MarconiTest

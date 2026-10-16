@@ -61,6 +61,10 @@ namespace Marconi
             void Close();
             bool IsOpen() const;
 
+            // The OS socket, for a library that runs its own protocol over this connection (SSH). This object still
+            // owns and closes it.
+            intptr_t GetHandle() const { return m_handle; }
+
             static std::string GetLastErrorString();
 
         private:

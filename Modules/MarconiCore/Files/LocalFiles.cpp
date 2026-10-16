@@ -21,7 +21,11 @@ namespace Marconi
         {
             fs::path ToPath(const std::string& path)
             {
+#if defined(__cpp_char8_t)
+                return fs::path(std::u8string(path.begin(), path.end()));
+#else
                 return fs::u8path(path);
+#endif
             }
 
             // UTF-8 text of a path with '/' separators (C++20 returns u8string, C++17 string).
