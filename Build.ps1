@@ -214,7 +214,8 @@ if ($rc -ne 0) {
 # Keep the app's private font and its license alongside the executable for development builds too.
 if ([IO.Path]::GetFullPath($projectFile) -eq [IO.Path]::GetFullPath((Join-Path $scriptDir "Project.json"))) {
     $appOutput = Join-Path $scriptDir "Build\Marconi\$Config"
-    Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-Bold.ttf") -Destination $appOutput
+    Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-Black.ttf") -Destination $appOutput
+    Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-Semibold.ttf") -Destination $appOutput
     Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-LICENSE.txt") -Destination $appOutput
 }
 Write-Host "Marconi build complete." -ForegroundColor Green

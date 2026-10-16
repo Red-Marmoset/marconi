@@ -134,7 +134,8 @@ if (Test-Path $stageDir) {
 New-Item -ItemType Directory -Force -Path $appDir | Out-Null
 Copy-Item $exe $appDir
 # Explicit sources also make -SkipBuild packages independent of development asset staging.
-Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Bold.ttf") -Destination $appDir
+Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Black.ttf") -Destination $appDir
+Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-Semibold.ttf") -Destination $appDir
 Copy-Item -LiteralPath (Join-Path $root "Assets\Fonts\NebulaSans-LICENSE.txt") -Destination $appDir
 Copy-Item (Join-Path $crtDir "*.dll") $appDir
 $uninstallLines = Get-ChildItem -File $appDir | Sort-Object Name | ForEach-Object { "Delete `"`$INSTDIR\$($_.Name)`"" }
