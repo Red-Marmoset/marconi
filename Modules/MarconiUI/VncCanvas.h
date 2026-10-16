@@ -41,6 +41,7 @@ namespace MarconiUI
         bool IsShowingCurrentPicture() const { return !m_pending; }
         // The picture currently shown, at desktop resolution (invalid before the first one).
         wxImage GetShownPicture() const { return m_backing.IsOk() ? m_backing.ConvertToImage() : wxImage(); }
+        bool HasPicture() const { return m_hasPicture && m_backing.IsOk(); }
 
         wxSize GetDesktopSize() const { return m_desktopSize; }
 

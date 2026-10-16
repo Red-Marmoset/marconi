@@ -9,6 +9,7 @@
 #include "CredentialsDialog.h"
 #include "FilePanel.h"
 #include "ForegroundWindow.h"
+#include "Screenshot.h"
 #include "VncCanvas.h"
 
 #include <MarconiCore/Keysyms.h>
@@ -21,7 +22,11 @@
 #include <wx/datetime.h>
 #include <wx/app.h>
 #include <wx/aui/auibar.h>
+#include <wx/clipbrd.h>
+#include <wx/config.h>
+#include <wx/dataobj.h>
 #include <wx/display.h>
+#include <wx/filedlg.h>
 #include <wx/image.h>
 #include <wx/stdpaths.h>
 #include <wx/menu.h>
@@ -79,6 +84,10 @@ namespace MarconiUI
             ID_SEND_F10,
             ID_SEND_KEYS,   // the toolbar button that opens the Send Keys menu
             ID_SYSTEM_KEYS, // send system shortcuts to the other computer
+            ID_SCREENSHOT,  // the toolbar button that opens the Screenshot menu
+            ID_SCREENSHOT_SAVE,
+            ID_SCREENSHOT_COPY,
+            ID_SCREENSHOT_POINTER,
             ID_SHOW_TOOLBAR,
             ID_FILES,
             ID_REFRESH,
@@ -281,18 +290,113 @@ namespace MarconiUI
         SavePngInBackground(image, path);
     }
 
-    void ViewerFrame::SavePngInBackground(const wxImage& image, const wxString& path)
+    void ViewerFrame::SavePngInBackground(const wxImage& image, const wxString& path, std::function<void(bool)> done)
     {
         // Encoding a 4K PNG takes seconds; doing it here would stall the viewer. The thread gets its own deep copy
         // (wxImage's reference counting isn't thread-safe) and is joined when the window goes away.
         wxImage copy = image.Copy();
         copy.SetOption(wxIMAGE_OPTION_PNG_COMPRESSION_LEVEL, 1);
-        m_saveThreads.emplace_back([copy, path]() mutable {
-            if (!copy.SaveFile(path, wxBITMAP_TYPE_PNG))
+        m_saveThreads.emplace_back([this, copy, path, done]() mutable {
+            bool saved = copy.SaveFile(path, wxBITMAP_TYPE_PNG);
+            if (!saved)
             {
                 LOG_WARNING("Viewer", "Could not save %s", path.utf8_string().c_str());
             }
+            if (done)
+            {
+                CallAfter([done, saved]() { done(saved); });
+            }
         });
+    }
+
+    bool ViewerFrame::IncludePointerInScreenshots()
+    {
+        return wxConfigBase::Get()->ReadBool("/Screenshots/IncludePointer", false);
+    }
+
+    wxMenu* ViewerFrame::CreateScreenshotMenu() const
+    {
+        wxMenu* menu = new wxMenu();
+        menu->Append(ID_SCREENSHOT_SAVE, "&Save Screenshot...");
+        menu->Append(ID_SCREENSHOT_COPY, "&Copy Screenshot");
+        menu->AppendSeparator();
+        menu->AppendCheckItem(ID_SCREENSHOT_POINTER, "Include the Mouse &Pointer",
+                              "Servers that draw their own pointer into the picture include it either way");
+        menu->Check(ID_SCREENSHOT_POINTER, IncludePointerInScreenshots());
+        bool havePicture = m_connected && m_canvas->HasPicture();
+        menu->Enable(ID_SCREENSHOT_SAVE, havePicture);
+        menu->Enable(ID_SCREENSHOT_COPY, havePicture);
+        return menu;
+    }
+
+    wxImage ViewerFrame::TakeScreenshot() const
+    {
+        // The whole remote desktop at its own resolution, never the window around it.
+        wxImage picture = m_canvas->GetShownPicture();
+        if (IncludePointerInScreenshots() && m_canvas->HasRemoteCursor() && m_canvas->GetLastPointer().x >= 0)
+        {
+            return ComposeScreenshot(picture, &m_canvas->GetRemoteCursor(), m_canvas->GetLastPointer());
+        }
+        return picture;
+    }
+
+    void ViewerFrame::SaveScreenshot()
+    {
+        wxImage image = TakeScreenshot();
+        if (!image.IsOk())
+        {
+            SetStatusText("Nothing to save yet: no picture has arrived");
+            return;
+        }
+        wxString folder = m_screenshotFolder.empty() ? wxStandardPaths::Get().GetUserDir(wxStandardPaths::Dir_Pictures)
+                                                     : m_screenshotFolder;
+        wxString name = SuggestScreenshotName(GetServerDisplayName(), wxDateTime::Now());
+        m_canvas->ReleaseInput();
+        wxFileDialog dialog(this, "Save Screenshot", folder, name, "PNG image (*.png)|*.png",
+                            wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+        if (dialog.ShowModal() != wxID_OK)
+        {
+            return;
+        }
+        wxString path = dialog.GetPath();
+        m_screenshotFolder = dialog.GetDirectory();
+        SetStatusText("Saving " + path + "...");
+        SavePngInBackground(image, path, [this, path](bool saved) {
+            if (saved)
+            {
+                SetStatusText("Saved " + path);
+            }
+            else
+            {
+                SetStatusText("Could not save " + path);
+                wxMessageBox("The screenshot could not be saved to:\n\n" + path, "Marconi", wxOK | wxICON_ERROR, this);
+            }
+        });
+    }
+
+    void ViewerFrame::CopyScreenshot()
+    {
+        wxImage image = TakeScreenshot();
+        if (!image.IsOk())
+        {
+            SetStatusText("Nothing to copy yet: no picture has arrived");
+            return;
+        }
+        {
+            wxClipboardLocker locker;
+            if (!locker)
+            {
+                SetStatusText("Could not open the clipboard");
+                return;
+            }
+            wxTheClipboard->SetData(new wxBitmapDataObject(wxBitmap(image)));
+            wxTheClipboard->Flush();
+        }
+        // With clipboard sharing on and a server that takes images, the copy travels like any other.
+        bool shared = m_clipboard.IsEnabled() && m_client.ServerAcceptsClipboardImages();
+        SyncClipboardToServer();
+        SetStatusText(shared ? "Screenshot copied, and sent to the other computer's clipboard"
+                             : "Screenshot copied (to this computer's clipboard only)");
     }
 
     void ViewerFrame::StopTimers()
@@ -949,6 +1053,7 @@ namespace MarconiUI
         m_toolBar->AddTool(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+Del", wxNullBitmap, "Send Ctrl+Alt+Del");
         m_toolBar->AddTool(ID_SEND_KEYS, "Send Keys", wxNullBitmap,
                            "Send a shortcut the remote computer can't otherwise receive (Alt+Tab, the Windows key...)");
+        m_toolBar->AddTool(ID_SCREENSHOT, "Screenshot", wxNullBitmap, "Save or copy a picture of the remote desktop");
         // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
         m_toolBar->AddTool(ID_SEND_F8, "F8", wxNullBitmap, "Send F8 to the remote computer");
         m_toolBar->AddTool(ID_SEND_F9, "F9", wxNullBitmap, "Send F9 to the remote computer");
@@ -996,6 +1101,7 @@ namespace MarconiUI
         menu->Append(ID_GET_CLIPBOARD, "Get Clipboard from the Other Computer");
         menu->AppendSeparator();
         menu->AppendSubMenu(CreateSendKeysMenu(), "Send &Keys");
+        menu->AppendSubMenu(CreateScreenshotMenu(), "Screens&hot");
         wxString systemKeysLabel = "Send System Shortcuts (Alt+Tab, Windows Key) to the Other Computer";
 #if defined(__WXOSX__)
         systemKeysLabel = "Send System Shortcuts (Cmd+Tab, Cmd+Space) to the Other Computer";
@@ -1187,6 +1293,24 @@ namespace MarconiUI
             m_sendSystemKeys = !m_sendSystemKeys;
             UpdateSystemKeyCapture();
             break;
+        case ID_SCREENSHOT:
+        {
+            std::unique_ptr<wxMenu> screenshot(CreateScreenshotMenu());
+            m_canvas->ReleaseInput();
+            wxRect tool = m_toolBar->GetToolRect(ID_SCREENSHOT);
+            m_toolBar->PopupMenu(screenshot.get(), tool.GetBottomLeft());
+            break;
+        }
+        case ID_SCREENSHOT_SAVE:
+            SaveScreenshot();
+            return; // keep the status bar message
+        case ID_SCREENSHOT_COPY:
+            CopyScreenshot();
+            return;
+        case ID_SCREENSHOT_POINTER:
+            wxConfigBase::Get()->Write("/Screenshots/IncludePointer", !IncludePointerInScreenshots());
+            wxConfigBase::Get()->Flush();
+            break;
         case ID_SEND_F8:
             SendKeyCombination({Marconi::Keysym::F1 + 7});
             break;
@@ -1303,6 +1427,7 @@ namespace MarconiUI
             m_toolBar->EnableTool(id, m_connected && !m_canvas->IsViewOnly());
         }
         m_toolBar->EnableTool(ID_REFRESH, m_connected);
+        m_toolBar->EnableTool(ID_SCREENSHOT, m_connected && m_canvas->HasPicture());
         m_toolBar->ToggleTool(ID_FILES, m_files != nullptr && m_files->IsShown());
         m_toolBar->Refresh();
     }

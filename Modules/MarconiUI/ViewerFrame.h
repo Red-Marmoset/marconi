@@ -111,7 +111,13 @@ namespace MarconiUI
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
         void WatchClipboard();
         void SaveHeadlessSnapshot();
-        void SavePngInBackground(const wxImage& image, const wxString& path);
+        // `done` (optional) runs on the UI thread with whether the file was written.
+        void SavePngInBackground(const wxImage& image, const wxString& path, std::function<void(bool)> done = nullptr);
+        wxMenu* CreateScreenshotMenu() const;
+        wxImage TakeScreenshot() const;
+        void SaveScreenshot();
+        void CopyScreenshot();
+        static bool IncludePointerInScreenshots();
         void StopTimers();
         void FitToDesktop();
         void OnClose(wxCloseEvent& event);
@@ -167,6 +173,7 @@ namespace MarconiUI
         wxTimer m_quitTimer;
         int m_headlessSnapshots = 0;
         std::vector<std::thread> m_saveThreads; // PNG encoders, joined on destruction
+        wxString m_screenshotFolder;            // where the last screenshot of this window went
         wxTimer m_clipboardTimer; // sends local clipboard changes while connected and in front
         long m_clipboardChangeCount = -1;
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in

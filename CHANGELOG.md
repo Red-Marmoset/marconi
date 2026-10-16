@@ -5,6 +5,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Screenshots of the other computer's screen: save as PNG or copy, with or without the mouse pointer.
 - A Send Keys menu: Alt+Tab, Alt+F4, the Windows key, Ctrl+Esc, Ctrl+Shift+Esc, Print Screen and Cmd+Tab.
 - On Windows and macOS, a setting sends system shortcuts such as Alt+Tab and Cmd+Tab to the other computer.
 - Zoom levels from 50% to 200% besides fitting the window: Ctrl and the mouse wheel, Ctrl and + or -, or the menu.

@@ -78,6 +78,7 @@ Press **F8** to open Marconi's menu, even in full screen. From it you can:
 - send system shortcuts such as Alt+Tab, the Windows key and Cmd+Tab to the other computer as you press them, on
   Windows and macOS (macOS asks you to allow Marconi under Privacy & Security > Accessibility first; Linux desktops
   don't allow this);
+- save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
 - refresh the picture, or disconnect.
 
 ## Copying files
