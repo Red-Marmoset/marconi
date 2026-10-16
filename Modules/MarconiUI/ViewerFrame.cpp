@@ -18,6 +18,7 @@
 
 #include <wx/datetime.h>
 #include <wx/app.h>
+#include <wx/aui/auibar.h>
 #include <wx/display.h>
 #include <wx/image.h>
 #include <wx/stdpaths.h>
@@ -60,6 +61,9 @@ namespace MarconiUI
             ID_CLIPBOARD,
             ID_SEND_CTRL_ALT_DEL,
             ID_SEND_F8,
+            ID_SEND_F9,
+            ID_SEND_F10,
+            ID_SHOW_TOOLBAR,
             ID_REFRESH,
             ID_DISCONNECT,
         };
@@ -76,15 +80,25 @@ namespace MarconiUI
         }
         SetIcons(GetAppIcons());
         m_canvas = new VncCanvas(this, m_client);
-        wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-        sizer->Add(m_canvas, 1, wxEXPAND);
-        SetSizer(sizer);
+        m_aui.SetManagedWindow(this);
+        m_aui.AddPane(m_canvas, wxAuiPaneInfo().Name("Screen").CenterPane());
 
         CreateToolbar();
         CreateStatusBar();
+        m_aui.Update();
+        m_defaultLayout = m_aui.SavePerspective();
         SetClientSize(FromDIP(wxSize(800, 600)));
 
-        m_canvas->SetMenuKeyHandler([this]() { ShowMenu(); });
+        m_canvas->SetLocalCommandHandler([this](Marconi::LocalCommand command) {
+            if (command == Marconi::LocalCommand::Menu)
+            {
+                ShowMenu();
+            }
+            else if (command == Marconi::LocalCommand::Toolbar)
+            {
+                ToggleToolbar();
+            }
+        });
         m_canvas->SetScaleMode(options.scaleMode);
         m_canvas->SetViewOnly(options.viewOnly);
         m_clipboard.SetEnabled(options.clipboard);
@@ -211,6 +225,7 @@ namespace MarconiUI
 
     ViewerFrame::~ViewerFrame()
     {
+        m_aui.UnInit(); // before the panes it manages are destroyed
         StopProbe();
         for (std::thread& thread : m_saveThreads)
         {
@@ -720,7 +735,7 @@ namespace MarconiUI
         int displayIndex = wxDisplay::GetFromWindow(this);
         wxRect available = wxDisplay(displayIndex == wxNOT_FOUND ? 0u : static_cast<unsigned>(displayIndex)).GetClientArea();
         wxSize desktop = m_canvas->GetDesktopSize();
-        wxSize decorations = GetSize() - GetClientSize(); // includes the status bar
+        wxSize decorations = GetSize() - m_canvas->GetSize(); // frame, status bar and any docked panels
         wxSize wanted = desktop + decorations;
         wanted.x = std::min(wanted.x, available.width);
         wanted.y = std::min(wanted.y, available.height);
@@ -735,20 +750,34 @@ namespace MarconiUI
 
     void ViewerFrame::CreateToolbar()
     {
-        m_toolBar = CreateToolBar(wxTB_HORIZONTAL | wxTB_TEXT | wxTB_NOICONS | wxTB_FLAT);
-        m_toolBar->AddCheckTool(ID_SCALE_FIT, "Scale to Fit", wxNullBitmap, wxNullBitmap,
-                                "Scale the remote desktop to fit the window (otherwise show it at 100%)");
+        // Text-only buttons in a panel that docks to any edge of the window or floats (F9 shows and hides it).
+        m_toolBar = new wxAuiToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                                     wxAUI_TB_TEXT | wxAUI_TB_HORZ_LAYOUT | wxAUI_TB_GRIPPER | wxAUI_TB_OVERFLOW);
+        m_toolBar->AddTool(ID_SCALE_FIT, "Scale to Fit", wxNullBitmap,
+                           "Scale the remote desktop to fit the window (otherwise show it at 100%)", wxITEM_CHECK);
         m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap, "Full screen (F8 opens the menu)");
-        m_toolBar->AddCheckTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, wxNullBitmap,
-                                "Watch without sending mouse or keyboard input");
-        m_toolBar->AddCheckTool(ID_CLIPBOARD, "Clipboard", wxNullBitmap, wxNullBitmap,
-                                "Share copied text with the remote computer");
+        m_toolBar->AddTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, "Watch without sending mouse or keyboard input",
+                           wxITEM_CHECK);
+        m_toolBar->AddTool(ID_CLIPBOARD, "Clipboard", wxNullBitmap, "Share copied text with the remote computer",
+                           wxITEM_CHECK);
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+Del", wxNullBitmap, "Send Ctrl+Alt+Del");
+        // Marconi keeps F8 and F9 for itself (and F10 later), so these send them to the remote computer.
+        m_toolBar->AddTool(ID_SEND_F8, "F8", wxNullBitmap, "Send F8 to the remote computer");
+        m_toolBar->AddTool(ID_SEND_F9, "F9", wxNullBitmap, "Send F9 to the remote computer");
+        m_toolBar->AddTool(ID_SEND_F10, "F10", wxNullBitmap, "Send F10 to the remote computer");
         m_toolBar->AddTool(ID_REFRESH, "Refresh", wxNullBitmap, "Ask the server for a full screen update");
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_DISCONNECT, "Disconnect", wxNullBitmap, "Close this connection");
         m_toolBar->Realize();
+        m_aui.AddPane(m_toolBar, wxAuiPaneInfo()
+                                     .Name("Toolbar")
+                                     .Caption("Toolbar")
+                                     .ToolbarPane()
+                                     .Top()
+                                     .Floatable(true)
+                                     .Dockable(true)
+                                     .CloseButton(false));
     }
 
     wxMenu* ViewerFrame::CreateMenu() const
@@ -762,7 +791,11 @@ namespace MarconiUI
         menu->AppendSeparator();
         menu->Append(ID_SEND_CTRL_ALT_DEL, "Send Ctrl+Alt+&Del");
         menu->Append(ID_SEND_F8, "Send F&8");
+        menu->Append(ID_SEND_F9, "Send F&9");
+        menu->Append(ID_SEND_F10, "Send F1&0");
         menu->Append(ID_REFRESH, "&Refresh Screen");
+        menu->AppendSeparator();
+        menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
         menu->AppendSeparator();
         menu->Append(ID_DISCONNECT, "Dis&connect");
 
@@ -771,7 +804,8 @@ namespace MarconiUI
         menu->Check(ID_FULL_SCREEN, IsFullScreen());
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
-        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_REFRESH})
+        menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
+        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10, ID_REFRESH})
         {
             menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
         }
@@ -820,6 +854,15 @@ namespace MarconiUI
         case ID_SEND_F8:
             SendKeyCombination({Marconi::Keysym::F1 + 7});
             break;
+        case ID_SEND_F9:
+            SendKeyCombination({Marconi::Keysym::F1 + 8});
+            break;
+        case ID_SEND_F10:
+            SendKeyCombination({Marconi::Keysym::F1 + 9});
+            break;
+        case ID_SHOW_TOOLBAR:
+            ToggleToolbar();
+            break;
         case ID_REFRESH:
             m_client.RequestFullUpdate();
             break;
@@ -867,8 +910,19 @@ namespace MarconiUI
         m_toolBar->ToggleTool(ID_SCALE_FIT, m_canvas->GetScaleMode() == ScaleMode::Fit);
         m_toolBar->ToggleTool(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         m_toolBar->ToggleTool(ID_CLIPBOARD, m_clipboard.IsEnabled());
-        m_toolBar->EnableTool(ID_SEND_CTRL_ALT_DEL, m_connected && !m_canvas->IsViewOnly());
+        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10})
+        {
+            m_toolBar->EnableTool(id, m_connected && !m_canvas->IsViewOnly());
+        }
         m_toolBar->EnableTool(ID_REFRESH, m_connected);
+        m_toolBar->Refresh();
+    }
+
+    void ViewerFrame::ToggleToolbar()
+    {
+        wxAuiPaneInfo& pane = m_aui.GetPane("Toolbar");
+        pane.Show(!pane.IsShown());
+        m_aui.Update();
     }
 
     void ViewerFrame::UpdateStatus()

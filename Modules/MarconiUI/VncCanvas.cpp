@@ -459,10 +459,17 @@ namespace MarconiUI
 
     void VncCanvas::OnKeyDown(wxKeyEvent& event)
     {
-        if (event.GetKeyCode() == WXK_F8 && event.GetModifiers() == wxMOD_NONE && m_menuKeyHandler)
+        int code = event.GetKeyCode();
+        if (code >= WXK_F1 && code <= WXK_F24 && m_localCommandHandler)
         {
-            m_menuKeyHandler();
-            return;
+            Marconi::LocalCommand command = Marconi::GetLocalCommand(code - WXK_F1 + 1,
+                                                                     event.GetModifiers() != wxMOD_NONE);
+            if (command != Marconi::LocalCommand::None)
+            {
+                m_keptKey = code;
+                m_localCommandHandler(command);
+                return;
+            }
         }
         if (m_viewOnly || !m_keys.OnKeyDown(event))
         {
@@ -472,6 +479,11 @@ namespace MarconiUI
 
     void VncCanvas::OnKeyUp(wxKeyEvent& event)
     {
+        if (m_keptKey != 0 && event.GetKeyCode() == m_keptKey)
+        {
+            m_keptKey = 0;
+            return;
+        }
         if (!m_viewOnly)
         {
             m_keys.OnKeyUp(event);

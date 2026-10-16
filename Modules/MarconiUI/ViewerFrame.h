@@ -10,12 +10,13 @@
 #include <MarconiCore/Net/Probe.h>
 #include <MarconiCore/Rfb/Client.h>
 
+#include <wx/aui/framemanager.h>
 #include <wx/frame.h>
 #include <wx/image.h>
 #include <wx/timer.h>
 
+class wxAuiToolBar;
 class wxMenu;
-class wxToolBar;
 
 #include <atomic>
 #include <condition_variable>
@@ -110,6 +111,7 @@ namespace MarconiUI
         void UpdateStatus();
         void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
         void ToggleFullScreen();
+        void ToggleToolbar();
         void SyncClipboardToServer();
         void SaveSettings();
         void WaitForPicture();
@@ -120,7 +122,9 @@ namespace MarconiUI
         Marconi::Rfb::Client m_client;
         ClipboardSync m_clipboard{m_client};
         VncCanvas* m_canvas = nullptr;
-        wxToolBar* m_toolBar = nullptr;
+        wxAuiManager m_aui;               // docks the toolbar (and later the file panel) around the screen
+        wxAuiToolBar* m_toolBar = nullptr;
+        wxString m_defaultLayout;         // the layout before any saved one was applied
         wxString m_desktopName;
         wxSize m_connectedSize;
         bool m_connected = false;

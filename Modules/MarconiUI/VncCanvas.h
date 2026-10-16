@@ -6,6 +6,7 @@
 
 #include "KeyMapper.h"
 
+#include <MarconiCore/LocalKeys.h>
 #include <MarconiCore/Rfb/Client.h>
 
 #include <wx/bitmap.h>
@@ -57,8 +58,11 @@ namespace MarconiUI
         // UI thread only. Shows the server's cursor shape as our local cursor.
         void SetRemoteCursor(const Marconi::Rfb::CursorShape& cursor);
 
-        // Called instead of sending F8, which opens the viewer's menu (as in other VNC viewers).
-        void SetMenuKeyHandler(std::function<void()> handler) { m_menuKeyHandler = std::move(handler); }
+        // Called instead of sending a key the viewer keeps for itself (F8 for the menu, F9 for the toolbar).
+        void SetLocalCommandHandler(std::function<void(Marconi::LocalCommand)> handler)
+        {
+            m_localCommandHandler = std::move(handler);
+        }
 
     private:
         void ApplyDesktopSize(int width, int height);
@@ -103,6 +107,7 @@ namespace MarconiUI
         Marconi::Rfb::CursorShape m_remoteCursor;
         bool m_hasRemoteCursor = false;
         double m_cursorScale = 0.0;
-        std::function<void()> m_menuKeyHandler;
+        std::function<void(Marconi::LocalCommand)> m_localCommandHandler;
+        int m_keptKey = 0; // a kept key that is down: its release mustn't reach the server either
     };
 } // namespace MarconiUI
