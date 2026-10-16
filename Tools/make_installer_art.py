@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Red Marmoset Studios Ltd.
 # Renders the installer's branding bitmaps from the app icon's geometry, the theme's accent red, Nebula Sans and the
-# Red Marmoset logo (Assets/RedMarmoset.png, from the studio website):
+# Red Marmoset logo (Assets/RedMarmoset.png, logo-open.png from web-loading-screens):
 #
 #   Installer/Art/Wizard.bmp   164x314, the left panel of the welcome and finish pages
 #   Installer/Art/Header.bmp   150x57, the top-right image on the other pages
@@ -63,15 +63,12 @@ def wizard():
     for i, line in enumerate(["Multi-protocol Access", "and Remote Control", "Interface"]):
         centred_text(draw, width, (174 + i * 14) * SUPERSAMPLE, line, subtitle, (240, 200, 205))
 
-    # The studio logo is red on transparent, so it sits on a white disc.
-    disc = 52 * SUPERSAMPLE
-    discX, discY = (width - disc) // 2, 228 * SUPERSAMPLE
-    draw.ellipse((discX, discY, discX + disc - 1, discY + disc - 1), fill=WHITE)
+    # The studio logo has a white outline, so it reads on the red as it does on the loading screens.
     studio = Image.open(STUDIO_LOGO).convert("RGBA")
     studio = studio.crop(studio.getbbox())
-    inner = disc - 6 * SUPERSAMPLE
-    studio = studio.resize((inner, inner), Image.LANCZOS)
-    image.paste(studio, (discX + (disc - inner) // 2, discY + (disc - inner) // 2), studio)
+    size = 56 * SUPERSAMPLE
+    studio = studio.resize((size, size), Image.LANCZOS)
+    image.paste(studio, ((width - size) // 2, 226 * SUPERSAMPLE), studio)
 
     centred_text(draw, width, 288 * SUPERSAMPLE, "Red Marmoset Studios", font("NebulaSans-Semibold.ttf", 9),
                  (220, 150, 160))
