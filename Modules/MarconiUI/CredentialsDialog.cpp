@@ -2,6 +2,7 @@
 // Prompt for a VNC password, or an account name and password for Apple Remote Desktop servers
 
 #include "CredentialsDialog.h"
+#include "Appearance.h"
 
 #include <wx/button.h>
 #include <wx/checkbox.h>
@@ -34,7 +35,7 @@ namespace MarconiUI
             break;
         }
         const bool needUsername = kind != CredentialsKind::Password;
-        outer->Add(new wxStaticText(this, wxID_ANY, prompt), 0, wxALL, FromDIP(12));
+        outer->Add(new wxStaticText(this, wxID_ANY, prompt), 0, wxALL, FromDIP(20));
 
         wxFlexGridSizer* grid = new wxFlexGridSizer(2, FromDIP(wxSize(8, 8)));
         grid->AddGrowableCol(1);
@@ -58,10 +59,11 @@ namespace MarconiUI
             m_remember = new wxCheckBox(this, wxID_ANY, "Remember password in the system keychain");
             grid->Add(m_remember);
         }
-        outer->Add(grid, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(12));
+        outer->Add(grid, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(20));
 
-        outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(12));
+        outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(20));
         SetSizerAndFit(outer);
+        StyleWindow(this);
         CentreOnParent();
 
         if (m_username != nullptr && username.empty())

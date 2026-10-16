@@ -4,12 +4,26 @@
 #include "ConnectionsFrame.h"
 
 #include "AppIcon.h"
+#include "Appearance.h"
 #include "ConnectionDialog.h"
 #include "ViewerFrame.h"
 
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Version.h>
 
+#include <wx/bmpbndl.h>
 #include <wx/button.h>
+#include <wx/choice.h>
+#include <wx/dialog.h>
+#include <wx/imaglist.h>
+#include <wx/config.h>
+#include <wx/statline.h>
+#include <wx/stdpaths.h>
+#include <wx/tglbtn.h>
+#include <wx/utils.h>
+
+#include <cstring>
+#include <wx/statbmp.h>
 #include <wx/listctrl.h>
 #include <wx/msgdlg.h>
 #include <wx/panel.h>
@@ -43,49 +57,152 @@ namespace MarconiUI
     ConnectionsFrame::ConnectionsFrame() : wxFrame(nullptr, wxID_ANY, "Marconi")
     {
         SetIcons(GetAppIcons());
+        wxFont bodyFont = GetFont();
+        bodyFont.SetPointSize(11);
+        SetFont(bodyFont);
         wxPanel* panel = new wxPanel(this);
-        const int border = FromDIP(12);
-        const int gap = FromDIP(8);
+        const int border = FromDIP(24);
+        const int gap = FromDIP(10);
         wxBoxSizer* outer = new wxBoxSizer(wxVERTICAL);
+        auto label = [&](const wxString& text, bool heading = false, bool muted = false) {
+            wxStaticText* control = new wxStaticText(panel, wxID_ANY, text);
+            if (heading)
+            {
+                control->SetFont(control->GetFont().Bold().Scaled(1.12f));
+            }
+            if (muted)
+            {
+                m_mutedLabels.push_back(control);
+            }
+            return control;
+        };
+        auto button = [&](const wxString& text, bool primary = false) {
+            wxButton* control = new wxButton(panel, wxID_ANY, text, wxDefaultPosition,
+                                             FromDIP(wxSize(-1, 38)));
+            if (primary)
+            {
+                control->SetFont(control->GetFont().Bold());
+                control->SetMinSize(FromDIP(wxSize(112, 38)));
+                m_primaryButtons.push_back(control);
+            }
+            return control;
+        };
+        auto divider = [&]() {
+            outer->Add(new wxStaticLine(panel), 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+        };
 
-        // Quick connect.
-        outer->Add(new wxStaticText(panel, wxID_ANY, "Connect to (host, host:display or host::port):"), 0,
-                   wxLEFT | wxRIGHT | wxTOP, border);
+        wxBoxSizer* brand = new wxBoxSizer(wxHORIZONTAL);
+        const wxBitmapBundle logo = wxBitmapBundle::FromBitmaps(
+            wxBitmap(GetAppIcons().GetIcon(wxSize(48, 48))),
+            wxBitmap(GetAppIcons().GetIcon(wxSize(96, 96))));
+        brand->Add(new wxStaticBitmap(panel, wxID_ANY, logo), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(16));
+        wxBoxSizer* wordmark = new wxBoxSizer(wxVERTICAL);
+        wxStaticText* title = label("Marconi");
+        title->SetFont(title->GetFont().Scaled(2.1f).Bold());
+        wordmark->Add(title);
+        wordmark->Add(label("Your desktops, within reach.", false, true), 0, wxTOP, FromDIP(4));
+        brand->Add(wordmark, 1, wxALIGN_CENTER_VERTICAL);
+        wxButton* settings = button("Settings");
+        brand->Add(settings, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, border);
+        outer->Add(brand, 0, wxEXPAND | wxALL, border);
+        divider();
+
+        outer->Add(label("Quick connect", true), 0, wxLEFT | wxRIGHT | wxTOP, border);
         wxBoxSizer* quick = new wxBoxSizer(wxHORIZONTAL);
-        m_address = new wxTextCtrl(panel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
-        m_address->SetHint("e.g. studio-mac.local or 192.168.1.20:1");
-        wxButton* quickConnect = new wxButton(panel, wxID_ANY, "Connect");
+        m_address = new wxTextCtrl(panel, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                                  FromDIP(wxSize(-1, 38)), wxTE_PROCESS_ENTER);
+        m_address->SetName("Remote address");
+        m_address->SetHint("studio-mac.local or 192.168.1.20");
+        wxButton* quickConnect = button("Connect", true);
         quick->Add(m_address, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
         quick->Add(quickConnect, 0, wxALIGN_CENTER_VERTICAL);
-        outer->Add(quick, 0, wxEXPAND | wxALL, border);
+        wxBoxSizer* quickInset = new wxBoxSizer(wxVERTICAL);
+        quickInset->Add(quick, 0, wxEXPAND | wxTOP, gap);
+        outer->Add(quickInset, 0, wxEXPAND | wxLEFT | wxRIGHT, border);
+        wxBoxSizer* hintInset = new wxBoxSizer(wxVERTICAL);
+        hintInset->Add(label("Hostname, IP address, or VNC URL. Use host::port for a specific port.", false, true),
+                       0, wxTOP, FromDIP(8));
+        outer->Add(hintInset, 0, wxLEFT | wxRIGHT, border);
+        outer->AddSpacer(border);
+        divider();
 
-        // Address book.
-        outer->Add(new wxStaticText(panel, wxID_ANY, "Saved connections:"), 0, wxLEFT | wxRIGHT, border);
-        m_list = new wxListView(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(520, 260)),
-                                wxLC_REPORT | wxLC_SINGLE_SEL);
-        m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(200));
-        m_list->AppendColumn("Address", wxLIST_FORMAT_LEFT, FromDIP(180));
-        m_list->AppendColumn("Last used", wxLIST_FORMAT_LEFT, FromDIP(120));
-        outer->Add(m_list, 1, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, border);
+        wxBoxSizer* savedHeading = new wxBoxSizer(wxHORIZONTAL);
+        savedHeading->Add(label("Saved connections", true), 1, wxALIGN_CENTER_VERTICAL);
+        m_search = new wxTextCtrl(panel, wxID_ANY, wxEmptyString, wxDefaultPosition, FromDIP(wxSize(250, 34)));
+        m_search->SetHint("Search connections...");
+        m_search->SetName("Search saved connections");
+        savedHeading->Add(m_search, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, gap);
+        outer->Add(savedHeading, 0, wxEXPAND | wxALL, border);
+
+        m_list = new wxListView(panel, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(650, 180)),
+                                wxLC_REPORT | wxLC_SINGLE_SEL | wxBORDER_SIMPLE);
+        m_list->SetName("Saved connections");
+        m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(205));
+        m_list->AppendColumn("Address", wxLIST_FORMAT_LEFT, FromDIP(280));
+        m_list->AppendColumn("Last used", wxLIST_FORMAT_LEFT, FromDIP(150));
+        // A transparent image sets a comfortable row height without custom-drawing the accessible native list.
+        wxImage blank(1, FromDIP(34));
+        blank.InitAlpha();
+        memset(blank.GetAlpha(), 0, blank.GetHeight());
+        wxImageList* rowImages = new wxImageList(1, blank.GetHeight(), true);
+        rowImages->Add(wxBitmap(blank));
+        m_list->AssignImageList(rowImages, wxIMAGE_LIST_SMALL);
+        outer->Add(m_list, 1, wxEXPAND | wxLEFT | wxRIGHT, border);
+        m_empty = label("", false, true);
+        m_empty->Hide();
+        outer->Add(m_empty, 0, wxLEFT | wxRIGHT | wxTOP, border);
 
         wxBoxSizer* buttons = new wxBoxSizer(wxHORIZONTAL);
-        wxButton* add = new wxButton(panel, wxID_ANY, "New...");
-        m_edit = new wxButton(panel, wxID_ANY, "Edit...");
-        m_delete = new wxButton(panel, wxID_ANY, "Delete");
-        m_connect = new wxButton(panel, wxID_ANY, "Connect");
+        wxButton* add = button("New connection");
+        m_edit = button("Edit");
+        m_delete = button("Delete");
+        m_connect = button("Connect", true);
         buttons->Add(add, 0, wxRIGHT, gap);
         buttons->Add(m_edit, 0, wxRIGHT, gap);
         buttons->Add(m_delete, 0);
         buttons->AddStretchSpacer();
         buttons->Add(m_connect, 0);
         outer->Add(buttons, 0, wxEXPAND | wxALL, border);
+        divider();
+
+        wxBoxSizer* footer = new wxBoxSizer(wxHORIZONTAL);
+        m_count = label("", false, true);
+        footer->Add(m_count, 1, wxALIGN_CENTER_VERTICAL);
+        footer->Add(label("Appearance", false, true), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
+        const wxString modes[] = {"System", "Light", "Dark"};
+        for (int i = 0; i < 3; ++i)
+        {
+            m_themeButtons[i] = new wxToggleButton(panel, wxID_ANY, modes[i], wxDefaultPosition,
+                                                    FromDIP(wxSize(70, 34)));
+            footer->Add(m_themeButtons[i], 0);
+            m_themeButtons[i]->Bind(wxEVT_TOGGLEBUTTON, [this, i](wxCommandEvent&) { ChooseAppearance(i); });
+        }
+        outer->Add(footer, 0, wxEXPAND | wxALL, border);
+        m_notice = label("", false, true);
+        m_notice->Hide();
+        m_notice->SetFont(m_notice->GetFont().Scaled(0.9f));
+        outer->Add(m_notice, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, border);
 
         panel->SetSizer(outer);
         wxBoxSizer* frameSizer = new wxBoxSizer(wxVERTICAL);
         frameSizer->Add(panel, 1, wxEXPAND);
-        SetSizerAndFit(frameSizer);
-        SetMinSize(GetSize());
+        SetSizer(frameSizer);
+        SetClientSize(FromDIP(wxSize(740, 800)));
+        SetMinClientSize(FromDIP(wxSize(720, 800)));
         Centre();
+        settings->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { ShowSettings(); });
+        m_search->Bind(wxEVT_TEXT, [this](wxCommandEvent&) { Reload(); });
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
+            event.Skip();
+            ApplyAppearance();
+        });
+        m_list->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+            event.Skip();
+            const int width = m_list->GetClientSize().x;
+            m_list->SetColumnWidth(0, width * 32 / 100);
+            m_list->SetColumnWidth(1, width * 42 / 100);
+            m_list->SetColumnWidth(2, width - width * 32 / 100 - width * 42 / 100 - FromDIP(4));
+        });
 
         quickConnect->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnQuickConnect, this);
         m_address->Bind(wxEVT_TEXT_ENTER, &ConnectionsFrame::OnQuickConnect, this);
@@ -108,26 +225,128 @@ namespace MarconiUI
         });
 
         Reload();
+        ApplyAppearance();
         m_address->SetFocus();
     }
 
     void ConnectionsFrame::Reload(const wxString& selectId)
     {
-        m_connections = m_store.LoadAll();
-        m_list->DeleteAllItems();
-        for (size_t i = 0; i < m_connections.size(); ++i)
+        wxString selected = selectId;
+        const int previous = GetSelectedIndex();
+        if (selected.empty() && previous >= 0)
         {
-            const SavedConnection& connection = m_connections[i];
-            long row = m_list->InsertItem(static_cast<long>(i), connection.GetDisplayName());
+            selected = m_connections[previous].id;
+        }
+        const auto all = m_store.LoadAll();
+        const wxString query = m_search->GetValue().Strip(wxString::both).Lower();
+        m_list->Freeze();
+        m_list->DeleteAllItems();
+        m_connections.clear();
+        for (const SavedConnection& connection : all)
+        {
+            if (!query.empty() && !connection.GetDisplayName().Lower().Contains(query) &&
+                !connection.address.Lower().Contains(query))
+            {
+                continue;
+            }
+            const long row = m_list->InsertItem(static_cast<long>(m_connections.size()), connection.GetDisplayName(), 0);
+            m_connections.push_back(connection);
             m_list->SetItem(row, 1, connection.address);
             m_list->SetItem(row, 2, FormatLastUsed(connection.lastUsed));
-            if (!selectId.empty() && connection.id == selectId)
+            if (!selected.empty() && connection.id == selected)
             {
                 m_list->Select(row);
                 m_list->Focus(row);
             }
         }
+        m_list->Thaw();
+        m_count->SetLabel(query.empty() ? wxString::Format("%zu saved connection%s", all.size(),
+            all.size() == 1 ? "" : "s") : wxString::Format("%zu of %zu connections", m_connections.size(), all.size()));
+        m_empty->SetLabel(all.empty() ? "Your connections will appear here. Connect above or add a new connection." :
+            "No matching connections. Try a different name or address.");
+        m_empty->Show(m_connections.empty());
+        Layout();
         UpdateButtons();
+    }
+
+    void ConnectionsFrame::ApplyAppearance()
+    {
+        StyleWindow(this);
+        const ThemePalette palette = GetThemePalette();
+        for (wxStaticText* text : m_mutedLabels)
+        {
+            text->SetForegroundColour(palette.muted);
+        }
+        for (wxButton* button : m_primaryButtons)
+        {
+            button->SetBackgroundColour(palette.accent);
+            button->SetForegroundColour(*wxWHITE);
+        }
+        for (int i = 0; i < 3; ++i)
+        {
+            const bool selected = i == static_cast<int>(GetThemeMode());
+            m_themeButtons[i]->SetValue(selected);
+            m_themeButtons[i]->SetBackgroundColour(selected ? palette.selection : palette.surface);
+            m_themeButtons[i]->SetForegroundColour(palette.text);
+        }
+        m_notice->SetLabel(GetAppearanceNotice());
+        m_notice->Show(!GetAppearanceNotice().empty());
+        Layout();
+        Refresh();
+    }
+
+    void ConnectionsFrame::ChooseAppearance(int selection)
+    {
+        if (!SaveThemeMode(static_cast<ThemeMode>(selection)))
+        {
+            wxMessageBox("The appearance preference could not be saved. Please try again.", "Marconi",
+                         wxOK | wxICON_WARNING, this);
+        }
+        ApplyAppearance();
+    }
+
+    void ConnectionsFrame::ShowSettings()
+    {
+        wxDialog dialog(this, wxID_ANY, "Settings", wxDefaultPosition, wxDefaultSize,
+                        wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+        const int space = dialog.FromDIP(20);
+        wxBoxSizer* layout = new wxBoxSizer(wxVERTICAL);
+        wxStaticText* heading = new wxStaticText(&dialog, wxID_ANY, "Make Marconi yours");
+        heading->SetFont(heading->GetFont().Bold().Scaled(1.3f));
+        layout->Add(heading, 0, wxALL, space);
+        wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
+        row->Add(new wxStaticText(&dialog, wxID_ANY, "Appearance"), 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, space);
+        wxChoice* appearance = new wxChoice(&dialog, wxID_ANY);
+        appearance->Append("System");
+        appearance->Append("Light");
+        appearance->Append("Dark");
+        appearance->SetSelection(static_cast<int>(GetThemeMode()));
+        row->Add(appearance, 1);
+        layout->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, space);
+        wxStaticText* help = new wxStaticText(&dialog, wxID_ANY,
+            "System follows your device's appearance. Native menus and title bars may need a restart.");
+        help->Wrap(dialog.FromDIP(380));
+        layout->Add(help, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, space);
+        wxButton* logs = new wxButton(&dialog, wxID_ANY, "Open log folder");
+        logs->Bind(wxEVT_BUTTON, [&dialog](wxCommandEvent&) {
+            const wxString path = wxStandardPaths::Get().GetUserLocalDataDir() + wxFILE_SEP_PATH + "logs";
+            if (!wxLaunchDefaultApplication(path))
+            {
+                wxMessageBox("Could not open the log folder: " + path, "Marconi", wxOK | wxICON_WARNING, &dialog);
+            }
+        });
+        layout->Add(logs, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
+        layout->Add(new wxStaticText(&dialog, wxID_ANY,
+            "Marconi " + wxString::FromUTF8(Marconi::GetVersionString()) + " / Red Marmoset Studios"),
+            0, wxLEFT | wxRIGHT | wxBOTTOM, space);
+        layout->Add(dialog.CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, space);
+        dialog.SetSizerAndFit(layout);
+        StyleWindow(&dialog);
+        dialog.CentreOnParent();
+        if (dialog.ShowModal() == wxID_OK)
+        {
+            ChooseAppearance(appearance->GetSelection());
+        }
     }
 
     int ConnectionsFrame::GetSelectedIndex() const

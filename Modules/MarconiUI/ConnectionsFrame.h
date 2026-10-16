@@ -13,6 +13,8 @@ class wxButton;
 class wxListEvent;
 class wxListView;
 class wxTextCtrl;
+class wxStaticText;
+class wxToggleButton;
 
 namespace MarconiUI
 {
@@ -24,6 +26,9 @@ namespace MarconiUI
     private:
         void Reload(const wxString& selectId = wxEmptyString);
         void UpdateButtons();
+        void ApplyAppearance();
+        void ChooseAppearance(int selection);
+        void ShowSettings();
         int GetSelectedIndex() const;
 
         void OnQuickConnect(wxCommandEvent& event);
@@ -40,6 +45,13 @@ namespace MarconiUI
         ConnectionStore m_store;
         std::vector<SavedConnection> m_connections;
         wxTextCtrl* m_address = nullptr;
+        wxTextCtrl* m_search = nullptr;
+        wxStaticText* m_count = nullptr;
+        wxStaticText* m_empty = nullptr;
+        wxStaticText* m_notice = nullptr;
+        wxToggleButton* m_themeButtons[3] = {};
+        std::vector<wxStaticText*> m_mutedLabels;
+        std::vector<wxButton*> m_primaryButtons;
         wxListView* m_list = nullptr;
         wxButton* m_connect = nullptr;
         wxButton* m_edit = nullptr;

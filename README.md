@@ -64,6 +64,13 @@ Logs are written to the user data folder:
 Marconi used to be called rmvnc. On first start it copies rmvnc's saved connections and passwords; the old ones are
 left in place.
 
+## Appearance
+
+The connections window includes search by name or address and a **System / Light / Dark** selector.
+Your appearance choice is remembered between launches. The main window updates immediately; on Windows,
+restart Marconi to finish updating native menus and title bars. **Settings** also provides appearance selection
+and access to the log folder. Connection and credential dialogs use the same palette.
+
 ## Building
 
 You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildTool bootstrapped.

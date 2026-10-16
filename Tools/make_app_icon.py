@@ -16,9 +16,6 @@ SIZES = [16, 20, 24, 32, 48, 64, 128, 256]
 SUPERSAMPLE = 8
 
 RED = (178, 34, 52, 255)
-DARK = (32, 36, 44, 255)
-PAPER = (236, 240, 245, 255)
-WHITE = (255, 255, 255, 255)
 
 
 def draw_icon(size):
@@ -27,28 +24,13 @@ def draw_icon(size):
     draw = ImageDraw.Draw(image)
     s = big / 32.0
 
-    def rect(x, y, w, h, fill, radius=0.0):
-        box = [x * s, y * s, (x + w) * s - 1, (y + h) * s - 1]
-        if radius > 0:
-            draw.rounded_rectangle(box, radius=radius * s, fill=fill)
-        else:
-            draw.rectangle(box, fill=fill)
-
-    # Bezel and stand.
-    rect(1, 3, 30, 21, RED, 3)
-    rect(13, 24, 6, 3, RED)
-    rect(8, 27, 16, 3, RED, 1.5)
-    # Screen.
-    rect(3, 5, 26, 17, DARK)
-    # Remote window with its title bar.
-    rect(7, 8, 18, 11, PAPER, 1.5)
-    rect(7, 8, 18, 2.5, RED)
-    # Pointer, outlined at least one output pixel wide like AppIcon.cpp.
-    pointer = [(17, 12), (17, 21), (19.5, 18.5), (22.5, 20.5), (23.5, 19), (20.5, 17), (23.5, 15.5)]
-    points = [(x * s, y * s) for x, y in pointer]
-    outline = max(1.0, size / 32.0) * SUPERSAMPLE
-    draw.polygon(points, fill=WHITE)
-    draw.line(points + [points[0]], fill=DARK, width=int(round(outline)), joint="curve")
+    # Same mirrored geometry and rounded joins as AppIcon.cpp.
+    points = [(5, 23), (10.5, 9), (16, 20), (21.5, 9), (27, 23)]
+    draw.line([(x * s, y * s) for x, y in points], fill=RED, width=round(4 * s))
+    for x, y in points:
+        radius = 3 if (x, y) in (points[0], points[-1]) else 2
+        draw.ellipse(((x - radius) * s, (y - radius) * s,
+                      (x + radius) * s, (y + radius) * s), fill=RED)
 
     return image.resize((size, size), Image.LANCZOS)
 
