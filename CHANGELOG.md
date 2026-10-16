@@ -12,6 +12,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Rewrote the README in plain language, with the developer notes at the end.
 - Copied text is only shared with the remote computer while the Marconi window is in front.
 - No longer saves pictures of the other computer's screen in the log folder during normal use.
+- The installer now starts Marconi without administrator rights, only upgrades a copy in Program Files, and can be signed.
 
 ## 0.2.0
 

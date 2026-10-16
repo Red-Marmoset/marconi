@@ -168,7 +168,11 @@ clone gets a revision that is too low.
 
 ## Releasing (Windows)
 
-The installer is built with [NSIS 3](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`):
+The installer is built with [NSIS 3.08 or newer](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`). It also
+needs the [ShellExecAsUser plug-in](https://nsis.sourceforge.io/ShellExecAsUser_plug-in), which lets the installer
+start Marconi as you rather than as administrator when you tick "Start Marconi now". Download its Unicode build and
+put `ShellExecAsUser.dll` in NSIS's `Plugins\x86-unicode` folder (normally
+`C:\Program Files (x86)\NSIS\Plugins\x86-unicode`). `Package.ps1` stops with a message if it isn't there.
 
     .\Package.ps1                     # -> Build\Installer\Marconi-0.2.0.48-win64-setup.exe
 
@@ -179,10 +183,18 @@ Marconi doesn't affect other applications. It then prints the installer's SHA-25
 (`v0.2.0.48`). It refuses a shallow clone, and refuses uncommitted changes to tracked files unless you pass
 `-AllowDirty` for a test package. `-SkipBuild` packages the existing build if it matches the current version.
 
+By default nothing is signed, so Windows warns before running the installer and `Package.ps1` says so at the end.
+For a release, set `MARCONI_SIGN_THUMBPRINT` to the thumbprint of a code-signing certificate in your personal
+certificate store (where a certificate on a hardware token appears; find the thumbprint in `certmgr.msc` under
+Personal > Certificates). `Package.ps1` then uses `signtool` from the Windows SDK to sign `Marconi.exe`, the
+uninstaller and the setup executable, each with a timestamp from `http://timestamp.digicert.com` so the signatures
+stay valid after the certificate expires. Set `MARCONI_SIGN_TIMESTAMP_URL` to use a different timestamp server.
+
 The installer installs to `Program Files\Marconi`, with a Start menu shortcut and an optional desktop one. It also
-adds an entry to Settings > Apps. Installing a newer version replaces the old one. Uninstalling keeps each user's
-saved connections, passwords and logs. `Uninstall.exe /S` uninstalls silently, and the installer accepts `/S` and
-`/D=<folder>` too.
+adds an entry to Settings > Apps. Installing a newer version replaces the old one, as long as the old one is in
+`Program Files`; a copy installed somewhere else is left in place and the new version is installed over it, with a
+line in the installer's details saying so. Uninstalling keeps each user's saved connections, passwords and logs.
+`Uninstall.exe /S` uninstalls silently, and the installer accepts `/S` and `/D=<folder>` too.
 
 `Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico` and
 `Marconi.icns`, are rendered by `python Tools/make_app_icon.py` from the same drawing as the window icon in

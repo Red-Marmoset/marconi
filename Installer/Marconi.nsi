@@ -3,7 +3,12 @@
 ;   /DVERSION=0.1.0.27         MAJOR.MINOR.PATCH.REVISION, as stamped into Marconi.exe
 ;   /DSTAGE_DIR=<dir>          App\ holds Marconi.exe and the MSVC runtime DLLs; UninstallFiles.nsh deletes them
 ;   /DOUT_FILE=<path>          the setup executable to write
+;   /DSIGN_SCRIPT=<path>       optional: a script that signs the file given as its only argument. Run on Uninstall.exe
+;                              before it's embedded and on the setup executable once written (needs NSIS 3.08+).
 ; Paths are absolute; makensis runs from this folder, so the relative ones below are relative to it.
+;
+; "Start Marconi now" on the finish page needs the ShellExecAsUser plug-in in the NSIS installation's
+; Plugins\x86-unicode folder (see Package.ps1, which checks for it).
 
 !ifndef VERSION | STAGE_DIR | OUT_FILE
     !error "Run Package.ps1 rather than makensis directly (it defines VERSION, STAGE_DIR and OUT_FILE)."
@@ -39,6 +44,13 @@ VIAddVersionKey /LANG=0 "FileDescription" "${APP_NAME} ${VERSION} Setup"
 VIAddVersionKey /LANG=0 "CompanyName" "${PUBLISHER}"
 VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 
+; Authenticode signing, when Package.ps1 is configured for it. The uninstaller is signed before it's embedded and the
+; setup executable after it's written; makensis fails if either signing fails.
+!ifdef SIGN_SCRIPT
+    !uninstfinalize '"${SIGN_SCRIPT}" "%1"' = 0
+    !finalize '"${SIGN_SCRIPT}" "%1"' = 0
+!endif
+
 !include "MUI2.nsh"
 !include "x64.nsh"
 !include "FileFunc.nsh"
@@ -60,7 +72,11 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 !define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME}, the VNC client from ${PUBLISHER}, on your computer.$\r$\n$\r$\nIf ${APP_NAME} is running, close it before continuing. Your saved connections are kept when upgrading.$\r$\n$\r$\nClick Next to continue."
 !define MUI_FINISHPAGE_TITLE "${APP_NAME} is ready"
 !define MUI_FINISHPAGE_TEXT "${APP_NAME} ${VERSION} has been installed on your computer.$\r$\n$\r$\nClick Finish to close Setup."
-!define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
+; Setup runs as administrator, and MUI's own run would start Marconi that way too: its settings and saved passwords
+; would then belong to the administrator account rather than the signed-in user. LaunchAsUser starts it unelevated.
+; MUI_FINISHPAGE_RUN only enables the checkbox; its value isn't used when MUI_FINISHPAGE_RUN_FUNCTION is set.
+!define MUI_FINISHPAGE_RUN ""
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchAsUser
 !define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME} now"
 
 !insertmacro MUI_PAGE_WELCOME
@@ -90,17 +106,33 @@ Function un.onInit
     SetRegView 64
 FunctionEnd
 
+; Explorer launches Marconi on Setup's behalf, so it runs as the signed-in user. If Explorer isn't running, or is
+; itself elevated, the plug-in falls back to a plain ShellExecute. The empty action means the default ("open").
+Function LaunchAsUser
+    SetOutPath "$INSTDIR"
+    ShellExecAsUser::ShellExecAsUser "" "$INSTDIR\${APP_EXE}" ""
+FunctionEnd
+
 Section "${APP_NAME}" SecApp
     SectionIn RO
 
     ; Upgrading: remove the previous version first (keeping its user data), so files it had and this one doesn't
     ; aren't left behind. _?= runs its uninstaller in place and waits for it.
+    ;
+    ; That uninstaller runs as administrator, so it's only trusted inside Program Files, which standard users can't
+    ; write to. An earlier install elsewhere (/D=<folder>) could have had its Uninstall.exe replaced by anyone who
+    ; can write to that folder; in that case the old files are left alone and this version is installed over them.
     ReadRegStr $0 HKLM "${UNINSTALL_KEY}" "InstallLocation"
     ${If} $0 != ""
-    ${AndIf} ${FileExists} "$0\Uninstall.exe"
-        ExecWait '"$0\Uninstall.exe" /S _?=$0'
-        Delete "$0\Uninstall.exe"
-        RMDir "$0"
+        StrLen $1 "$PROGRAMFILES64\"
+        StrCpy $2 "$0\" $1
+        ${If} $2 != "$PROGRAMFILES64\"
+            DetailPrint "The previous version at $0 is outside $PROGRAMFILES64, so its uninstaller won't be run. Installing over it."
+        ${ElseIf} ${FileExists} "$0\Uninstall.exe"
+            ExecWait '"$0\Uninstall.exe" /S _?=$0'
+            Delete "$0\Uninstall.exe"
+            RMDir "$0"
+        ${EndIf}
     ${EndIf}
 
     SetOutPath "$INSTDIR"
