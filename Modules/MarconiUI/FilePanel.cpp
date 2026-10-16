@@ -87,7 +87,7 @@ namespace MarconiUI
             bar->Add(m_path, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
             bar->Add(refresh, 0);
             sizer->Add(bar, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
-            m_list = new wxListView(this, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(260, 200)),
+            m_list = new wxListView(this, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(160, 120)),
                                     wxLC_REPORT | wxBORDER_SIMPLE);
             m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(150));
             m_list->AppendColumn("Size", wxLIST_FORMAT_RIGHT, FromDIP(70));
@@ -483,8 +483,9 @@ namespace MarconiUI
         transfersBar->Add(transfersHeading, 1, wxALIGN_CENTER_VERTICAL);
         transfersBar->Add(m_cancel, 0);
         sizer->Add(transfersBar, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(6));
-        m_transfers = new wxListView(this, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 90)),
+        m_transfers = new wxListView(this, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 60)),
                                      wxLC_REPORT | wxLC_NO_HEADER | wxBORDER_SIMPLE);
+        m_transfers->SetMinSize(FromDIP(wxSize(-1, 60)));
         m_transfers->AppendColumn("File", wxLIST_FORMAT_LEFT, FromDIP(260));
         m_transfers->AppendColumn("Progress", wxLIST_FORMAT_LEFT, FromDIP(260));
         sizer->Add(m_transfers, 1, wxEXPAND | wxALL, FromDIP(6));
@@ -516,6 +517,13 @@ namespace MarconiUI
         m_upload->Enable(false);
         m_download->Enable(false);
         SetMessage("Not connected yet.");
+        Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+            event.Skip();
+            if (!m_messageText.empty())
+            {
+                CallAfter([this]() { SetMessage(m_messageText); }); // wrap to the new width
+            }
+        });
         StyleWindow(this);
     }
 
@@ -550,7 +558,9 @@ namespace MarconiUI
 
     void FilePanel::SetMessage(const wxString& message)
     {
+        m_messageText = message;
         m_message->SetLabel(message);
+        m_message->Wrap(std::max(GetClientSize().x - FromDIP(12), FromDIP(200)));
         m_message->Show(!message.empty());
         Layout();
     }

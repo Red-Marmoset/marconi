@@ -98,9 +98,9 @@ namespace MarconiUI
         m_aui.AddPane(m_files, wxAuiPaneInfo()
                                    .Name("Files")
                                    .Caption("Files")
-                                   .Right()
-                                   .BestSize(FromDIP(wxSize(640, 480)))
-                                   .MinSize(FromDIP(wxSize(360, 240)))
+                                   .Bottom()
+                                   .BestSize(FromDIP(wxSize(900, 380)))
+                                   .MinSize(FromDIP(wxSize(480, 300)))
                                    .Floatable(true)
                                    .Dockable(true)
                                    .Hide());
@@ -116,7 +116,11 @@ namespace MarconiUI
         {
             ApplyLayout(m_options.layout);
         }
-        if (m_aui.GetPane("Files").IsShown() && !m_options.headless)
+        if (m_options.showFiles && !m_options.headless)
+        {
+            CallAfter([this]() { ShowFiles(); });
+        }
+        else if (m_aui.GetPane("Files").IsShown() && !m_options.headless)
         {
             CallAfter([this]() { m_files->Activate(); });
         }

@@ -86,6 +86,7 @@ namespace MarconiUI
         FilePane* m_localPane = nullptr;
         FilePane* m_remotePane = nullptr;
         wxStaticText* m_message = nullptr;
+        wxString m_messageText;
         wxButton* m_upload = nullptr;
         wxButton* m_download = nullptr;
         wxButton* m_cancel = nullptr;

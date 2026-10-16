@@ -44,6 +44,7 @@ namespace MarconiUI
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
         wxString sshHostKey;    // from the saved connection: the SSH host key trusted for file transfer
+        bool showFiles = false; // open the file panel straight away (--files)
         bool skipProbe = false; // the address's protocol and port are already known (e.g. found on the network)
         std::vector<uint8_t> trustedCertificateSha256; // a server certificate the user accepted before
 

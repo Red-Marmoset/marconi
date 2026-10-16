@@ -162,6 +162,8 @@ namespace MarconiUI
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_SWITCH, nullptr, "discover", "diagnostics: log the machines found on the network, then exit",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "files", "open the file transfer panel straight away", wxCMD_LINE_VAL_NONE,
+             wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_SWITCH, nullptr, "sftp-check",
              "diagnostics: log in over SFTP with the connection's account, copy a small file there and back, tidy up",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
@@ -263,6 +265,7 @@ namespace MarconiUI
                 }
                 options.viewOnly = options.viewOnly || parser.Found("view-only");
                 options.fullScreen = parser.Found("fullscreen");
+                options.showFiles = parser.Found("files");
                 options.clipboard = options.clipboard && !parser.Found("no-clipboard");
                 if (headless)
                 {
