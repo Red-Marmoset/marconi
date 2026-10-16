@@ -127,4 +127,5 @@ namespace MarconiTest
     void RunDiscoveryTests();
     void RunVeNCryptTests();
     void RunRandomInputTests();
+    void RunLocalKeysTests();
 } // namespace MarconiTest
