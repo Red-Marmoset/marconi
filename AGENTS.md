@@ -63,3 +63,8 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 - Engine changes are committed and pushed to the engine repo separately (for example `Modules/Crypto` and
   `External/wxwidgets.manifest`). The user often has local work in progress there, so only stage your own paths
   and preserve each file's line endings (the manifests use CRLF).
+- **Plain words** in docs, comments, commit messages and replies (the owner's rule). Avoid jargon-metaphors that
+  confuse many readers: load-bearing, seam, cadence, substrate, spine, blast radius, anchored, byte-identical,
+  "that's not nothing", surface (as a verb), land (for merge), shape (for design), plumbing, wire up, footgun, happy
+  path, first-class, orthogonal, north star, lean into, punt, paper over, long pole, delve, leverage. Say what you
+  mean instead: "a test hook", "how much could break", "identical", "merge".
