@@ -34,6 +34,7 @@ namespace MarconiUI
         bool lockOnDisconnect = false;  // lock the other computer's screen when the window closes
         bool favourite = false;         // listed first
         wxString notes;                 // anything worth remembering about the computer
+        wxString group;                 // optional, e.g. "Studio": the list keeps a group's connections together
         wxString macAddress;            // hardware address, for waking it up (Wake-on-LAN)
         wxRect windowRect;              // where the viewer window was; empty = not remembered
         wxDateTime lastUsed;

@@ -1,0 +1,522 @@
+// Copyright (c) 2026 Red Marmoset Studios Ltd.
+// ViewerFrame: finding the server, connecting, logging in, trusting certificates, and what to do when the connection ends
+
+#include "ViewerFrame.h"
+
+#include "ClipboardWatch.h"
+#include "ConnectionStore.h"
+#include "CredentialsDialog.h"
+#include "FilePanel.h"
+
+#include <MarconiCore/Net/ProtocolChoice.h>
+#include <MarconiCore/Net/WakeOnLan.h>
+#include <MarconiCore/Text.h>
+
+#include <Log/Log.h>
+
+#include <wx/msgdlg.h>
+
+#include <cstdlib>
+#include <functional>
+#include <string>
+
+namespace MarconiUI
+{
+    namespace
+    {
+        // "AB:CD:..." in two lines, as browsers show certificate fingerprints.
+        wxString FormatFingerprint(const std::vector<uint8_t>& sha256)
+        {
+            wxString text;
+            for (size_t i = 0; i < sha256.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    text += i == sha256.size() / 2 ? "\n" : ":";
+                }
+                text += wxString::Format("%02X", sha256[i]);
+            }
+            return text;
+        }
+    } // namespace
+
+    void ViewerFrame::Connect()
+    {
+        const Marconi::Address& address = m_options.address;
+        long rememberedPort = 0;
+        if (address.protocol == Marconi::Protocol::Vnc || m_options.skipProbe)
+        {
+            ConnectVnc(Marconi::EffectivePort(address));
+        }
+        else if (address.protocol == Marconi::Protocol::Auto && m_options.detected.StartsWith("vnc ") &&
+                 m_options.detected.Mid(4).ToLong(&rememberedPort) && rememberedPort > 0 && rememberedPort < 65536)
+        {
+            m_usingRemembered = true;
+            ConnectVnc(static_cast<uint16_t>(rememberedPort));
+        }
+        else
+        {
+            StartProbe();
+        }
+    }
+
+    void ViewerFrame::ConnectVnc(uint16_t port)
+    {
+        m_port = port;
+        m_clipboard.Reset();
+        Marconi::Address shown = m_options.address;
+        shown.port = port;
+        shown.protocol = Marconi::Protocol::Vnc;
+        SetStatusText("Connecting to " + wxString::FromUTF8(Marconi::FormatAddress(shown)) + "...");
+        Marconi::Rfb::ConnectionOptions connection;
+        connection.host = m_options.address.host;
+        connection.port = port;
+        connection.credentials = m_options.credentials;
+        connection.trustedCertificateSha256 = m_options.trustedCertificateSha256;
+        connection.encodings = m_options.encodings;
+        connection.exactEncodings = !m_options.encodings.empty();
+        connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
+        connection.allowTight = m_allowTight;
+        connection.allowEncryption = m_allowEncryption;
+        Marconi::QualitySettings quality = Marconi::SettingsFor(m_quality);
+        connection.compressLevel = quality.compressLevel;
+        connection.qualityLevel = quality.qualityLevel;
+        m_client.Connect(connection);
+    }
+
+    void ViewerFrame::StartProbe()
+    {
+        const wxString host = wxString::FromUTF8(m_options.address.host);
+        SetStatusText("Looking for a remote desktop on " + host + wxString::FromUTF8("\xE2\x80\xA6")); // an ellipsis
+        StopProbe();
+        m_probeCancel = false;
+        Marconi::Address address = m_options.address;
+        m_probeThread = std::thread([this, address]() {
+            std::vector<Marconi::Net::ProbeResult> results =
+                Marconi::Net::Probe(address.host, Marconi::Net::DefaultProbeTargets(address), 1500, &m_probeCancel);
+            if (!m_probeCancel)
+            {
+                CallAfter([this, results]() { HandleProbe(results); });
+            }
+        });
+    }
+
+    void ViewerFrame::StopProbe()
+    {
+        m_probeCancel = true;
+        if (m_probeThread.joinable())
+        {
+            m_probeThread.join();
+        }
+    }
+
+    void ViewerFrame::HandleProbe(const std::vector<Marconi::Net::ProbeResult>& results)
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_questionMutex);
+            if (m_closing)
+            {
+                return;
+            }
+        }
+        for (const Marconi::Net::ProbeResult& result : results)
+        {
+            std::string detail = result.detail.empty() ? "" : " (" + result.detail + ")";
+            LOG_INFO("Viewer", "Probe %s port %u: %s%s", m_options.address.host.c_str(), result.port,
+                     result.reachable ? Marconi::ProtocolName(result.protocol) : "no answer", detail.c_str());
+        }
+        Marconi::Net::Choice choice = Marconi::Net::ChooseProtocol(m_options.address, results);
+        if (choice.kind == Marconi::Net::Choice::Kind::Connect)
+        {
+            if (m_options.address.protocol == Marconi::Protocol::Auto && m_options.address.port == 0)
+            {
+                RememberDetected(wxString::Format("vnc %u", static_cast<unsigned>(choice.port)));
+            }
+            ConnectVnc(choice.port);
+            return;
+        }
+        wxString message = wxString::FromUTF8(Marconi::Net::DescribeChoice(choice, m_options.address));
+        LOG_WARNING("Viewer", "%s", message.utf8_string().c_str());
+        SetStatusText(message);
+        if (!m_options.headless)
+        {
+            wxMessageBox(message, "Marconi", wxOK | wxICON_INFORMATION, this);
+        }
+        Close(true);
+    }
+
+    void ViewerFrame::RememberDetected(const wxString& detected)
+    {
+        // Unlike the window settings, this is a fact about the machine, so headless runs keep it too.
+        if (m_options.savedId.empty() || m_options.detected == detected)
+        {
+            return;
+        }
+        m_options.detected = detected;
+        ConnectionStore store;
+        SavedConnection saved;
+        if (store.Load(m_options.savedId, saved))
+        {
+            saved.detected = detected;
+            store.Save(saved);
+        }
+    }
+
+    bool ViewerFrame::AskUser(const std::function<bool()>& question)
+    {
+        std::unique_lock<std::mutex> lock(m_questionMutex);
+        if (m_closing)
+        {
+            return false;
+        }
+        m_question = question;
+        m_questionAnswered = false;
+        m_questionAccepted = false;
+        CallAfter([this]() { RunPendingQuestion(); });
+        m_questionChanged.wait(lock, [this]() { return m_questionAnswered || m_closing; });
+        return !m_closing && m_questionAccepted;
+    }
+
+    void ViewerFrame::RunPendingQuestion()
+    {
+        std::function<bool()> question;
+        {
+            // The window may have started closing after this was queued; nobody is waiting any more.
+            std::lock_guard<std::mutex> lock(m_questionMutex);
+            if (m_closing || !m_question)
+            {
+                return;
+            }
+            question = std::move(m_question);
+            m_question = nullptr;
+        }
+        bool accepted = question();
+        {
+            std::lock_guard<std::mutex> lock(m_questionMutex);
+            m_questionAccepted = accepted;
+            m_questionAnswered = true;
+        }
+        m_questionChanged.notify_all();
+    }
+
+    bool ViewerFrame::OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials)
+    {
+        // Connection thread: ask the UI thread and wait for the answer (or for the window to close).
+        if (m_options.headless)
+        {
+            LOG_WARNING("Viewer", "Headless: the server wants credentials that aren't saved for this connection");
+            return false;
+        }
+        bool accepted = AskUser([this, kind]() {
+            SetStatusText("Waiting for credentials...");
+            bool offerRemember = !m_options.savedId.empty() && ConnectionStore::IsKeychainAvailable();
+            CredentialsDialog dialog(this, GetServerDisplayName(), kind,
+                                     wxString::FromUTF8(m_options.credentials.username), offerRemember);
+            if (dialog.ShowModal() != wxID_OK)
+            {
+                m_rememberPassword = false;
+                return false;
+            }
+            m_rememberPassword = dialog.GetRemember();
+            m_credentialsAnswer.username = dialog.GetUsername().utf8_string();
+            m_credentialsAnswer.password = dialog.GetPassword().utf8_string();
+            // Keep them for the rest of this window's life so reconnects don't ask again.
+            m_options.credentials = m_credentialsAnswer;
+            SetStatusText("Authenticating...");
+            return true;
+        });
+        if (!accepted)
+        {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(m_questionMutex);
+        credentials = m_credentialsAnswer;
+        return true;
+    }
+
+    bool ViewerFrame::OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate)
+    {
+        // Connection thread.
+        if (m_options.headless)
+        {
+            LOG_WARNING("Viewer", "Headless: the server's certificate isn't trusted (%s); not connecting",
+                        certificate.problem.c_str());
+            return false;
+        }
+        LOG_INFO("Viewer", "The server's certificate isn't trusted (%s); asking", certificate.problem.c_str());
+        Marconi::Net::TlsCertificate copy = certificate; // the UI thread gets its own copy
+        return AskUser([this, copy]() { return ConfirmCertificate(copy); });
+    }
+
+    bool ViewerFrame::ConfirmCertificate(const Marconi::Net::TlsCertificate& certificate)
+    {
+        SetStatusText("Waiting for you to check the server's certificate...");
+        wxString message = wxString::Format(
+            "%s identifies itself with a security certificate this computer doesn't trust (%s).\n\n"
+            "Issued to: %s\nIssued by: %s\nValid until: %s\n\nFingerprint (SHA-256):\n%s\n\n"
+            "If you set up that computer yourself, this is normal: connect anyway, and Marconi will remember this "
+            "certificate for this connection. If you weren't expecting it, someone may be listening in: cancel and "
+            "check the other computer.",
+            wxString::FromUTF8(m_options.address.host), wxString::FromUTF8(certificate.problem),
+            wxString::FromUTF8(certificate.subject), wxString::FromUTF8(certificate.issuer),
+            wxString::FromUTF8(certificate.validUntil), FormatFingerprint(certificate.sha256));
+        wxMessageDialog dialog(this, message, "Connection to " + GetServerDisplayName(),
+                               wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+        dialog.SetYesNoLabels("Connect Anyway", "Cancel");
+        if (dialog.ShowModal() != wxID_YES)
+        {
+            return false;
+        }
+        // Reconnects in this window don't ask again, and neither does the saved connection next time.
+        m_options.trustedCertificateSha256 = certificate.sha256;
+        if (!m_options.savedId.empty())
+        {
+            ConnectionStore store;
+            SavedConnection saved;
+            if (store.Load(m_options.savedId, saved))
+            {
+                saved.certificate = wxString::FromUTF8(Marconi::BytesToHex(certificate.sha256));
+                store.Save(saved);
+            }
+        }
+        SetStatusText("Connecting securely...");
+        return true;
+    }
+
+    void ViewerFrame::HandleConnected(const Marconi::Rfb::ServerInit& serverInit)
+    {
+        m_desktopName = wxString::FromUTF8(serverInit.name);
+        SetTitle(GetServerDisplayName() + " - Marconi");
+        m_connected = true;
+        if (m_client.HasFileTransfer())
+        {
+            // TightVNC: files travel on this connection, with no second login.
+            if (!m_tightFiles)
+            {
+                m_tightFiles = std::make_unique<Marconi::Files::TightFiles>(
+                    [this](const Marconi::Rfb::Bytes& request) { return m_client.SendFileTransferRequest(request); });
+            }
+            m_tightFiles->Reopen();
+            Marconi::Files::TightFiles* files = m_tightFiles.get();
+            m_client.SetFileTransferHandler([files](const Marconi::Rfb::FileTransfer::Reply& reply) {
+                files->OnReply(reply);
+            });
+            m_files->SetTightFiles(files, GetServerDisplayName());
+            if (m_options.filesCheck)
+            {
+                // Diagnostics: a real round trip over TightVNC file transfer, on a worker like the panel's copies.
+                m_saveThreads.emplace_back([this, files]() {
+                    const std::string folder = "/C:/Users/Public/Marconi files check";
+                    const std::string file = folder + "/check.txt";
+                    const std::string content = "Marconi TightVNC files check " + std::to_string(std::rand());
+                    std::string error;
+                    std::vector<Marconi::Files::FileEntry> drives;
+                    bool listed = files->List("/", drives, error);
+                    LOG_INFO("Viewer", "Files check: listed / (%zu entries): %s", drives.size(),
+                             listed ? "ok" : error.c_str());
+                    bool ok = listed && files->MakeFolder(folder, error);
+                    if (ok)
+                    {
+                        std::unique_ptr<Marconi::Files::FileWriter> writer = files->OpenWrite(file, false, error);
+                        ok = writer && writer->Write(content.data(), content.size(), error) && writer->Finish(error);
+                        LOG_INFO("Viewer", "Files check: upload %s %s", ok ? "ok" : "failed:", error.c_str());
+                    }
+                    std::string readBack;
+                    if (ok)
+                    {
+                        std::unique_ptr<Marconi::Files::FileReader> reader = files->OpenRead(file, error);
+                        char buffer[256];
+                        ptrdiff_t got = 0;
+                        while (reader && (got = reader->Read(buffer, sizeof(buffer), error)) > 0)
+                        {
+                            readBack.append(buffer, static_cast<size_t>(got));
+                        }
+                        ok = reader && got == 0 && readBack == content;
+                        LOG_INFO("Viewer", "Files check: download %s %s", ok ? "ok" : "failed:", error.c_str());
+                    }
+                    std::string ignored;
+                    files->Remove(file, ignored);
+                    files->RemoveFolder(folder, ignored);
+                    Marconi::Files::FileEntry leftover;
+                    bool tidy = !files->Stat(folder, leftover, ignored);
+                    LOG_INFO("Viewer", "Files check: %s (tidied up: %s)", ok ? "passed" : "failed", tidy ? "yes" : "no");
+                    CallAfter([this]() { Close(true); });
+                });
+            }
+        }
+        if (m_rememberPassword)
+        {
+            // Only now: the credentials are known to work.
+            m_rememberPassword = false;
+            ConnectionStore store;
+            SavedConnection saved;
+            if (store.Load(m_options.savedId, saved))
+            {
+                saved.username = wxString::FromUTF8(m_options.credentials.username);
+                saved.rememberPassword = true;
+                store.Save(saved);
+                store.SavePassword(saved.id, saved.username, wxString::FromUTF8(m_options.credentials.password));
+            }
+        }
+        m_canvas->SetDesktopSize(serverInit.width, serverInit.height);
+        if (m_reconnecting)
+        {
+            LeaveLostState();
+        }
+        else if (!m_windowRestored)
+        {
+            FitToDesktop();
+        }
+        if (m_options.fullScreen && !IsFullScreen())
+        {
+            ToggleFullScreen();
+        }
+        UpdateControls();
+        UpdateSystemKeyCapture();
+        UpdateStatus();
+        m_canvas->SetFocus();
+        SyncClipboardToServer();
+        WaitForPicture();
+        m_client.TakeTrafficStats(); // start counting from here
+        m_statsTimer.Start(10000);
+        m_healthTicks = 0;
+        m_healthTimer.Start(1000);
+        m_clipboardChangeCount = GetClipboardChangeCount();
+        m_clipboardTimer.Start(500);
+    }
+
+    void ViewerFrame::HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info)
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_questionMutex);
+            if (m_closing)
+            {
+                return;
+            }
+        }
+        LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
+        if (m_tightFiles)
+        {
+            m_client.SetFileTransferHandler(nullptr);
+            m_tightFiles->Close();
+            m_files->SetTightFiles(nullptr, GetServerDisplayName());
+        }
+        if (info.encryptionUnusable && m_allowEncryption)
+        {
+            // Typically a server offering only anonymous TLS, which this computer's TLS library can't make: connect
+            // again without asking for encryption. The status bar then says "not encrypted".
+            LOG_INFO("Viewer", "%s; connecting again without encryption", info.error.c_str());
+            m_allowEncryption = false;
+            ConnectVnc(m_port);
+            return;
+        }
+        if (info.tightFailed && m_allowTight)
+        {
+            // Some servers offer TightVNC's own login but don't handle it well: try once more without it.
+            LOG_INFO("Viewer", "The TightVNC login failed; trying the plain VNC login");
+            m_allowTight = false;
+            ConnectVnc(m_port);
+            return;
+        }
+        if (m_autoReconnecting)
+        {
+            m_autoReconnecting = false;
+            m_connected = false;
+            StopConnectionTimers();
+            ConnectVnc(m_port);
+            return;
+        }
+        StopConnectionTimers();
+        m_canvas->ReleaseInput();
+        m_connected = false;
+        UpdateSystemKeyCapture();
+        UpdateControls();
+        if (m_reconnecting && !info.authenticationFailed && !info.error.empty())
+        {
+            // An attempt failed: wait and try again, unless the time is up.
+            m_retryUnderWay = false;
+            ScheduleRetry(info.error);
+            return;
+        }
+        if (m_reconnecting)
+        {
+            LeaveLostState(); // a rejected password or a deliberate close: the dialogs below take over
+        }
+        if (!info.error.empty() && m_usingRemembered && !m_reprobed && !info.wasConnected &&
+            !info.authenticationFailed)
+        {
+            // The machine may have changed (e.g. VNC turned off, RDP turned on): look again once.
+            LOG_INFO("Viewer", "The remembered connection didn't answer; probing %s again",
+                     m_options.address.host.c_str());
+            m_reprobed = true;
+            m_usingRemembered = false;
+            RememberDetected(wxEmptyString);
+            StartProbe();
+            return;
+        }
+        if (info.error.empty() || m_options.headless)
+        {
+            Close(true);
+            return;
+        }
+
+        wxString caption = "Connection to " + GetServerDisplayName();
+        if (info.authenticationFailed)
+        {
+            SetStatusText("Authentication failed");
+            wxMessageDialog retry(this, wxString::FromUTF8(info.error) + "\n\nWould you like to try again?", caption,
+                                  wxYES_NO | wxICON_WARNING);
+            retry.SetYesNoLabels("Try Again", "Close");
+            if (retry.ShowModal() == wxID_YES)
+            {
+                m_options.credentials.password.clear(); // rejected: ask again
+                ConnectVnc(m_port);
+                return;
+            }
+            Close(true);
+            return;
+        }
+
+        if (info.wasConnected)
+        {
+            // Lost after it was up (a network blip, a server restart): keep the window and retry on a schedule.
+            EnterLostState(info.error);
+            return;
+        }
+        SetStatusText("Disconnected: " + wxString::FromUTF8(info.error));
+        wxString message = "Could not connect:\n\n" + wxString::FromUTF8(info.error);
+        if (!m_options.macAddress.empty())
+        {
+            // The computer may be asleep: offer to wake it, then keep trying while it starts.
+            wxMessageDialog retry(this, message + "\n\nIt may be asleep. Marconi can send it a wake-up call and keep trying.",
+                                  caption, wxYES_NO | wxCANCEL | wxICON_ERROR);
+            retry.SetYesNoCancelLabels("Wake Up and Try Again", "Try Again", "Close");
+            int answer = retry.ShowModal();
+            if (answer == wxID_YES)
+            {
+                std::string error;
+                if (Marconi::Net::SendWakeOnLan(m_options.macAddress.utf8_string(), error))
+                {
+                    EnterWakeState();
+                    return;
+                }
+                wxMessageBox(wxString::FromUTF8(error), caption, wxOK | wxICON_WARNING, this);
+            }
+            if (answer == wxID_YES || answer == wxID_NO)
+            {
+                ConnectVnc(m_port);
+                return;
+            }
+            Close(true);
+            return;
+        }
+        wxMessageDialog retry(this, message, caption, wxYES_NO | wxICON_ERROR);
+        retry.SetYesNoLabels("Try Again", "Close");
+        if (retry.ShowModal() == wxID_YES)
+        {
+            ConnectVnc(m_port);
+            return;
+        }
+        Close(true);
+    }
+} // namespace MarconiUI

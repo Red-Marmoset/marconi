@@ -70,6 +70,9 @@ namespace Marconi
         {
             Disconnect();
             m_stopping = false;
+            m_pingSentAt = 0;
+            m_lastUpdateAt = 0;
+            m_roundTripMs = -1;
             m_thread = std::thread(&Client::Run, this, options);
         }
 
@@ -242,6 +245,38 @@ namespace Marconi
             stats.pointerEvents = m_statPointerEvents.exchange(0);
             stats.keyEvents = m_statKeyEvents.exchange(0);
             return stats;
+        }
+
+        void Client::SendPing()
+        {
+            // UI thread. A fresh ping only once the last was answered: a server that has gone quiet would otherwise
+            // get one every tick, and the first unanswered one is the time that matters.
+            if (!m_connected || m_pingSentAt.load() != 0)
+            {
+                return;
+            }
+            m_pingSentAt = std::chrono::steady_clock::now().time_since_epoch().count();
+            SendIfConnected(BuildUpdateRequest(false, 1, 1));
+            ++m_statRequests;
+        }
+
+        Client::Health Client::GetHealth() const
+        {
+            using namespace std::chrono;
+            Health health;
+            steady_clock::rep now = steady_clock::now().time_since_epoch().count();
+            health.roundTripMs = m_roundTripMs.load();
+            steady_clock::rep sent = m_pingSentAt.load();
+            if (sent != 0)
+            {
+                health.waitingMs = static_cast<int>(duration_cast<milliseconds>(steady_clock::duration(now - sent)).count());
+            }
+            steady_clock::rep last = m_lastUpdateAt.load();
+            if (last != 0)
+            {
+                health.sinceUpdateMs = static_cast<int>(duration_cast<milliseconds>(steady_clock::duration(now - last)).count());
+            }
+            return health;
         }
 
         void Client::RequestFullUpdate()
@@ -502,6 +537,7 @@ namespace Marconi
                 error.clear();
                 info.authenticationFailed = false;
             }
+            m_pingSentAt = 0; // nothing is waiting for an answer any more
             if (error.empty())
             {
                 LOG_INFO("Rfb", "Disconnected");
@@ -639,6 +675,18 @@ namespace Marconi
             }
             ++m_statUpdates;
             m_statRectangles += static_cast<int>(dirty.size());
+            {
+                // The first update after a ping is taken as its answer. An incremental update already on its way
+                // can arrive first and make the figure a little low; for a health readout that's close enough.
+                using namespace std::chrono;
+                steady_clock::rep now = steady_clock::now().time_since_epoch().count();
+                m_lastUpdateAt = now;
+                steady_clock::rep sent = m_pingSentAt.exchange(0);
+                if (sent != 0)
+                {
+                    m_roundTripMs = static_cast<int>(duration_cast<milliseconds>(steady_clock::duration(now - sent)).count());
+                }
+            }
 
             if (m_detailedUpdates > 0)
             {

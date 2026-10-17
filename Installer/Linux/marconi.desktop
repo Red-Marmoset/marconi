@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Marconi
+Comment=See and control another computer's screen
+Exec=Marconi %u
+Terminal=false
+Categories=Network;RemoteAccess;
+MimeType=x-scheme-handler/vnc;
