@@ -92,6 +92,7 @@ namespace MarconiUI
             ID_SCREENSHOT_COPY,
             ID_SCREENSHOT_POINTER,
             ID_SHOW_TOOLBAR,
+            ID_SHOW_MENU, // the full-screen bar's Menu button
             ID_FILES,
             ID_REFRESH,
             ID_DISCONNECT,
@@ -116,6 +117,17 @@ namespace MarconiUI
         CreateToolbar();
         CreateStatusBar();
         m_lostBar = new ConnectionLostBar(this, [this]() { RetryNow(); }, [this]() { Close(); });
+        // Not managed by AUI: it floats over everything at the top of the screen while in full screen.
+        m_fullScreenBar = new FullScreenBar(
+            this, wxString::FromUTF8(m_options.address.host),
+            {{"Fit", ID_SCALE_FIT, "Scale the remote desktop to fit the screen"},
+             {"Zoom In", ID_ZOOM_IN, "Zoom in"},
+             {"Zoom Out", ID_ZOOM_OUT, "Zoom out"},
+             {"Screenshot", ID_SCREENSHOT_SAVE, "Save a picture of the remote desktop"},
+             {"Send Keys", ID_SEND_KEYS, "Send Alt+Tab, the Windows key and other shortcuts"},
+             {"Files", ID_FILES, "Copy files to and from the remote computer"},
+             {"Menu", ID_SHOW_MENU, "Marconi's menu (F8)"},
+             {"Exit Full Screen", ID_FULL_SCREEN, "Back to a window"}});
         m_aui.AddPane(m_lostBar, wxAuiPaneInfo()
                                      .Name("ConnectionLost")
                                      .Top()
@@ -1183,7 +1195,8 @@ namespace MarconiUI
                            wxITEM_CHECK);
         m_toolBar->AddTool(ID_ZOOM_IN, "Zoom In", wxNullBitmap, "Zoom in (Ctrl and +, or Ctrl and the mouse wheel)");
         m_toolBar->AddTool(ID_ZOOM_OUT, "Zoom Out", wxNullBitmap, "Zoom out (Ctrl and -, or Ctrl and the mouse wheel)");
-        m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap, "Full screen (F8 opens the menu)");
+        m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap,
+                           "Full screen (move the pointer to the top edge for the controls, or press F8)");
         m_toolBar->AddTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, "Watch without sending mouse or keyboard input",
                            wxITEM_CHECK);
         m_toolBar->AddTool(ID_CLIPBOARD, "Clipboard", wxNullBitmap, "Share copied text with the remote computer",
@@ -1429,8 +1442,15 @@ namespace MarconiUI
                 keys->Enable(id, m_connected && !m_canvas->IsViewOnly());
             }
             m_canvas->ReleaseInput();
-            wxRect tool = m_toolBar->GetToolRect(ID_SEND_KEYS);
-            m_toolBar->PopupMenu(keys.get(), tool.GetBottomLeft());
+            if (event.GetEventObject() == m_fullScreenBar)
+            {
+                m_fullScreenBar->PopupMenu(keys.get(), m_fullScreenBar->ScreenToClient(wxGetMousePosition()));
+            }
+            else
+            {
+                wxRect tool = m_toolBar->GetToolRect(ID_SEND_KEYS);
+                m_toolBar->PopupMenu(keys.get(), tool.GetBottomLeft());
+            }
             break;
         }
         case ID_SYSTEM_KEYS:
@@ -1467,6 +1487,9 @@ namespace MarconiUI
         case ID_SHOW_TOOLBAR:
             ToggleToolbar();
             break;
+        case ID_SHOW_MENU:
+            ShowMenu();
+            return;
         case ID_FILES:
             ToggleFiles();
             break;
@@ -1523,8 +1546,10 @@ namespace MarconiUI
             }
             m_aui.Update();
             ShowFullScreen(true, wxFULLSCREEN_ALL);
+            m_fullScreenBar->Begin();
             return;
         }
+        m_fullScreenBar->End();
         ShowFullScreen(false, wxFULLSCREEN_ALL);
         m_aui.LoadPerspective(m_layoutBeforeFullScreen);
         FitToDesktop();

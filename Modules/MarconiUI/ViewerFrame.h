@@ -5,6 +5,7 @@
 
 #include "ClipboardSync.h"
 #include "ConnectionLostBar.h"
+#include "FullScreenBar.h"
 #include "SystemKeys.h"
 #include "VncCanvas.h"
 
@@ -170,6 +171,7 @@ namespace MarconiUI
         wxSize m_connectedSize;
         bool m_connected = false;
         ConnectionLostBar* m_lostBar = nullptr;
+        FullScreenBar* m_fullScreenBar = nullptr; // appears at the top edge in full screen
         bool m_reconnecting = false;   // the connection was lost and attempts are being made (or waited for)
         bool m_retryUnderWay = false;  // an attempt is connecting right now
         int m_retryAttempt = 0;

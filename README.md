@@ -66,7 +66,9 @@ Most of the time a name or address on its own is all you need. For special cases
 
 ## While you're connected
 
-Press **F8** to open Marconi's menu, even in full screen. From it you can:
+Press **F8** to open Marconi's menu, even in full screen. In full screen, resting the pointer at the very top of the
+screen also shows a small bar with the computer's name and the main controls; its **Pin** button keeps it there.
+From the menu you can:
 
 - zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same; in full screen,
   a zoomed-in picture scrolls when the pointer rests at the edge of the screen);
