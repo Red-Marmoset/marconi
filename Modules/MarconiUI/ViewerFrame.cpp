@@ -15,6 +15,8 @@
 
 #include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
+#include <MarconiCore/Net/WakeOnLan.h>
+#include <MarconiCore/Reconnect.h>
 #include <MarconiCore/Text.h>
 #include <MarconiCore/Zoom.h>
 
@@ -91,6 +93,13 @@ namespace MarconiUI
             ID_SCREENSHOT_COPY,
             ID_SCREENSHOT_POINTER,
             ID_SHOW_TOOLBAR,
+            ID_SHOW_MENU, // the full-screen bar's Menu button
+            ID_DISPLAY_ALL,
+            ID_DISPLAY_FIRST,
+            ID_DISPLAY_LAST = ID_DISPLAY_FIRST + 15, // up to 16 remote displays
+            ID_MATCH_WINDOW_SIZE,
+            ID_QUALITY_FIRST,
+            ID_QUALITY_LAST = ID_QUALITY_FIRST + 2, // Best, Balanced, Low bandwidth
             ID_FILES,
             ID_REFRESH,
             ID_DISCONNECT,
@@ -114,6 +123,28 @@ namespace MarconiUI
 
         CreateToolbar();
         CreateStatusBar();
+        m_lostBar = new ConnectionLostBar(this, [this]() { RetryNow(); }, [this]() { Close(); });
+        // Not managed by AUI: it floats over everything at the top of the screen while in full screen.
+        m_fullScreenBar = new FullScreenBar(
+            this, wxString::FromUTF8(m_options.address.host),
+            {{"Fit", ID_SCALE_FIT, "Scale the remote desktop to fit the screen"},
+             {"Zoom In", ID_ZOOM_IN, "Zoom in"},
+             {"Zoom Out", ID_ZOOM_OUT, "Zoom out"},
+             {"Screenshot", ID_SCREENSHOT_SAVE, "Save a picture of the remote desktop"},
+             {"Send Keys", ID_SEND_KEYS, "Send Alt+Tab, the Windows key and other shortcuts"},
+             {"Files", ID_FILES, "Copy files to and from the remote computer"},
+             {"Menu", ID_SHOW_MENU, "Marconi's menu (F8)"},
+             {"Exit Full Screen", ID_FULL_SCREEN, "Back to a window"}});
+        m_aui.AddPane(m_lostBar, wxAuiPaneInfo()
+                                     .Name("ConnectionLost")
+                                     .Top()
+                                     .Layer(3)
+                                     .CaptionVisible(false)
+                                     .CloseButton(false)
+                                     .Floatable(false)
+                                     .Movable(false)
+                                     .Fixed()
+                                     .Hide());
         FilePanel::Remote remote;
         remote.host = m_options.address.host;
         remote.username = m_options.credentials.username;
@@ -148,6 +179,13 @@ namespace MarconiUI
             CallAfter([this]() { m_files->Activate(); });
         }
         SetClientSize(FromDIP(wxSize(800, 600)));
+        if (!options.windowRect.IsEmpty() && wxDisplay::GetFromPoint(options.windowRect.GetPosition()) != wxNOT_FOUND &&
+            !options.headless)
+        {
+            SetSize(options.windowRect); // back where it was for this computer
+            m_windowRestored = true;
+        }
+        m_quality = options.quality;
 
         m_canvas->SetLocalCommandHandler([this](Marconi::LocalCommand command) {
             switch (command)
@@ -209,11 +247,20 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { LogTraffic(); }, m_statsTimer.GetId());
         m_clipboardTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
+        m_retryTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnRetryTick(); }, m_retryTimer.GetId());
+        m_matchSizeTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { RequestMatchingSize(); }, m_matchSizeTimer.GetId());
+        m_displayId = options.displayId;
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
             event.Skip();
             CallAfter([this]() { UpdateStatus(); }); // after the canvas has recomputed its scale
+            if (m_matchWindowSize && m_connected)
+            {
+                m_matchSizeTimer.StartOnce(500); // once the resize has settled
+            }
         });
         UpdateControls();
         if (m_options.headless)
@@ -252,6 +299,11 @@ namespace MarconiUI
         }
         options.scaleMode = connection.scaleMode;
         options.zoomPercent = connection.zoomPercent;
+        options.displayId = connection.displayId;
+        options.quality = Marconi::QualityFromName(connection.quality.utf8_string());
+        options.lockOnDisconnect = connection.lockOnDisconnect;
+        options.macAddress = connection.macAddress;
+        options.windowRect = connection.windowRect;
         options.viewOnly = connection.viewOnly;
         options.clipboard = connection.clipboard;
         options.systemKeys = connection.systemKeys;
@@ -335,7 +387,8 @@ namespace MarconiUI
         wxImage picture = m_canvas->GetShownPicture();
         if (IncludePointerInScreenshots() && m_canvas->HasRemoteCursor() && m_canvas->GetLastPointer().x >= 0)
         {
-            return ComposeScreenshot(picture, &m_canvas->GetRemoteCursor(), m_canvas->GetLastPointer());
+            wxPoint pointer = m_canvas->GetLastPointer() - m_canvas->GetPictureRect().GetPosition();
+            return ComposeScreenshot(picture, &m_canvas->GetRemoteCursor(), pointer);
         }
         return picture;
     }
@@ -476,6 +529,9 @@ namespace MarconiUI
         connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
         connection.allowTight = m_allowTight;
         connection.allowEncryption = m_allowEncryption;
+        Marconi::QualitySettings quality = Marconi::SettingsFor(m_quality);
+        connection.compressLevel = quality.compressLevel;
+        connection.qualityLevel = quality.qualityLevel;
         m_client.Connect(connection);
     }
 
@@ -574,6 +630,59 @@ namespace MarconiUI
                 UpdateStatus();
             }
         });
+    }
+
+    void ViewerFrame::OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens)
+    {
+        CallAfter([this, screens]() {
+            m_screens = screens;
+            ApplyDisplayChoice();
+        });
+    }
+
+    void ViewerFrame::OnDesktopResizeRefused(int status)
+    {
+        CallAfter([this, status]() {
+            SetStatusText(status == 1 ? "The other computer doesn't allow its screen size to be changed"
+                                      : "The other computer couldn't change its screen size");
+        });
+    }
+
+    void ViewerFrame::ApplyDisplayChoice()
+    {
+        // Show the chosen display when the server has one with that id; otherwise everything.
+        wxRect viewport;
+        for (const Marconi::Rfb::Screen& screen : m_screens)
+        {
+            if (m_displayId != 0 && static_cast<long>(screen.id) == m_displayId && m_screens.size() > 1)
+            {
+                viewport = wxRect(screen.x, screen.y, screen.width, screen.height);
+            }
+        }
+        if (viewport != m_canvas->GetViewport())
+        {
+            m_canvas->SetViewport(viewport);
+        }
+        UpdateStatus();
+    }
+
+    void ViewerFrame::RequestMatchingSize()
+    {
+        if (!m_matchWindowSize || !m_connected || !m_client.SupportsDesktopResize())
+        {
+            return;
+        }
+        wxSize client = m_canvas->GetClientSize();
+        if (m_canvas->GetScaleMode() == ScaleMode::Fixed)
+        {
+            client.x = static_cast<int>(std::lround(client.x * 100.0 / m_canvas->GetZoomPercent()));
+            client.y = static_cast<int>(std::lround(client.y * 100.0 / m_canvas->GetZoomPercent()));
+        }
+        if (client.x < 64 || client.y < 64 || client == m_canvas->GetDesktopSize())
+        {
+            return;
+        }
+        m_client.RequestDesktopSize(client.x, client.y);
     }
 
     void ViewerFrame::OnDesktopResized(int width, int height)
@@ -842,7 +951,14 @@ namespace MarconiUI
             }
         }
         m_canvas->SetDesktopSize(serverInit.width, serverInit.height);
-        FitToDesktop();
+        if (m_reconnecting)
+        {
+            LeaveLostState();
+        }
+        else if (!m_windowRestored)
+        {
+            FitToDesktop();
+        }
         if (m_options.fullScreen && !IsFullScreen())
         {
             ToggleFullScreen();
@@ -983,6 +1099,17 @@ namespace MarconiUI
         m_connected = false;
         UpdateSystemKeyCapture();
         UpdateControls();
+        if (m_reconnecting && !info.authenticationFailed && !info.error.empty())
+        {
+            // An attempt failed: wait and try again, unless the time is up.
+            m_retryUnderWay = false;
+            ScheduleRetry(info.error);
+            return;
+        }
+        if (m_reconnecting)
+        {
+            LeaveLostState(); // a rejected password or a deliberate close: the dialogs below take over
+        }
         if (!info.error.empty() && m_usingRemembered && !m_reprobed && !info.wasConnected &&
             !info.authenticationFailed)
         {
@@ -1018,16 +1145,140 @@ namespace MarconiUI
             return;
         }
 
+        if (info.wasConnected)
+        {
+            // Lost after it was up (a network blip, a server restart): keep the window and retry on a schedule.
+            EnterLostState(info.error);
+            return;
+        }
         SetStatusText("Disconnected: " + wxString::FromUTF8(info.error));
-        wxString message = info.wasConnected ? "The connection was lost:\n\n" : "Could not connect:\n\n";
-        wxMessageDialog retry(this, message + wxString::FromUTF8(info.error), caption, wxYES_NO | wxICON_ERROR);
-        retry.SetYesNoLabels(info.wasConnected ? "Reconnect" : "Try Again", "Close");
+        wxString message = "Could not connect:\n\n" + wxString::FromUTF8(info.error);
+        if (!m_options.macAddress.empty())
+        {
+            // The computer may be asleep: offer to wake it, then keep trying while it starts.
+            wxMessageDialog retry(this, message + "\n\nIt may be asleep. Marconi can send it a wake-up call and keep trying.",
+                                  caption, wxYES_NO | wxCANCEL | wxICON_ERROR);
+            retry.SetYesNoCancelLabels("Wake Up and Try Again", "Try Again", "Close");
+            int answer = retry.ShowModal();
+            if (answer == wxID_YES)
+            {
+                std::string error;
+                if (Marconi::Net::SendWakeOnLan(m_options.macAddress.utf8_string(), error))
+                {
+                    EnterWakeState();
+                    return;
+                }
+                wxMessageBox(wxString::FromUTF8(error), caption, wxOK | wxICON_WARNING, this);
+            }
+            if (answer == wxID_YES || answer == wxID_NO)
+            {
+                ConnectVnc(m_port);
+                return;
+            }
+            Close(true);
+            return;
+        }
+        wxMessageDialog retry(this, message, caption, wxYES_NO | wxICON_ERROR);
+        retry.SetYesNoLabels("Try Again", "Close");
         if (retry.ShowModal() == wxID_YES)
         {
             ConnectVnc(m_port);
             return;
         }
         Close(true);
+    }
+
+    void ViewerFrame::EnterWakeState()
+    {
+        // Like a lost connection, but the picture (if any) isn't stale and the headline says what's happening.
+        LOG_INFO("Viewer", "Sent a wake-up call; trying to connect for up to %d seconds", Marconi::Reconnect::kGiveUpSeconds);
+        m_lostHeadline = "Sent a wake-up call, waiting for it to start";
+        m_reconnecting = true;
+        m_retryUnderWay = false;
+        m_retryAttempt = 2; // skip the 2 and 4 second waits: a computer takes a while to start
+        m_lostAt = std::chrono::steady_clock::now();
+        m_aui.GetPane("ConnectionLost").Show();
+        m_aui.Update();
+        ScheduleRetry("");
+    }
+
+    void ViewerFrame::EnterLostState(const std::string& error)
+    {
+        LOG_INFO("Viewer", "Connection lost; retrying for up to %d seconds", Marconi::Reconnect::kGiveUpSeconds);
+        m_lostHeadline = "Connection lost";
+        m_reconnecting = true;
+        m_retryUnderWay = false;
+        m_retryAttempt = 0;
+        m_lostAt = std::chrono::steady_clock::now();
+        m_canvas->SetStale(true);
+        m_aui.GetPane("ConnectionLost").Show();
+        m_aui.Update();
+        ScheduleRetry(error);
+    }
+
+    void ViewerFrame::ScheduleRetry(const std::string& error)
+    {
+        m_lostError = error;
+        auto now = std::chrono::steady_clock::now();
+        int sinceLost = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(now - m_lostAt).count());
+        wxString reason = wxString::FromUTF8(error);
+        if (Marconi::Reconnect::ShouldGiveUp(sinceLost))
+        {
+            m_retryTimer.Stop();
+            m_lostBar->SetMessage("Couldn't reconnect in " + wxString::Format("%d", Marconi::Reconnect::kGiveUpSeconds / 60) +
+                                  " minutes (" + reason + ").");
+            m_lostBar->EnableRetry(true);
+            SetStatusText("Connection lost: " + reason);
+            return;
+        }
+        ++m_retryAttempt;
+        m_retryDue = now + std::chrono::seconds(Marconi::Reconnect::DelaySeconds(m_retryAttempt));
+        m_lostBar->EnableRetry(true);
+        m_retryTimer.Start(1000);
+        OnRetryTick();
+    }
+
+    void ViewerFrame::OnRetryTick()
+    {
+        if (!m_reconnecting || m_retryUnderWay)
+        {
+            return;
+        }
+        auto now = std::chrono::steady_clock::now();
+        if (now >= m_retryDue)
+        {
+            RetryNow();
+            return;
+        }
+        int seconds = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(m_retryDue - now).count()) + 1;
+        wxString reason = wxString::FromUTF8(m_lostError);
+        wxString headline = m_lostHeadline + (reason.empty() ? wxString() : " (" + reason + ")");
+        m_lostBar->SetMessage(headline + ". Retrying in " + wxString::Format("%d", seconds) + " s" +
+                              wxString::FromUTF8("\xE2\x80\xA6"));
+        SetStatusText(headline);
+    }
+
+    void ViewerFrame::RetryNow()
+    {
+        if (!m_reconnecting || m_retryUnderWay)
+        {
+            return;
+        }
+        m_retryTimer.Stop();
+        m_retryUnderWay = true;
+        m_lostBar->EnableRetry(false);
+        m_lostBar->SetMessage("Reconnecting to " + GetServerDisplayName() + wxString::FromUTF8("\xE2\x80\xA6"));
+        ConnectVnc(m_port);
+    }
+
+    void ViewerFrame::LeaveLostState()
+    {
+        m_reconnecting = false;
+        m_retryUnderWay = false;
+        m_retryTimer.Stop();
+        m_canvas->SetStale(false);
+        m_aui.GetPane("ConnectionLost").Hide();
+        m_aui.Update();
     }
 
     void ViewerFrame::FitToDesktop()
@@ -1068,7 +1319,8 @@ namespace MarconiUI
                            wxITEM_CHECK);
         m_toolBar->AddTool(ID_ZOOM_IN, "Zoom In", wxNullBitmap, "Zoom in (Ctrl and +, or Ctrl and the mouse wheel)");
         m_toolBar->AddTool(ID_ZOOM_OUT, "Zoom Out", wxNullBitmap, "Zoom out (Ctrl and -, or Ctrl and the mouse wheel)");
-        m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap, "Full screen (F8 opens the menu)");
+        m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap,
+                           "Full screen (move the pointer to the top edge for the controls, or press F8)");
         m_toolBar->AddTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, "Watch without sending mouse or keyboard input",
                            wxITEM_CHECK);
         m_toolBar->AddTool(ID_CLIPBOARD, "Clipboard", wxNullBitmap, "Share copied text with the remote computer",
@@ -1118,6 +1370,39 @@ namespace MarconiUI
         zoom->Append(ID_ZOOM_IN, "Zoom &In\tCtrl++");
         zoom->Append(ID_ZOOM_OUT, "Zoom &Out\tCtrl+-");
         menu->AppendSubMenu(zoom, "&Zoom");
+        if (m_screens.size() > 1)
+        {
+            wxMenu* displays = new wxMenu();
+            displays->AppendRadioItem(ID_DISPLAY_ALL, "&All Displays");
+            bool chosen = false;
+            for (size_t i = 0; i < m_screens.size() && i < 16; ++i)
+            {
+                const Marconi::Rfb::Screen& screen = m_screens[i];
+                displays->AppendRadioItem(ID_DISPLAY_FIRST + static_cast<int>(i),
+                                          wxString::Format("Display &%zu (%d x %d)", i + 1, screen.width, screen.height));
+                if (static_cast<long>(screen.id) == m_displayId)
+                {
+                    displays->Check(ID_DISPLAY_FIRST + static_cast<int>(i), true);
+                    chosen = true;
+                }
+            }
+            if (!chosen)
+            {
+                displays->Check(ID_DISPLAY_ALL, true);
+            }
+            menu->AppendSubMenu(displays, "&Display");
+        }
+        wxMenu* quality = new wxMenu();
+        quality->AppendRadioItem(ID_QUALITY_FIRST, "&Best (no loss of detail)");
+        quality->AppendRadioItem(ID_QUALITY_FIRST + 1, "&Balanced");
+        quality->AppendRadioItem(ID_QUALITY_FIRST + 2, "&Low Bandwidth");
+        quality->Check(ID_QUALITY_FIRST + (m_quality == Marconi::PictureQuality::Best ? 0
+                                           : m_quality == Marconi::PictureQuality::LowBandwidth ? 2 : 1), true);
+        menu->AppendSubMenu(quality, "Picture &Quality");
+        menu->AppendCheckItem(ID_MATCH_WINDOW_SIZE, "&Match the Other Computer's Screen to This Window",
+                              "Asks the other computer to change its screen size to fit this window exactly");
+        menu->Check(ID_MATCH_WINDOW_SIZE, m_matchWindowSize);
+        menu->Enable(ID_MATCH_WINDOW_SIZE, m_connected && m_client.SupportsDesktopResize());
         menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
         menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
         menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
@@ -1314,8 +1599,15 @@ namespace MarconiUI
                 keys->Enable(id, m_connected && !m_canvas->IsViewOnly());
             }
             m_canvas->ReleaseInput();
-            wxRect tool = m_toolBar->GetToolRect(ID_SEND_KEYS);
-            m_toolBar->PopupMenu(keys.get(), tool.GetBottomLeft());
+            if (event.GetEventObject() == m_fullScreenBar)
+            {
+                m_fullScreenBar->PopupMenu(keys.get(), m_fullScreenBar->ScreenToClient(wxGetMousePosition()));
+            }
+            else
+            {
+                wxRect tool = m_toolBar->GetToolRect(ID_SEND_KEYS);
+                m_toolBar->PopupMenu(keys.get(), tool.GetBottomLeft());
+            }
             break;
         }
         case ID_SYSTEM_KEYS:
@@ -1352,6 +1644,9 @@ namespace MarconiUI
         case ID_SHOW_TOOLBAR:
             ToggleToolbar();
             break;
+        case ID_SHOW_MENU:
+            ShowMenu();
+            return;
         case ID_FILES:
             ToggleFiles();
             break;
@@ -1361,10 +1656,39 @@ namespace MarconiUI
         case ID_DISCONNECT:
             Close();
             return;
+        case ID_DISPLAY_ALL:
+            m_displayId = 0;
+            ApplyDisplayChoice();
+            break;
+        case ID_MATCH_WINDOW_SIZE:
+            m_matchWindowSize = !m_matchWindowSize;
+            if (m_matchWindowSize)
+            {
+                RequestMatchingSize();
+            }
+            break;
         default:
             if (event.GetId() >= ID_ZOOM_LEVEL_FIRST && event.GetId() <= ID_ZOOM_LEVEL_LAST)
             {
                 m_canvas->SetZoom(ScaleMode::Fixed, Marconi::Zoom::kLevels[event.GetId() - ID_ZOOM_LEVEL_FIRST]);
+            }
+            else if (event.GetId() >= ID_QUALITY_FIRST && event.GetId() <= ID_QUALITY_LAST)
+            {
+                static const Marconi::PictureQuality kQualities[] = {Marconi::PictureQuality::Best,
+                                                                      Marconi::PictureQuality::Balanced,
+                                                                      Marconi::PictureQuality::LowBandwidth};
+                m_quality = kQualities[event.GetId() - ID_QUALITY_FIRST];
+                Marconi::QualitySettings settings = Marconi::SettingsFor(m_quality);
+                m_client.SetQuality(settings.compressLevel, settings.qualityLevel);
+            }
+            else if (event.GetId() >= ID_DISPLAY_FIRST && event.GetId() <= ID_DISPLAY_LAST)
+            {
+                size_t index = static_cast<size_t>(event.GetId() - ID_DISPLAY_FIRST);
+                if (index < m_screens.size())
+                {
+                    m_displayId = static_cast<long>(m_screens[index].id);
+                    ApplyDisplayChoice();
+                }
             }
             break;
         }
@@ -1401,15 +1725,17 @@ namespace MarconiUI
             wxAuiPaneInfoArray& panes = m_aui.GetAllPanes();
             for (size_t i = 0; i < panes.GetCount(); ++i)
             {
-                if (panes[i].name != "Screen" && !panes[i].IsFloating())
+                if (panes[i].name != "Screen" && panes[i].name != "ConnectionLost" && !panes[i].IsFloating())
                 {
                     panes[i].Hide();
                 }
             }
             m_aui.Update();
             ShowFullScreen(true, wxFULLSCREEN_ALL);
+            m_fullScreenBar->Begin();
             return;
         }
+        m_fullScreenBar->End();
         ShowFullScreen(false, wxFULLSCREEN_ALL);
         m_aui.LoadPerspective(m_layoutBeforeFullScreen);
         FitToDesktop();
@@ -1425,6 +1751,7 @@ namespace MarconiUI
             return;
         }
         m_aui.GetPane("Screen").Show().CenterPane();
+        m_aui.GetPane("ConnectionLost").Hide(); // only ever shown while a connection is being retried
         // A panel floating on a monitor that's no longer connected comes back docked.
         wxAuiPaneInfoArray& panes = m_aui.GetAllPanes();
         for (size_t i = 0; i < panes.GetCount(); ++i)
@@ -1512,6 +1839,13 @@ namespace MarconiUI
             status += " - waiting for the screen...";
         }
         status += wxString::Format(" - %d%%", m_canvas->GetShownPercent());
+        for (size_t i = 0; i < m_screens.size(); ++i)
+        {
+            if (!m_canvas->GetViewport().IsEmpty() && static_cast<long>(m_screens[i].id) == m_displayId)
+            {
+                status += wxString::Format(" - display %zu of %zu", i + 1, m_screens.size());
+            }
+        }
         if (m_canvas->IsViewOnly())
         {
             status += " - view only";
@@ -1534,6 +1868,12 @@ namespace MarconiUI
         }
         saved.scaleMode = m_canvas->GetScaleMode();
         saved.zoomPercent = m_canvas->GetZoomPercent();
+        saved.displayId = m_displayId;
+        saved.quality = Marconi::QualityName(m_quality);
+        if (!IsFullScreen() && !IsMaximized() && !IsIconized())
+        {
+            saved.windowRect = GetRect();
+        }
         saved.viewOnly = m_canvas->IsViewOnly();
         saved.clipboard = m_clipboard.IsEnabled();
         saved.systemKeys = m_sendSystemKeys;
@@ -1569,11 +1909,25 @@ namespace MarconiUI
         m_questionChanged.notify_all();
         StopProbe();
         StopTimers();
+        m_retryTimer.Stop();
         if (m_systemKeys)
         {
             m_systemKeys->Stop();
         }
         m_canvas->ReleaseInput();
+        if (m_options.lockOnDisconnect && m_connected && !m_canvas->IsViewOnly())
+        {
+            // Win+L on Windows and most Linux desktops; Ctrl+Cmd+Q on a Mac (Command is Super over VNC).
+            LOG_INFO("Viewer", "Locking the other computer's screen before disconnecting");
+            if (m_client.IsAppleServer())
+            {
+                SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Super_L, 'q'});
+            }
+            else
+            {
+                SendKeyCombination({Marconi::Keysym::Super_L, 'l'});
+            }
+        }
         m_client.Disconnect();
         event.Skip(); // default handler destroys the frame
         if (m_options.headless)

@@ -200,6 +200,21 @@ namespace MarconiTest
         changed.notify_all();
     }
 
+    void RecordingListener::OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& layout)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        screens = layout;
+        ++screenLayouts;
+        changed.notify_all();
+    }
+
+    void RecordingListener::OnDesktopResizeRefused(int status)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        resizeRefusedStatus = status;
+        changed.notify_all();
+    }
+
     void RecordingListener::OnServerCutText(const std::string& text)
     {
         std::lock_guard<std::mutex> lock(mutex);

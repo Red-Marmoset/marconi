@@ -305,29 +305,52 @@ namespace Marconi
                 SendEncodings(options.encodings);
                 return;
             }
-            if (m_decoders.count(Encoding::Tight) != 0 || m_decoders.count(Encoding::Zrle) != 0)
             {
-                if (options.compressLevel >= 0 && options.compressLevel <= 9)
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_baseEncodings = encodings;
+                m_wantExtendedClipboard = options.extendedClipboard;
+            }
+            SendEncodings(ComposeEncodings(options.compressLevel, options.qualityLevel));
+        }
+
+        std::vector<int32_t> Client::ComposeEncodings(int compressLevel, int qualityLevel) const
+        {
+            std::vector<int32_t> encodings;
+            bool extendedClipboard;
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                encodings = m_baseEncodings;
+                extendedClipboard = m_wantExtendedClipboard;
+            }
+            if (encodings.empty())
+            {
+                return encodings;
+            }
+            bool tight = std::find(encodings.begin(), encodings.end(), Encoding::Tight) != encodings.end();
+            bool zrle = std::find(encodings.begin(), encodings.end(), Encoding::Zrle) != encodings.end();
+            if (tight || zrle)
+            {
+                if (compressLevel >= 0 && compressLevel <= 9)
                 {
-                    encodings.push_back(Encoding::CompressLevel0 + options.compressLevel);
+                    encodings.push_back(Encoding::CompressLevel0 + compressLevel);
                 }
-                if (m_decoders.count(Encoding::Tight) != 0 && options.qualityLevel >= 0 && options.qualityLevel <= 9)
+                if (tight && qualityLevel >= 0 && qualityLevel <= 9)
                 {
-                    encodings.push_back(Encoding::QualityLevel0 + options.qualityLevel);
+                    encodings.push_back(Encoding::QualityLevel0 + qualityLevel);
                 }
             }
             encodings.push_back(Encoding::ExtendedDesktopSize);
             encodings.push_back(Encoding::DesktopSize);
             encodings.push_back(Encoding::Cursor);
             encodings.push_back(Encoding::LastRect);
-            if (options.extendedClipboard)
+            if (extendedClipboard)
             {
                 encodings.push_back(Encoding::ExtendedClipboard);
             }
-            SendEncodings(encodings);
+            return encodings;
         }
 
-        void Client::SendEncodings(const std::vector<int32_t>& encodings)
+        Bytes Client::BuildSetEncodings(const std::vector<int32_t>& encodings)
         {
             OutBuffer setEncodings;
             setEncodings.U8(ClientMessage::SetEncodings).Padding(1).U16(static_cast<uint16_t>(encodings.size()));
@@ -335,13 +358,28 @@ namespace Marconi
             {
                 setEncodings.S32(encoding);
             }
-            Send(setEncodings.Data());
             std::string list;
             for (int32_t encoding : encodings)
             {
                 list += (list.empty() ? "" : ", ") + std::to_string(encoding);
             }
             LOG_INFO("Rfb", "Asked for encodings [%s]", list.c_str());
+            return setEncodings.Data();
+        }
+
+        void Client::SendEncodings(const std::vector<int32_t>& encodings)
+        {
+            Send(BuildSetEncodings(encodings));
+        }
+
+        void Client::SetQuality(int compressLevel, int qualityLevel)
+        {
+            std::vector<int32_t> encodings = ComposeEncodings(compressLevel, qualityLevel);
+            if (encodings.empty() || !m_connected)
+            {
+                return;
+            }
+            SendIfConnected(BuildSetEncodings(encodings));
         }
 
         void Client::Run(ConnectionOptions options)
@@ -353,6 +391,11 @@ namespace Marconi
             m_encrypted = false;
             m_extendedClipboard = options.extendedClipboard;
             m_clipboardChannel.Reset();
+            m_supportsResize = false;
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_screens.clear();
+            }
             {
                 std::lock_guard<std::mutex> lock(m_infoMutex);
                 m_encryptionName.clear();
@@ -720,15 +763,70 @@ namespace Marconi
         void Client::HandleExtendedDesktopSize(InStream& in, const Rect& rect)
         {
             // x = reason (0 server, 1 our request, 2 another client), y = status, w/h = new size; then screens.
-            uint8_t screens = in.U8();
+            uint8_t count = in.U8();
             in.Skip(3);
-            in.Skip(static_cast<size_t>(screens) * 16);
+            std::vector<Screen> screens;
+            for (uint8_t i = 0; i < count; ++i)
+            {
+                Screen screen;
+                screen.id = in.U32();
+                screen.x = in.U16();
+                screen.y = in.U16();
+                screen.width = in.U16();
+                screen.height = in.U16();
+                screen.flags = in.U32();
+                screens.push_back(screen);
+            }
+            m_supportsResize = true;
             if (rect.x == 1 && rect.y != 0)
             {
                 LOG_WARNING("Rfb", "The server refused to resize the desktop (status %d)", rect.y);
+                m_listener.OnDesktopResizeRefused(rect.y);
                 return;
             }
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_screens = screens;
+            }
             ResizeFramebuffer(rect.width, rect.height);
+            LOG_INFO("Rfb", "The server has %zu display%s", screens.size(), screens.size() == 1 ? "" : "s");
+            m_listener.OnScreenLayout(screens);
+        }
+
+        std::vector<Screen> Client::GetScreens() const
+        {
+            std::lock_guard<std::mutex> lock(m_infoMutex);
+            return m_screens;
+        }
+
+        Bytes Client::BuildSetDesktopSize(int width, int height, const std::vector<Screen>& screens)
+        {
+            // One display covering the whole desktop, keeping the first display's id and flags so the server sees
+            // a change of size rather than a new display.
+            Screen screen;
+            screen.id = 1;
+            if (!screens.empty())
+            {
+                screen.id = screens[0].id;
+                screen.flags = screens[0].flags;
+            }
+            OutBuffer message;
+            message.U8(ClientMessage::SetDesktopSize).Padding(1);
+            message.U16(static_cast<uint16_t>(width)).U16(static_cast<uint16_t>(height));
+            message.U8(1).Padding(1);
+            message.U32(screen.id).U16(0).U16(0);
+            message.U16(static_cast<uint16_t>(width)).U16(static_cast<uint16_t>(height)).U32(screen.flags);
+            return message.Data();
+        }
+
+        void Client::RequestDesktopSize(int width, int height)
+        {
+            if (!m_supportsResize || width <= 0 || height <= 0 || width > 0xFFFF || height > 0xFFFF)
+            {
+                return;
+            }
+            SendIfConnected(BuildSetDesktopSize(width, height, GetScreens()));
+            LOG_INFO("Rfb", "Asked the server to change its screen to %dx%d", width, height);
         }
 
         void Client::HandleCursor(InStream& in, const Rect& rect)

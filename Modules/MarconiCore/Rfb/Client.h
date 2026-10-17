@@ -87,6 +87,11 @@ namespace Marconi
             // A complete FramebufferUpdate has been applied; `rects` are the areas that changed.
             virtual void OnFramebufferUpdated(const std::vector<Rect>& /*rects*/) {}
             virtual void OnDesktopResized(int /*width*/, int /*height*/) {}
+            // The server described its displays (ExtendedDesktopSize), after any OnDesktopResized for the same
+            // message. Servers that don't send it never call this.
+            virtual void OnScreenLayout(const std::vector<Screen>& /*screens*/) {}
+            // The server turned down RequestDesktopSize (status 1 forbidden, 2 out of resources, 3 bad layout).
+            virtual void OnDesktopResizeRefused(int /*status*/) {}
             // The server sent its cursor shape: draw it locally (the framebuffer no longer contains it).
             virtual void OnCursorShape(const CursorShape& /*cursor*/) {}
             virtual void OnServerCutText(const std::string& /*latin1Text*/) {}
@@ -160,6 +165,22 @@ namespace Marconi
             bool RequestServerClipboard() { return m_clipboardChannel.RequestFromServer(); }
             void RequestFullUpdate();
 
+            // The server's displays, once it has described them (ExtendedDesktopSize); empty otherwise. Any thread.
+            std::vector<Screen> GetScreens() const;
+            // Whether the server can be asked to change its screen size (it sent ExtendedDesktopSize). Any thread.
+            bool SupportsDesktopResize() const { return m_supportsResize.load(); }
+            // Asks the server to make its desktop one display of this size. Ignored unless SupportsDesktopResize();
+            // the answer comes as OnDesktopResized and OnScreenLayout, or OnDesktopResizeRefused. Any thread.
+            void RequestDesktopSize(int width, int height);
+            static Bytes BuildSetDesktopSize(int width, int height, const std::vector<Screen>& screens);
+
+            // Changes the compression and JPEG levels (see ConnectionOptions) on a live connection by sending the
+            // encodings again. Any thread; ignored until connected.
+            void SetQuality(int compressLevel, int qualityLevel);
+
+            // macOS Screen Sharing (RFB 3.889), which has its own quirks and keyboard. Meaningful once connected.
+            bool IsAppleServer() const { return m_appleServer.load(); }
+
             // How long since the last key or pointer event was sent (or attempted). Any thread.
             std::chrono::steady_clock::duration GetTimeSinceInput() const;
 
@@ -193,6 +214,9 @@ namespace Marconi
             void SendPixelFormat();
             void SendSetupMessages(const ConnectionOptions& options);
             void SendEncodings(const std::vector<int32_t>& encodings);
+            static Bytes BuildSetEncodings(const std::vector<int32_t>& encodings);
+            // The real encodings we decode, plus the level hints and pseudo-encodings, in the order to advertise.
+            std::vector<int32_t> ComposeEncodings(int compressLevel, int qualityLevel) const;
             void SendUpdateRequest(bool incremental);
             void MessageLoop(InStream& in);
             void HandleFramebufferUpdate(InStream& in);
@@ -212,7 +236,7 @@ namespace Marconi
             std::map<int32_t, std::unique_ptr<Decoder>> m_decoders;
             static constexpr int kDetailedUpdates = 3;
             int m_detailedUpdates = 0; // connection thread only: how many more updates to log in detail
-            bool m_appleServer = false; // connection thread only: macOS Screen Sharing (RFB 3.889)
+            std::atomic<bool> m_appleServer{false}; // macOS Screen Sharing (RFB 3.889)
             bool m_resendPixelFormatOnResize = true; // connection thread only
             std::atomic<int> m_statUpdates{0};
             std::atomic<int> m_statRectangles{0};
@@ -232,8 +256,12 @@ namespace Marconi
         std::function<void(const FileTransfer::Reply&)> m_fileTransferHandler;
             std::atomic<bool> m_stopping{false};
             std::atomic<bool> m_encrypted{false};
+            std::atomic<bool> m_supportsResize{false};
             mutable std::mutex m_infoMutex;
             std::string m_encryptionName; // guarded by m_infoMutex
+            std::vector<Screen> m_screens; // guarded by m_infoMutex
+            std::vector<int32_t> m_baseEncodings; // guarded by m_infoMutex: the encodings with decoders, in order
+            bool m_wantExtendedClipboard = true;  // guarded by m_infoMutex
         };
     } // namespace Rfb
 } // namespace Marconi

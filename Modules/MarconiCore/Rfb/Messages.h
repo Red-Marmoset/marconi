@@ -76,6 +76,17 @@ namespace Marconi
 
         const char* EncodingName(int32_t encoding);
 
+        // One of the server's displays, from ExtendedDesktopSize: where it sits in the desktop.
+        struct Screen
+        {
+            uint32_t id = 0;
+            int x = 0;
+            int y = 0;
+            int width = 0;
+            int height = 0;
+            uint32_t flags = 0;
+        };
+
         struct Rect
         {
             int x = 0;

@@ -5,6 +5,7 @@
 
 #include <Log/Log.h>
 
+#include <wx/arrstr.h>
 #include <wx/config.h>
 #include <wx/secretstore.h>
 
@@ -151,8 +152,22 @@ namespace MarconiUI
             out.scaleMode = ScaleMode::Fit;
         }
         out.viewOnly = config->ReadBool(path + "/ViewOnly", false);
+        out.displayId = config->ReadLong(path + "/Display", 0);
         out.systemKeys = config->ReadBool(path + "/SystemKeys", false);
         out.clipboard = config->ReadBool(path + "/Clipboard", true);
+        out.quality = config->Read(path + "/Quality", "balanced");
+        out.lockOnDisconnect = config->ReadBool(path + "/LockOnDisconnect", false);
+        out.favourite = config->ReadBool(path + "/Favourite", false);
+        out.notes = config->Read(path + "/Notes", wxEmptyString);
+        out.macAddress = config->Read(path + "/MacAddress", wxEmptyString);
+        wxArrayString window = wxSplit(config->Read(path + "/Window", wxEmptyString), ',');
+        long rect[4] = {0, 0, 0, 0};
+        if (window.size() == 4 && window[0].ToLong(&rect[0]) && window[1].ToLong(&rect[1]) &&
+            window[2].ToLong(&rect[2]) && window[3].ToLong(&rect[3]) && rect[2] > 0 && rect[3] > 0)
+        {
+            out.windowRect = wxRect(static_cast<int>(rect[0]), static_cast<int>(rect[1]), static_cast<int>(rect[2]),
+                                    static_cast<int>(rect[3]));
+        }
         long long lastUsed = config->ReadLongLong(path + "/LastUsed", 0);
         if (lastUsed > 0)
         {
@@ -191,8 +206,19 @@ namespace MarconiUI
                                            ? wxString::Format("%d", connection.zoomPercent)
                                            : wxString("fit"));
         config->Write(path + "/ViewOnly", connection.viewOnly);
+        config->Write(path + "/Display", connection.displayId);
         config->Write(path + "/SystemKeys", connection.systemKeys);
         config->Write(path + "/Clipboard", connection.clipboard);
+        config->Write(path + "/Quality", connection.quality);
+        config->Write(path + "/LockOnDisconnect", connection.lockOnDisconnect);
+        config->Write(path + "/Favourite", connection.favourite);
+        config->Write(path + "/Notes", connection.notes);
+        config->Write(path + "/MacAddress", connection.macAddress);
+        config->Write(path + "/Window", connection.windowRect.IsEmpty()
+                                            ? wxString()
+                                            : wxString::Format("%d,%d,%d,%d", connection.windowRect.x,
+                                                               connection.windowRect.y, connection.windowRect.width,
+                                                               connection.windowRect.height));
         config->Write(path + "/LastUsed",
                       connection.lastUsed.IsValid() ? static_cast<long long>(connection.lastUsed.GetTicks()) : 0LL);
         config->Flush();

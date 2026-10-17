@@ -36,5 +36,10 @@ namespace MarconiUI
         wxCheckBox* m_viewOnly = nullptr;
         wxCheckBox* m_clipboard = nullptr;
         wxCheckBox* m_systemKeys = nullptr;
+        wxChoice* m_quality = nullptr;
+        wxCheckBox* m_lock = nullptr;
+        wxCheckBox* m_favourite = nullptr;
+        wxTextCtrl* m_mac = nullptr;
+        wxTextCtrl* m_notes = nullptr;
     };
 } // namespace MarconiUI

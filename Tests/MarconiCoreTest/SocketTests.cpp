@@ -4,6 +4,7 @@
 #include "TestSupport.h"
 
 #include <MarconiCore/Net/Socket.h>
+#include <MarconiCore/Net/SocketPlatform.h>
 
 #include <chrono>
 
@@ -34,6 +35,23 @@ namespace MarconiTest
             CHECK(client.ConnectAddresses({kBlackHole, "127.0.0.1"}, listener.GetLocalPort(), 10000, error));
             CHECK(client.IsOpen());
             CHECK(MillisecondsSince(start) < 2000);
+        });
+
+        RunTest("A connected socket has keep-alive on, so a dead link is noticed", []() {
+            Net::Socket listener;
+            std::string error;
+            CHECK(listener.Listen("127.0.0.1", 0, error));
+            Net::Socket client;
+            CHECK(client.ConnectAddresses({"127.0.0.1"}, listener.GetLocalPort(), 10000, error));
+            int on = 0;
+            socklen_t length = sizeof(on);
+#if defined(_WIN32)
+            SOCKET handle = static_cast<SOCKET>(client.GetHandle());
+#else
+            int handle = static_cast<int>(client.GetHandle());
+#endif
+            CHECK(getsockopt(handle, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<char*>(&on), &length) == 0);
+            CHECK(on != 0);
         });
 
         RunTest("Connect uses the first address when it answers", []() {

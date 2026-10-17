@@ -4,12 +4,15 @@
 #pragma once
 
 #include "ClipboardSync.h"
+#include "ConnectionLostBar.h"
+#include "FullScreenBar.h"
 #include "SystemKeys.h"
 #include "VncCanvas.h"
 
 #include <MarconiCore/Address.h>
 #include <MarconiCore/Files/TightFiles.h>
 #include <MarconiCore/Net/Probe.h>
+#include <MarconiCore/Quality.h>
 #include <MarconiCore/Rfb/Client.h>
 
 #include <wx/aui/framemanager.h>
@@ -44,6 +47,11 @@ namespace MarconiUI
         bool fullScreen = false;
         bool clipboard = true;
         bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
+        long displayId = 0;     // which of the server's displays to show (its id), 0 for all of them
+        Marconi::PictureQuality quality = Marconi::PictureQuality::Balanced;
+        bool lockOnDisconnect = false; // send the lock shortcut to the other computer when the window closes
+        wxString macAddress;    // for waking the computer up when it doesn't answer
+        wxRect windowRect;      // where the window was last time; empty = fit it to the desktop
         wxString savedId;       // the saved connection this window was opened from, if any
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
@@ -85,6 +93,8 @@ namespace MarconiUI
         void OnConnected(const Marconi::Rfb::ServerInit& serverInit) override;
         void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
         void OnDesktopResized(int width, int height) override;
+        void OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens) override;
+        void OnDesktopResizeRefused(int status) override;
         void OnBell() override;
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnServerCutText(const std::string& latin1Text) override;
@@ -140,11 +150,20 @@ namespace MarconiUI
         void ApplyLayout(const wxString& layout);
         wxString GetLayout() const;
         void SyncClipboardToServer();
+        void ApplyDisplayChoice();
+        void RequestMatchingSize();
         void UploadToRemoteDesktop(const std::vector<std::string>& paths);
         void PasteFilesFromClipboard();
         void SaveSettings();
         void WaitForPicture();
         void CheckForPicture();
+        // A connection that was up and went away: keep the window, dim the picture, retry on a schedule.
+        void EnterLostState(const std::string& error);
+        void EnterWakeState();
+        void ScheduleRetry(const std::string& error);
+        void OnRetryTick();
+        void RetryNow();
+        void LeaveLostState();
         void LogTraffic();
 
         ViewerOptions m_options;
@@ -162,6 +181,22 @@ namespace MarconiUI
         wxString m_desktopName;
         wxSize m_connectedSize;
         bool m_connected = false;
+        ConnectionLostBar* m_lostBar = nullptr;
+        FullScreenBar* m_fullScreenBar = nullptr; // appears at the top edge in full screen
+        std::vector<Marconi::Rfb::Screen> m_screens; // the server's displays, when it describes them
+        long m_displayId = 0;         // the display shown, 0 for all
+        bool m_matchWindowSize = false; // ask the server to resize its screen to this window
+        wxTimer m_matchSizeTimer;      // settles window resizes before asking
+        bool m_reconnecting = false;   // the connection was lost and attempts are being made (or waited for)
+        bool m_retryUnderWay = false;  // an attempt is connecting right now
+        int m_retryAttempt = 0;
+        std::string m_lostError;
+        wxString m_lostHeadline;       // "Connection lost" or "Sent a wake-up call"
+        bool m_windowRestored = false; // the window took its saved place and size, so isn't fitted to the desktop
+        Marconi::PictureQuality m_quality = Marconi::PictureQuality::Balanced;
+        wxTimer m_retryTimer;          // ticks every second while waiting for the next attempt
+        std::chrono::steady_clock::time_point m_lostAt;
+        std::chrono::steady_clock::time_point m_retryDue;
         bool m_active = false;          // the window is the active one (system shortcuts are only caught then)
         bool m_sendSystemKeys = false;  // the user wants Alt+Tab, the Windows key and the like sent to the server
         std::unique_ptr<SystemKeyCapture> m_systemKeys;

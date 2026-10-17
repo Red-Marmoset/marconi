@@ -17,7 +17,9 @@ It works with:
 - Use its keyboard and mouse. Keys match your keyboard layout, and a Mac's Command key works as expected.
 - Copy and paste text between the two computers, in either direction, and pictures with servers that allow it.
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
-  Credential Manager, the macOS Keychain, or your Linux desktop's keyring).
+  Credential Manager, the macOS Keychain, or your Linux desktop's keyring), plus notes, favourites, and where each
+  one's window was.
+- Open `vnc://` links from other programs (Windows and macOS).
 - Find computers on your home or office network by itself.
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
@@ -66,7 +68,9 @@ Most of the time a name or address on its own is all you need. For special cases
 
 ## While you're connected
 
-Press **F8** to open Marconi's menu, even in full screen. From it you can:
+Press **F8** to open Marconi's menu, even in full screen. In full screen, resting the pointer at the very top of the
+screen also shows a small bar with the computer's name and the main controls; its **Pin** button keeps it there.
+From the menu you can:
 
 - zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same; in full screen,
   a zoomed-in picture scrolls when the pointer rests at the edge of the screen);
@@ -78,6 +82,10 @@ Press **F8** to open Marconi's menu, even in full screen. From it you can:
 - send system shortcuts such as Alt+Tab, the Windows key and Cmd+Tab to the other computer as you press them, on
   Windows and macOS (macOS asks you to allow Marconi under Privacy & Security > Accessibility first; Linux desktops
   don't allow this);
+- show just one of the other computer's displays, if it has several and its server says so (TigerVNC and UltraVNC
+  do; Marconi remembers the choice);
+- ask the other computer to change its screen size to fit this window, where its server allows it (this changes
+  the screen for anyone sitting at it too);
 - save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
 - refresh the picture, or disconnect.
 
@@ -99,6 +107,13 @@ of the panel and press Ctrl+C to copy them: files from the other computer are br
 them in Explorer or Finder like any others.
 
 If a file with the same name is already there, Marconi asks whether to replace it, keep both, or skip it.
+
+## Waking a sleeping computer
+
+If you give a saved connection the other computer's hardware address (its "MAC address", which `ipconfig /all`
+on Windows shows as the Physical Address), the **Wake up** button sends it a wake-up call over the network, and
+Marconi offers to do the same when it can't connect. The computer has to be on the same network and set to wake
+from the network (usually a setting in its BIOS or network adapter).
 
 ## Appearance and settings
 
@@ -139,6 +154,11 @@ folder**, or find it here:
 
 If the other computer accepts the connection but then never answers, Marconi gives up after 10 seconds and says so.
 
+If a connection drops while you're using it, the window stays open with the last picture dimmed, and Marconi tries
+again by itself: after 2 seconds, then 4, 8, 16 and every 30 seconds after that, for up to 5 minutes. A bar at the
+top shows the countdown with **Retry Now** and **Disconnect** buttons. Nothing you type while it's disconnected is
+sent later.
+
 The log folder can also hold pictures of the other computer's screen. Marconi 0.2.0 and earlier saved a few during
 every connection (files named `snapshot_...png`), and you can delete them. The testing mode for developers
 (`--headless`, described below) saves pictures there on purpose. Look through the folder before you send it to anyone.
@@ -175,7 +195,7 @@ On macOS and Linux these files can only be read by your own account.
   can't be sent.
 - VNC passwords containing characters outside Western European languages. The VNC password check only carries
   those, so such a password won't work with Marconi. A Mac account login accepts any characters.
-- Changing the other computer's screen resolution from Marconi.
+- Changing the other computer's screen resolution with servers that don't support it (Macs, TightVNC).
 - Apple's newest login methods. The one every recent macOS version offers works.
 
 ---

@@ -368,3 +368,26 @@ namespace MarconiUI
         return wxApp::OnExit();
     }
 } // namespace MarconiUI
+
+#if defined(__WXOSX__)
+namespace MarconiUI
+{
+    void MarconiApp::MacOpenURL(const wxString& url)
+    {
+        ViewerOptions options;
+        std::string error;
+        ConnectionStore store;
+        SavedConnection saved;
+        if (store.FindByAddress(url, saved) && ViewerOptionsFromSaved(saved, store, options, error))
+        {
+            store.MarkUsed(saved.id);
+        }
+        else if (!Marconi::ParseAddress(url.utf8_string(), options.address, error))
+        {
+            wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING);
+            return;
+        }
+        (new ViewerFrame(options))->Show();
+    }
+} // namespace MarconiUI
+#endif
