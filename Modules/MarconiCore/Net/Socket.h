@@ -27,7 +27,8 @@ namespace Marconi
             Socket& operator=(Socket&& other) noexcept;
 
             // Resolves `host` and connects to the first address that accepts within `timeoutMs`.
-            // Leaves the socket in blocking mode with TCP_NODELAY set. On failure `error` describes why.
+            // Leaves the socket in blocking mode with TCP_NODELAY and TCP keep-alive set (so a dead link is noticed
+            // within a minute or so). On failure `error` describes why.
             // If `cancel` becomes true while waiting, gives up promptly.
             bool Connect(const std::string& host, uint16_t port, int timeoutMs, std::string& error,
                          const std::atomic<bool>* cancel = nullptr);

@@ -28,6 +28,7 @@ namespace Test
         MarconiTest::RunTightFilesTests();
         MarconiTest::RunFileViewTests();
         MarconiTest::RunExtendedClipboardTests();
+        MarconiTest::RunReconnectTests();
 
         printf("\nMarconiCoreTest: %d passed, %d failed\n", MarconiTest::g_passed, MarconiTest::g_failed);
         return MarconiTest::g_failed;

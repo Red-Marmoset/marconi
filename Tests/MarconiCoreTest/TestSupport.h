@@ -136,4 +136,5 @@ namespace MarconiTest
     void RunTightFilesTests();
     void RunFileViewTests();
     void RunExtendedClipboardTests();
+    void RunReconnectTests();
 } // namespace MarconiTest

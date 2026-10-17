@@ -15,6 +15,7 @@
 
 #include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
+#include <MarconiCore/Reconnect.h>
 #include <MarconiCore/Text.h>
 #include <MarconiCore/Zoom.h>
 
@@ -114,6 +115,17 @@ namespace MarconiUI
 
         CreateToolbar();
         CreateStatusBar();
+        m_lostBar = new ConnectionLostBar(this, [this]() { RetryNow(); }, [this]() { Close(); });
+        m_aui.AddPane(m_lostBar, wxAuiPaneInfo()
+                                     .Name("ConnectionLost")
+                                     .Top()
+                                     .Layer(3)
+                                     .CaptionVisible(false)
+                                     .CloseButton(false)
+                                     .Floatable(false)
+                                     .Movable(false)
+                                     .Fixed()
+                                     .Hide());
         FilePanel::Remote remote;
         remote.host = m_options.address.host;
         remote.username = m_options.credentials.username;
@@ -209,6 +221,8 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { LogTraffic(); }, m_statsTimer.GetId());
         m_clipboardTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
+        m_retryTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnRetryTick(); }, m_retryTimer.GetId());
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
@@ -842,7 +856,14 @@ namespace MarconiUI
             }
         }
         m_canvas->SetDesktopSize(serverInit.width, serverInit.height);
-        FitToDesktop();
+        if (m_reconnecting)
+        {
+            LeaveLostState();
+        }
+        else
+        {
+            FitToDesktop();
+        }
         if (m_options.fullScreen && !IsFullScreen())
         {
             ToggleFullScreen();
@@ -983,6 +1004,17 @@ namespace MarconiUI
         m_connected = false;
         UpdateSystemKeyCapture();
         UpdateControls();
+        if (m_reconnecting && !info.authenticationFailed && !info.error.empty())
+        {
+            // An attempt failed: wait and try again, unless the time is up.
+            m_retryUnderWay = false;
+            ScheduleRetry(info.error);
+            return;
+        }
+        if (m_reconnecting)
+        {
+            LeaveLostState(); // a rejected password or a deliberate close: the dialogs below take over
+        }
         if (!info.error.empty() && m_usingRemembered && !m_reprobed && !info.wasConnected &&
             !info.authenticationFailed)
         {
@@ -1018,16 +1050,99 @@ namespace MarconiUI
             return;
         }
 
+        if (info.wasConnected)
+        {
+            // Lost after it was up (a network blip, a server restart): keep the window and retry on a schedule.
+            EnterLostState(info.error);
+            return;
+        }
         SetStatusText("Disconnected: " + wxString::FromUTF8(info.error));
-        wxString message = info.wasConnected ? "The connection was lost:\n\n" : "Could not connect:\n\n";
+        wxString message = "Could not connect:\n\n";
         wxMessageDialog retry(this, message + wxString::FromUTF8(info.error), caption, wxYES_NO | wxICON_ERROR);
-        retry.SetYesNoLabels(info.wasConnected ? "Reconnect" : "Try Again", "Close");
+        retry.SetYesNoLabels("Try Again", "Close");
         if (retry.ShowModal() == wxID_YES)
         {
             ConnectVnc(m_port);
             return;
         }
         Close(true);
+    }
+
+    void ViewerFrame::EnterLostState(const std::string& error)
+    {
+        LOG_INFO("Viewer", "Connection lost; retrying for up to %d seconds", Marconi::Reconnect::kGiveUpSeconds);
+        m_reconnecting = true;
+        m_retryUnderWay = false;
+        m_retryAttempt = 0;
+        m_lostAt = std::chrono::steady_clock::now();
+        m_canvas->SetStale(true);
+        m_aui.GetPane("ConnectionLost").Show();
+        m_aui.Update();
+        ScheduleRetry(error);
+    }
+
+    void ViewerFrame::ScheduleRetry(const std::string& error)
+    {
+        m_lostError = error;
+        auto now = std::chrono::steady_clock::now();
+        int sinceLost = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(now - m_lostAt).count());
+        wxString reason = wxString::FromUTF8(error);
+        if (Marconi::Reconnect::ShouldGiveUp(sinceLost))
+        {
+            m_retryTimer.Stop();
+            m_lostBar->SetMessage("Couldn't reconnect in " + wxString::Format("%d", Marconi::Reconnect::kGiveUpSeconds / 60) +
+                                  " minutes (" + reason + ").");
+            m_lostBar->EnableRetry(true);
+            SetStatusText("Connection lost: " + reason);
+            return;
+        }
+        ++m_retryAttempt;
+        m_retryDue = now + std::chrono::seconds(Marconi::Reconnect::DelaySeconds(m_retryAttempt));
+        m_lostBar->EnableRetry(true);
+        m_retryTimer.Start(1000);
+        OnRetryTick();
+    }
+
+    void ViewerFrame::OnRetryTick()
+    {
+        if (!m_reconnecting || m_retryUnderWay)
+        {
+            return;
+        }
+        auto now = std::chrono::steady_clock::now();
+        if (now >= m_retryDue)
+        {
+            RetryNow();
+            return;
+        }
+        int seconds = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(m_retryDue - now).count()) + 1;
+        wxString reason = wxString::FromUTF8(m_lostError);
+        m_lostBar->SetMessage("Connection lost (" + reason + "). Retrying in " + wxString::Format("%d", seconds) +
+                              " s" + wxString::FromUTF8("\xE2\x80\xA6"));
+        SetStatusText("Connection lost: " + reason);
+    }
+
+    void ViewerFrame::RetryNow()
+    {
+        if (!m_reconnecting || m_retryUnderWay)
+        {
+            return;
+        }
+        m_retryTimer.Stop();
+        m_retryUnderWay = true;
+        m_lostBar->EnableRetry(false);
+        m_lostBar->SetMessage("Reconnecting to " + GetServerDisplayName() + wxString::FromUTF8("\xE2\x80\xA6"));
+        ConnectVnc(m_port);
+    }
+
+    void ViewerFrame::LeaveLostState()
+    {
+        m_reconnecting = false;
+        m_retryUnderWay = false;
+        m_retryTimer.Stop();
+        m_canvas->SetStale(false);
+        m_aui.GetPane("ConnectionLost").Hide();
+        m_aui.Update();
     }
 
     void ViewerFrame::FitToDesktop()
@@ -1401,7 +1516,7 @@ namespace MarconiUI
             wxAuiPaneInfoArray& panes = m_aui.GetAllPanes();
             for (size_t i = 0; i < panes.GetCount(); ++i)
             {
-                if (panes[i].name != "Screen" && !panes[i].IsFloating())
+                if (panes[i].name != "Screen" && panes[i].name != "ConnectionLost" && !panes[i].IsFloating())
                 {
                     panes[i].Hide();
                 }
@@ -1425,6 +1540,7 @@ namespace MarconiUI
             return;
         }
         m_aui.GetPane("Screen").Show().CenterPane();
+        m_aui.GetPane("ConnectionLost").Hide(); // only ever shown while a connection is being retried
         // A panel floating on a monitor that's no longer connected comes back docked.
         wxAuiPaneInfoArray& panes = m_aui.GetAllPanes();
         for (size_t i = 0; i < panes.GetCount(); ++i)
@@ -1569,6 +1685,7 @@ namespace MarconiUI
         m_questionChanged.notify_all();
         StopProbe();
         StopTimers();
+        m_retryTimer.Stop();
         if (m_systemKeys)
         {
             m_systemKeys->Stop();

@@ -12,6 +12,7 @@
 #include <wx/cursor.h>
 #include <wx/dnd.h>
 #include <wx/dcclient.h>
+#include <wx/dcgraph.h>
 #include <wx/dcmemory.h>
 #include <wx/image.h>
 #include <wx/toplevel.h>
@@ -329,6 +330,27 @@ namespace MarconiUI
         fill(visible.x, shown.GetBottom() + 1, visible.width, visible.GetBottom() - shown.GetBottom());
         fill(visible.x, shown.y, shown.x - visible.x, shown.height);
         fill(shown.GetRight() + 1, shown.y, visible.GetRight() - shown.GetRight(), shown.height);
+
+        if (m_stale)
+        {
+            // The connection is gone: dim the old picture so nobody mistakes it for a live one.
+            wxGCDC overlay(dc);
+            overlay.SetDeviceOrigin(0, 0);
+            overlay.SetPen(*wxTRANSPARENT_PEN);
+            overlay.SetBrush(wxBrush(wxColour(0, 0, 0, 128)));
+            overlay.DrawRectangle(0, 0, client.x, client.y);
+        }
+    }
+
+    void VncCanvas::SetStale(bool stale)
+    {
+        if (stale && !m_stale)
+        {
+            ReleaseInput();
+            m_edgeScrollTimer.Stop();
+        }
+        m_stale = stale;
+        Refresh(false);
     }
 
     void VncCanvas::SetViewOnly(bool viewOnly)
@@ -426,7 +448,7 @@ namespace MarconiUI
         {
             UpdateEdgeScrolling(event.GetPosition());
         }
-        if (m_viewOnly)
+        if (m_viewOnly || m_stale)
         {
             return;
         }
@@ -540,7 +562,7 @@ namespace MarconiUI
             }
             return;
         }
-        if (m_viewOnly)
+        if (m_viewOnly || m_stale)
         {
             return;
         }
@@ -614,7 +636,7 @@ namespace MarconiUI
                 return;
             }
         }
-        if (m_viewOnly || !m_keys.OnKeyDown(event))
+        if (m_viewOnly || m_stale || !m_keys.OnKeyDown(event))
         {
             event.Skip(); // let wxEVT_CHAR deliver the produced character
         }
@@ -635,7 +657,7 @@ namespace MarconiUI
 
     void VncCanvas::OnChar(wxKeyEvent& event)
     {
-        if (!m_viewOnly)
+        if (!m_viewOnly && !m_stale)
         {
             m_keys.OnChar(event);
         }

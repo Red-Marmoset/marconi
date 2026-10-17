@@ -50,6 +50,9 @@ namespace Marconi
                 int on = 1;
                 setsockopt(Native(handle), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&on), sizeof(on));
                 Platform::DisableSigPipe(handle);
+                // A cable pulled or a server that vanished would otherwise go unnoticed until something is sent:
+                // probe after 15 quiet seconds, every 5 seconds, and give up after 4 unanswered probes.
+                Platform::EnableKeepAlive(handle, 15, 5, 4);
             }
         } // namespace
 

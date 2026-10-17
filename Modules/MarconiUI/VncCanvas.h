@@ -59,6 +59,9 @@ namespace MarconiUI
 
         // View-only ignores local input (and releases anything held when switched on).
         void SetViewOnly(bool viewOnly);
+        // The connection was lost: the last picture stays, dimmed, and input is ignored until it comes back.
+        void SetStale(bool stale);
+        bool IsStale() const { return m_stale; }
         bool IsViewOnly() const { return m_viewOnly; }
 
         // Lifts every key and button the server thinks is held.
@@ -125,6 +128,7 @@ namespace MarconiUI
 
         KeyMapper m_keys;
         bool m_viewOnly = false;
+        bool m_stale = false;
         uint8_t m_buttons = 0;
         wxPoint m_lastPointer = wxPoint(-1, -1);
         int m_wheelVertical = 0;

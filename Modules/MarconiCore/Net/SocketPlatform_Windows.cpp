@@ -3,6 +3,8 @@
 
 #include "SocketPlatform.h"
 
+#include <mstcpip.h>
+
 #include <mutex>
 
 namespace Marconi
@@ -39,6 +41,19 @@ namespace Marconi
             void DisableSigPipe(intptr_t)
             {
                 // Windows has no SIGPIPE.
+            }
+
+            void EnableKeepAlive(intptr_t handle, int idleSeconds, int intervalSeconds, int count)
+            {
+                // Windows 10 and later send 10 probes; `count` can't be set here.
+                (void)count;
+                tcp_keepalive settings = {};
+                settings.onoff = 1;
+                settings.keepalivetime = static_cast<ULONG>(idleSeconds) * 1000;
+                settings.keepaliveinterval = static_cast<ULONG>(intervalSeconds) * 1000;
+                DWORD returned = 0;
+                WSAIoctl(static_cast<SOCKET>(handle), SIO_KEEPALIVE_VALS, &settings, sizeof(settings), nullptr, 0,
+                         &returned, nullptr, nullptr);
             }
 
             int SendFlags()

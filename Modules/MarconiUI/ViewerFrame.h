@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ClipboardSync.h"
+#include "ConnectionLostBar.h"
 #include "SystemKeys.h"
 #include "VncCanvas.h"
 
@@ -145,6 +146,12 @@ namespace MarconiUI
         void SaveSettings();
         void WaitForPicture();
         void CheckForPicture();
+        // A connection that was up and went away: keep the window, dim the picture, retry on a schedule.
+        void EnterLostState(const std::string& error);
+        void ScheduleRetry(const std::string& error);
+        void OnRetryTick();
+        void RetryNow();
+        void LeaveLostState();
         void LogTraffic();
 
         ViewerOptions m_options;
@@ -162,6 +169,14 @@ namespace MarconiUI
         wxString m_desktopName;
         wxSize m_connectedSize;
         bool m_connected = false;
+        ConnectionLostBar* m_lostBar = nullptr;
+        bool m_reconnecting = false;   // the connection was lost and attempts are being made (or waited for)
+        bool m_retryUnderWay = false;  // an attempt is connecting right now
+        int m_retryAttempt = 0;
+        std::string m_lostError;
+        wxTimer m_retryTimer;          // ticks every second while waiting for the next attempt
+        std::chrono::steady_clock::time_point m_lostAt;
+        std::chrono::steady_clock::time_point m_retryDue;
         bool m_active = false;          // the window is the active one (system shortcuts are only caught then)
         bool m_sendSystemKeys = false;  // the user wants Alt+Tab, the Windows key and the like sent to the server
         std::unique_ptr<SystemKeyCapture> m_systemKeys;

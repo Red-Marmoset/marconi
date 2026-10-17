@@ -49,6 +49,28 @@ namespace Marconi
 #endif
             }
 
+            void EnableKeepAlive(intptr_t handle, int idleSeconds, int intervalSeconds, int count)
+            {
+                int fd = static_cast<int>(handle);
+                int on = 1;
+                setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof(on));
+#if defined(TCP_KEEPIDLE)
+                setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idleSeconds, sizeof(idleSeconds));
+#elif defined(TCP_KEEPALIVE)
+                setsockopt(fd, IPPROTO_TCP, TCP_KEEPALIVE, &idleSeconds, sizeof(idleSeconds)); // macOS's name for it
+#endif
+#if defined(TCP_KEEPINTVL)
+                setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &intervalSeconds, sizeof(intervalSeconds));
+#else
+                (void)intervalSeconds;
+#endif
+#if defined(TCP_KEEPCNT)
+                setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &count, sizeof(count));
+#else
+                (void)count;
+#endif
+            }
+
             int SendFlags()
             {
 #if defined(MSG_NOSIGNAL)

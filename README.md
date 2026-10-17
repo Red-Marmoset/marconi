@@ -139,6 +139,11 @@ folder**, or find it here:
 
 If the other computer accepts the connection but then never answers, Marconi gives up after 10 seconds and says so.
 
+If a connection drops while you're using it, the window stays open with the last picture dimmed, and Marconi tries
+again by itself: after 2 seconds, then 4, 8, 16 and every 30 seconds after that, for up to 5 minutes. A bar at the
+top shows the countdown with **Retry Now** and **Disconnect** buttons. Nothing you type while it's disconnected is
+sent later.
+
 The log folder can also hold pictures of the other computer's screen. Marconi 0.2.0 and earlier saved a few during
 every connection (files named `snapshot_...png`), and you can delete them. The testing mode for developers
 (`--headless`, described below) saves pictures there on purpose. Look through the folder before you send it to anyone.

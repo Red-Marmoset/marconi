@@ -38,6 +38,10 @@ namespace Marconi
             void ShutdownSocket(intptr_t handle);
             bool SetNonBlocking(intptr_t handle, bool nonBlocking);
             void DisableSigPipe(intptr_t handle);
+            // TCP keep-alive: after `idleSeconds` without traffic, probe every `intervalSeconds`, giving up (and
+            // failing the connection) after `count` unanswered probes. Best effort: not every system takes every
+            // setting.
+            void EnableKeepAlive(intptr_t handle, int idleSeconds, int intervalSeconds, int count);
             int SendFlags();
 
             int LastError();
