@@ -4,6 +4,9 @@
 #include "ConnectionDialog.h"
 #include "Appearance.h"
 
+#include "SystemKeys.h"
+
+#include <MarconiCore/Zoom.h>
 #include <MarconiCore/Address.h>
 
 #include <wx/checkbox.h>
@@ -53,8 +56,19 @@ namespace MarconiUI
         scaleRow->Add(new wxStaticText(view->GetStaticBox(), wxID_ANY, "Size:"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
         m_scale = new wxChoice(view->GetStaticBox(), wxID_ANY);
         m_scale->Append("Scale to fit the window");
-        m_scale->Append("Actual size (100%)");
-        m_scale->SetSelection(connection.scaleMode == ScaleMode::Actual ? 1 : 0);
+        for (size_t i = 0; i < Marconi::Zoom::kLevelCount; ++i)
+        {
+            int level = Marconi::Zoom::kLevels[i];
+            m_scale->Append(level == 100 ? wxString("Actual size (100%)") : wxString::Format("%d%%", level));
+            if (connection.scaleMode == ScaleMode::Fixed && connection.zoomPercent == level)
+            {
+                m_scale->SetSelection(static_cast<int>(i) + 1);
+            }
+        }
+        if (m_scale->GetSelection() == wxNOT_FOUND)
+        {
+            m_scale->SetSelection(0);
+        }
         scaleRow->Add(m_scale, 1);
         view->Add(scaleRow, 0, wxEXPAND | wxALL, gap);
         m_viewOnly = new wxCheckBox(view->GetStaticBox(), wxID_ANY, "View only (don't send keyboard or mouse)");
@@ -63,6 +77,15 @@ namespace MarconiUI
         m_clipboard = new wxCheckBox(view->GetStaticBox(), wxID_ANY, "Share the clipboard");
         m_clipboard->SetValue(connection.clipboard);
         view->Add(m_clipboard, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
+        m_systemKeys = new wxCheckBox(view->GetStaticBox(), wxID_ANY,
+                                      "Send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer");
+        m_systemKeys->SetValue(connection.systemKeys && SystemKeyCapture::IsSupported());
+        if (!SystemKeyCapture::IsSupported())
+        {
+            m_systemKeys->Disable();
+            m_systemKeys->SetToolTip(wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
+        }
+        view->Add(m_systemKeys, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
         outer->Add(view, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(20));
 
         outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(20));
@@ -107,9 +130,15 @@ namespace MarconiUI
         connection.address = m_address->GetValue().Strip(wxString::both);
         connection.username = m_username->GetValue().Strip(wxString::both);
         connection.rememberPassword = m_rememberPassword->GetValue();
-        connection.scaleMode = m_scale->GetSelection() == 1 ? ScaleMode::Actual : ScaleMode::Fit;
+        int selection = m_scale->GetSelection();
+        connection.scaleMode = selection > 0 ? ScaleMode::Fixed : ScaleMode::Fit;
+        if (selection > 0)
+        {
+            connection.zoomPercent = Marconi::Zoom::kLevels[selection - 1];
+        }
         connection.viewOnly = m_viewOnly->GetValue();
         connection.clipboard = m_clipboard->GetValue();
+        connection.systemKeys = m_systemKeys->GetValue();
         return connection;
     }
 

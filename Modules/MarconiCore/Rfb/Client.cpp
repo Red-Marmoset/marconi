@@ -40,7 +40,10 @@ namespace Marconi
             }
         }
 
-        Client::Client(ClientListener& listener) : m_listener(listener)
+        Client::Client(ClientListener& listener)
+            : m_listener(listener),
+              m_clipboardChannel([this](const Bytes& message) { SendIfConnected(message); },
+                                 [this](const ClipboardContent& content) { m_listener.OnServerClipboard(content); })
         {
         }
 
@@ -317,6 +320,10 @@ namespace Marconi
             encodings.push_back(Encoding::DesktopSize);
             encodings.push_back(Encoding::Cursor);
             encodings.push_back(Encoding::LastRect);
+            if (options.extendedClipboard)
+            {
+                encodings.push_back(Encoding::ExtendedClipboard);
+            }
             SendEncodings(encodings);
         }
 
@@ -344,6 +351,8 @@ namespace Marconi
             bool choseTight = false;  // the server and we agreed on TightVNC's own login
             bool handshaking = false; // between connecting and ServerInit
             m_encrypted = false;
+            m_extendedClipboard = options.extendedClipboard;
+            m_clipboardChannel.Reset();
             {
                 std::lock_guard<std::mutex> lock(m_infoMutex);
                 m_encryptionName.clear();
@@ -384,14 +393,17 @@ namespace Marconi
                 };
 
                 TlsStarter startTls;
-                if (options.createTlsStream || Net::IsTlsAvailable())
+                bool anonymousTls = options.createTlsStream ? options.createTlsStreamAnonymous
+                                                            : Net::IsAnonymousTlsAvailable();
+                if (options.allowEncryption && (options.createTlsStream || Net::IsTlsAvailable()))
                 {
                     startTls = [this, &options, &in](bool anonymous) { StartTls(anonymous, options, in); };
                 }
                 // A server that accepts the connection but then says nothing mustn't leave us waiting for ever.
                 m_socket.SetReceiveTimeout(options.connectTimeoutMs);
                 HandshakeResult handshake =
-                    PerformHandshake(in, *this, options.shared, provider, startTls, options.allowTight, &choseTight);
+                    PerformHandshake(in, *this, options.shared, provider, startTls, options.allowTight, &choseTight,
+                                     anonymousTls);
                 m_fileTransfer = handshake.tightFileTransfer;
                 m_socket.SetReceiveTimeout(0);
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
@@ -417,6 +429,11 @@ namespace Marconi
             {
                 error = exception.what();
                 info.authenticationFailed = true;
+            }
+            catch (const EncryptionUnavailable& exception)
+            {
+                error = exception.what();
+                info.encryptionUnusable = true;
             }
             catch (const std::exception& exception)
             {
@@ -753,9 +770,19 @@ namespace Marconi
             int32_t length = in.S32();
             if (length < 0)
             {
-                // Extended clipboard pseudo-message; we don't advertise it, but skip it safely.
-                LOG_INFO("Rfb", "The server sent an extended clipboard message, which we don't support");
-                in.Skip(static_cast<size_t>(-static_cast<int64_t>(length)));
+                // An Extended Clipboard message: U32 flags, then the body.
+                size_t size = static_cast<size_t>(-static_cast<int64_t>(length));
+                if (size > kMaxCutTextLength)
+                {
+                    throw RfbError("The server sent an oversized clipboard update");
+                }
+                if (!m_extendedClipboard)
+                {
+                    LOG_INFO("Rfb", "The server sent an extended clipboard message we didn't ask for; skipping it");
+                    in.Skip(size);
+                    return;
+                }
+                m_clipboardChannel.HandleServerMessage(in.ReadBytes(size));
                 return;
             }
             if (static_cast<uint32_t>(length) > kMaxCutTextLength)

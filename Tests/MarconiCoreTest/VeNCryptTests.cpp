@@ -238,6 +238,36 @@ namespace MarconiTest
             CHECK(Rfb::ChooseVeNCryptSubtype({Plain}) == 0);
             CHECK(Rfb::ChooseVeNCryptSubtype({Plain, 999}) == 0);
             CHECK(Rfb::ChooseVeNCryptSubtype({}) == 0);
+            // Without anonymous TLS, only the subtypes with a certificate count.
+            CHECK(Rfb::ChooseVeNCryptSubtype({TlsVnc, X509Vnc}, false) == X509Vnc);
+            CHECK(Rfb::ChooseVeNCryptSubtype({TlsVnc, TlsPlain, Plain}, false) == 0);
+        });
+
+        RunTest("A server offering only anonymous encryption is reported so the retry can go without", []() {
+            Rfb::ConnectionOptions options;
+            options.createTlsStreamAnonymous = false;
+            VeNCryptSession s(options);
+            s.OfferVeNCrypt({Rfb::VeNCrypt::Plain, Rfb::VeNCrypt::TlsVnc}, 0);
+            CHECK(Disconnected(s));
+            CHECK(s.listener.encryptionUnusable);
+            CHECK(s.listener.disconnectError.find("without a certificate") != std::string::npos);
+        });
+
+        RunTest("With encryption not asked for, the plain VNC password is used", []() {
+            Rfb::ConnectionOptions options;
+            options.allowEncryption = false;
+            options.credentials.password = "secret";
+            VeNCryptSession s(options);
+            Rfb::OutBuffer types;
+            types.U8(2).U8(Rfb::SecurityType::VeNCrypt).U8(Rfb::SecurityType::VncAuth);
+            s.server.Send(types);
+            CHECK(s.server.In().U8() == Rfb::SecurityType::VncAuth);
+            Rfb::Bytes challenge(16, 0x44);
+            s.server.Send(challenge);
+            CHECK(s.server.In().ReadBytes(16) == Rfb::ComputeVncAuthResponse("secret", challenge));
+            s.FinishHandshake("plain");
+            CHECK(s.listener.WaitFor([&]() { return s.listener.connected; }));
+            CHECK(!s.client.IsEncrypted());
         });
 
         RunTest("VeNCrypt: the VNC password and everything after it go through the encrypted stream", []() {

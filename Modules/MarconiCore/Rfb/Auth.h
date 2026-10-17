@@ -17,8 +17,9 @@ namespace Marconi
 
         // Picks the VeNCrypt subtype to use from those the server offers, or 0 if none is acceptable: a server
         // certificate beats anonymous encryption, and within each, no login beats the VNC password beats a user
-        // name and password. The unencrypted Plain subtype is never chosen.
-        uint32_t ChooseVeNCryptSubtype(const std::vector<uint32_t>& offered);
+        // name and password. The unencrypted Plain subtype is never chosen, nor an anonymous one unless
+        // `anonymousTls` says this build can make such connections.
+        uint32_t ChooseVeNCryptSubtype(const std::vector<uint32_t>& offered, bool anonymousTls = true);
 
         // VNC Authentication (type 2): DES-encrypts the 16 byte challenge with the password as key.
         Bytes ComputeVncAuthResponse(const std::string& passwordUtf8, const Bytes& challenge);
@@ -30,8 +31,9 @@ namespace Marconi
                                  const Credentials& credentials);
 
         // Runs the security-type specific exchange (everything between choosing the type and SecurityResult).
-        // Returns the VeNCrypt subtype in use, or 0 for every other type.
+        // Returns the VeNCrypt subtype in use, or 0 for every other type. Throws EncryptionUnavailable if the
+        // server offers only encryption this build can't make (see ChooseVeNCryptSubtype).
         uint32_t Authenticate(uint8_t securityType, InStream& in, ByteSink& out, const CredentialsProvider& credentials,
-                              const TlsStarter& startTls);
+                              const TlsStarter& startTls, bool anonymousTls = true);
     } // namespace Rfb
 } // namespace Marconi

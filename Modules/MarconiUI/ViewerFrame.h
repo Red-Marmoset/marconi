@@ -4,6 +4,7 @@
 #pragma once
 
 #include "ClipboardSync.h"
+#include "SystemKeys.h"
 #include "VncCanvas.h"
 
 #include <MarconiCore/Address.h>
@@ -38,9 +39,11 @@ namespace MarconiUI
         Marconi::Address address;
         Marconi::Rfb::Credentials credentials;
         ScaleMode scaleMode = ScaleMode::Fit;
+        int zoomPercent = 100; // with ScaleMode::Fixed: one of Marconi::Zoom::kLevels
         bool viewOnly = false;
         bool fullScreen = false;
         bool clipboard = true;
+        bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
         wxString savedId;       // the saved connection this window was opened from, if any
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
@@ -85,6 +88,7 @@ namespace MarconiUI
         void OnBell() override;
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnServerCutText(const std::string& latin1Text) override;
+        void OnServerClipboard(const Marconi::Rfb::ClipboardContent& content) override;
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
@@ -107,7 +111,13 @@ namespace MarconiUI
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
         void WatchClipboard();
         void SaveHeadlessSnapshot();
-        void SavePngInBackground(const wxImage& image, const wxString& path);
+        // `done` (optional) runs on the UI thread with whether the file was written.
+        void SavePngInBackground(const wxImage& image, const wxString& path, std::function<void(bool)> done = nullptr);
+        wxMenu* CreateScreenshotMenu() const;
+        wxImage TakeScreenshot() const;
+        void SaveScreenshot();
+        void CopyScreenshot();
+        static bool IncludePointerInScreenshots();
         void StopTimers();
         void FitToDesktop();
         void OnClose(wxCloseEvent& event);
@@ -121,6 +131,8 @@ namespace MarconiUI
         void UpdateControls();
         void UpdateStatus();
         void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
+        wxMenu* CreateSendKeysMenu() const;
+        void UpdateSystemKeyCapture();
         void ToggleFullScreen();
         void ToggleToolbar();
         void ToggleFiles();
@@ -128,6 +140,8 @@ namespace MarconiUI
         void ApplyLayout(const wxString& layout);
         wxString GetLayout() const;
         void SyncClipboardToServer();
+        void UploadToRemoteDesktop(const std::vector<std::string>& paths);
+        void PasteFilesFromClipboard();
         void SaveSettings();
         void WaitForPicture();
         void CheckForPicture();
@@ -142,11 +156,15 @@ namespace MarconiUI
         FilePanel* m_files = nullptr;
         std::unique_ptr<Marconi::Files::TightFiles> m_tightFiles; // file transfer on the VNC connection (TightVNC)
         bool m_allowTight = true; // cleared after a TightVNC login goes wrong, so the retry uses the plain login
+        bool m_allowEncryption = true; // cleared when the server only offers encryption this computer can't make
         wxString m_defaultLayout;         // the layout before any saved one was applied
         wxString m_layoutBeforeFullScreen; // full screen hides docked panels; this brings them back
         wxString m_desktopName;
         wxSize m_connectedSize;
         bool m_connected = false;
+        bool m_active = false;          // the window is the active one (system shortcuts are only caught then)
+        bool m_sendSystemKeys = false;  // the user wants Alt+Tab, the Windows key and the like sent to the server
+        std::unique_ptr<SystemKeyCapture> m_systemKeys;
         wxTimer m_pictureTimer;   // re-asks for the desktop if a fresh connection still shows nothing
         int m_pictureRetries = 0;
         bool m_waitingForPicture = false; // no pixels since connecting or the last resize
@@ -157,6 +175,7 @@ namespace MarconiUI
         wxTimer m_quitTimer;
         int m_headlessSnapshots = 0;
         std::vector<std::thread> m_saveThreads; // PNG encoders, joined on destruction
+        wxString m_screenshotFolder;            // where the last screenshot of this window went
         wxTimer m_clipboardTimer; // sends local clipboard changes while connected and in front
         long m_clipboardChangeCount = -1;
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in

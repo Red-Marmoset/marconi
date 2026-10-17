@@ -1,16 +1,20 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// View of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer: actual size with
-// scrollbars, or scaled to fit the window
+// View of the remote desktop, drawn from a backing bitmap kept in sync with the framebuffer: scaled to fit the
+// window, or at a fixed zoom level with scrollbars
 
 #include "VncCanvas.h"
 
+#include "ClipboardFiles.h"
 #include "ScaledBlit.h"
+
+#include <MarconiCore/Zoom.h>
 
 #include <wx/cursor.h>
 #include <wx/dnd.h>
 #include <wx/dcclient.h>
 #include <wx/dcmemory.h>
 #include <wx/image.h>
+#include <wx/toplevel.h>
 
 #include <algorithm>
 #include <cmath>
@@ -21,6 +25,7 @@ namespace MarconiUI
     namespace
     {
         const wxColour kOutsideColour(48, 48, 48);
+        constexpr int kEdgeScrollIntervalMs = 30;
     }
 
     VncCanvas::VncCanvas(wxWindow* parent, Marconi::Rfb::Client& client)
@@ -45,6 +50,8 @@ namespace MarconiUI
         Bind(wxEVT_KEY_UP, &VncCanvas::OnKeyUp, this);
         Bind(wxEVT_CHAR, &VncCanvas::OnChar, this);
         Bind(wxEVT_KILL_FOCUS, &VncCanvas::OnKillFocus, this);
+        m_edgeScrollTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnEdgeScroll(); }, m_edgeScrollTimer.GetId());
         UpdateLayout();
     }
 
@@ -91,24 +98,57 @@ namespace MarconiUI
         Refresh(false);
     }
 
-    void VncCanvas::SetScaleMode(ScaleMode mode)
+    void VncCanvas::SetZoom(ScaleMode mode, int zoomPercent)
     {
         m_scaleMode = mode;
+        m_zoomPercent = std::clamp(zoomPercent, Marconi::Zoom::kLevels[0],
+                                   Marconi::Zoom::kLevels[Marconi::Zoom::kLevelCount - 1]);
         UpdateLayout();
         Refresh(false);
+    }
+
+    int VncCanvas::GetShownPercent() const
+    {
+        return static_cast<int>(std::lround(m_scale * 100.0));
+    }
+
+    void VncCanvas::ZoomStep(bool in, const wxPoint& around)
+    {
+        ZoomAround(Marconi::Zoom::Next(GetShownPercent(), in), around);
+    }
+
+    void VncCanvas::ZoomAround(int zoomPercent, const wxPoint& around)
+    {
+        // Keep the desktop point under `around` where it is on screen, as far as the scroll range allows.
+        wxPoint desktopPoint = ToDesktop(around);
+        SetZoom(ScaleMode::Fixed, zoomPercent);
+        wxPoint virtualPoint(m_offset.x + static_cast<int>(std::lround(desktopPoint.x * m_scale)),
+                             m_offset.y + static_cast<int>(std::lround(desktopPoint.y * m_scale)));
+        int unitX = 1;
+        int unitY = 1;
+        GetScrollPixelsPerUnit(&unitX, &unitY);
+        Scroll(std::max(0, (virtualPoint.x - around.x) / std::max(unitX, 1)),
+               std::max(0, (virtualPoint.y - around.y) / std::max(unitY, 1)));
+        Refresh(false);
+    }
+
+    wxSize VncCanvas::GetShownSize() const
+    {
+        return wxSize(static_cast<int>(std::lround(m_desktopSize.x * m_scale)),
+                      static_cast<int>(std::lround(m_desktopSize.y * m_scale)));
     }
 
     void VncCanvas::UpdateLayout()
     {
         wxSize client = GetClientSize();
-        if (m_scaleMode == ScaleMode::Actual || m_desktopSize.x <= 0 || m_desktopSize.y <= 0)
+        if (m_desktopSize.x <= 0 || m_desktopSize.y <= 0)
         {
             m_scale = 1.0;
             m_offset = wxPoint();
-            ShowScrollbars(wxSHOW_SB_DEFAULT, wxSHOW_SB_DEFAULT);
-            SetVirtualSize(m_desktopSize);
+            ShowScrollbars(wxSHOW_SB_NEVER, wxSHOW_SB_NEVER);
+            SetVirtualSize(client);
         }
-        else
+        else if (m_scaleMode == ScaleMode::Fit)
         {
             ShowScrollbars(wxSHOW_SB_NEVER, wxSHOW_SB_NEVER);
             SetVirtualSize(client);
@@ -117,9 +157,18 @@ namespace MarconiUI
             m_scale = std::min(static_cast<double>(client.x) / m_desktopSize.x,
                                static_cast<double>(client.y) / m_desktopSize.y);
             m_scale = std::max(m_scale, 0.01);
-            wxSize shown(static_cast<int>(std::lround(m_desktopSize.x * m_scale)),
-                         static_cast<int>(std::lround(m_desktopSize.y * m_scale)));
+            wxSize shown = GetShownSize();
             m_offset = wxPoint((client.x - shown.x) / 2, (client.y - shown.y) / 2);
+        }
+        else
+        {
+            // A fixed level: scrollbars when the picture is bigger than the window, centred when it's smaller.
+            m_scale = m_zoomPercent / 100.0;
+            wxSize shown = GetShownSize();
+            ShowScrollbars(wxSHOW_SB_DEFAULT, wxSHOW_SB_DEFAULT);
+            SetVirtualSize(shown);
+            client = GetClientSize();
+            m_offset = wxPoint(std::max(0, (client.x - shown.x) / 2), std::max(0, (client.y - shown.y) / 2));
         }
         ApplyCursor();
     }
@@ -133,16 +182,9 @@ namespace MarconiUI
 
     wxPoint VncCanvas::ToDesktop(const wxPoint& windowPoint) const
     {
-        wxPoint point;
-        if (m_scaleMode == ScaleMode::Actual)
-        {
-            point = CalcUnscrolledPosition(windowPoint);
-        }
-        else
-        {
-            point.x = static_cast<int>(std::floor((windowPoint.x - m_offset.x) / m_scale));
-            point.y = static_cast<int>(std::floor((windowPoint.y - m_offset.y) / m_scale));
-        }
+        wxPoint unscrolled = CalcUnscrolledPosition(windowPoint);
+        wxPoint point(static_cast<int>(std::floor((unscrolled.x - m_offset.x) / m_scale)),
+                      static_cast<int>(std::floor((unscrolled.y - m_offset.y) / m_scale)));
         wxSize target = m_desktopSize;
         if (m_pending && m_desktopSize.x > 0 && m_desktopSize.y > 0)
         {
@@ -158,16 +200,12 @@ namespace MarconiUI
 
     wxRect VncCanvas::ToWindow(const wxRect& desktopRect) const
     {
-        if (m_scaleMode == ScaleMode::Actual)
-        {
-            return wxRect(CalcScrolledPosition(desktopRect.GetPosition()), desktopRect.GetSize());
-        }
         // Round outwards so the repainted area always covers every partially affected screen pixel.
         int left = m_offset.x + static_cast<int>(std::floor(desktopRect.x * m_scale)) - 1;
         int top = m_offset.y + static_cast<int>(std::floor(desktopRect.y * m_scale)) - 1;
         int right = m_offset.x + static_cast<int>(std::ceil((desktopRect.x + desktopRect.width) * m_scale)) + 1;
         int bottom = m_offset.y + static_cast<int>(std::ceil((desktopRect.y + desktopRect.height) * m_scale)) + 1;
-        return wxRect(left, top, right - left, bottom - top);
+        return wxRect(CalcScrolledPosition(wxPoint(left, top)), wxSize(right - left, bottom - top));
     }
 
     void VncCanvas::UpdateRects(const std::vector<Marconi::Rfb::Rect>& rects)
@@ -241,55 +279,33 @@ namespace MarconiUI
     void VncCanvas::OnPaint(wxPaintEvent&)
     {
         wxPaintDC dc(this);
-        DoPrepareDC(dc);
+        DoPrepareDC(dc); // from here on the DC takes virtual (unscrolled) coordinates
         wxSize client = GetClientSize();
         wxRect visible(CalcUnscrolledPosition(wxPoint(0, 0)), client);
+        wxRect shown(m_offset, GetShownSize());
         dc.SetPen(*wxTRANSPARENT_PEN);
         dc.SetBrush(wxBrush(kOutsideColour));
 
-        if (m_scaleMode == ScaleMode::Actual)
-        {
-            if (m_backing.IsOk())
-            {
-                wxMemoryDC source(m_backing);
-                for (wxRegionIterator it(GetUpdateRegion()); it; ++it)
-                {
-                    wxRect area = it.GetRect();
-                    area.SetPosition(CalcUnscrolledPosition(area.GetPosition()));
-                    wxRect inside = area.Intersect(wxRect(m_desktopSize));
-                    if (!inside.IsEmpty())
-                    {
-                        dc.Blit(inside.GetPosition(), inside.GetSize(), &source, inside.GetPosition());
-                    }
-                }
-            }
-            // Fill whatever part of the window lies outside the desktop.
-            if (visible.GetRight() >= m_desktopSize.x)
-            {
-                dc.DrawRectangle(m_desktopSize.x, visible.y, visible.GetRight() - m_desktopSize.x + 1, visible.height);
-            }
-            if (visible.GetBottom() >= m_desktopSize.y)
-            {
-                dc.DrawRectangle(visible.x, m_desktopSize.y, std::min(visible.width, m_desktopSize.x - visible.x),
-                                 visible.GetBottom() - m_desktopSize.y + 1);
-            }
-            return;
-        }
-
-        // Fit mode: no scrolling. Map each damaged window area back to the desktop pixels covering it (plus a
-        // pixel of margin for the filter) and stretch those; the clip region keeps neighbouring draws seamless.
-        wxRect shown(m_offset, wxSize(static_cast<int>(std::lround(m_desktopSize.x * m_scale)),
-                                      static_cast<int>(std::lround(m_desktopSize.y * m_scale))));
         if (m_backing.IsOk())
         {
             wxMemoryDC source(m_backing);
+            bool unscaled = std::abs(m_scale - 1.0) < 1e-9;
             for (wxRegionIterator it(GetUpdateRegion()); it; ++it)
             {
-                wxRect area = it.GetRect().Intersect(shown);
+                wxRect area = it.GetRect();
+                area.SetPosition(CalcUnscrolledPosition(area.GetPosition()));
+                area = area.Intersect(shown);
                 if (area.IsEmpty())
                 {
                     continue;
                 }
+                if (unscaled)
+                {
+                    dc.Blit(area.GetPosition(), area.GetSize(), &source, area.GetPosition() - m_offset);
+                    continue;
+                }
+                // Map each damaged area back to the desktop pixels covering it (plus a pixel of margin for the
+                // filter) and stretch those; the clip region keeps neighbouring draws seamless.
                 int x0 = std::max(0, static_cast<int>(std::floor((area.x - m_offset.x) / m_scale)) - 1);
                 int y0 = std::max(0, static_cast<int>(std::floor((area.y - m_offset.y) / m_scale)) - 1);
                 int x1 = std::min(m_desktopSize.x, static_cast<int>(std::ceil((area.GetRight() + 1 - m_offset.x) / m_scale)) + 1);
@@ -302,11 +318,17 @@ namespace MarconiUI
                 ScaledBlit(dc, destinationRect, source, sourceRect);
             }
         }
-        // Letterbox bars.
-        dc.DrawRectangle(0, 0, client.x, shown.y);
-        dc.DrawRectangle(0, shown.GetBottom() + 1, client.x, client.y - shown.GetBottom() - 1);
-        dc.DrawRectangle(0, shown.y, shown.x, shown.height);
-        dc.DrawRectangle(shown.GetRight() + 1, shown.y, client.x - shown.GetRight() - 1, shown.height);
+        // Fill whatever part of the window lies outside the picture: bars above, below, left and right of it.
+        auto fill = [&dc](int x, int y, int width, int height) {
+            if (width > 0 && height > 0)
+            {
+                dc.DrawRectangle(x, y, width, height);
+            }
+        };
+        fill(visible.x, visible.y, visible.width, shown.y - visible.y);
+        fill(visible.x, shown.GetBottom() + 1, visible.width, visible.GetBottom() - shown.GetBottom());
+        fill(visible.x, shown.y, shown.x - visible.x, shown.height);
+        fill(shown.GetRight() + 1, shown.y, visible.GetRight() - shown.GetRight(), shown.height);
     }
 
     void VncCanvas::SetViewOnly(bool viewOnly)
@@ -400,6 +422,10 @@ namespace MarconiUI
         {
             SetFocus();
         }
+        if (event.Moving() || event.Dragging())
+        {
+            UpdateEdgeScrolling(event.GetPosition());
+        }
         if (m_viewOnly)
         {
             return;
@@ -430,8 +456,90 @@ namespace MarconiUI
         SendPointer(event.GetPosition());
     }
 
+    void VncCanvas::UpdateEdgeScrolling(const wxPoint& windowPoint)
+    {
+        // In full screen there are no window edges to grab a scrollbar by, so a zoomed-in picture scrolls while the
+        // pointer rests near an edge of the screen.
+        wxTopLevelWindow* top = dynamic_cast<wxTopLevelWindow*>(wxGetTopLevelParent(this));
+        wxSize client = GetClientSize();
+        wxSize shown = GetShownSize();
+        bool scrollable = top != nullptr && top->IsFullScreen() && m_scaleMode == ScaleMode::Fixed &&
+                          (shown.x > client.x || shown.y > client.y);
+        int edge = FromDIP(24);
+        bool nearEdge = windowPoint.x < edge || windowPoint.y < edge || windowPoint.x >= client.x - edge ||
+                        windowPoint.y >= client.y - edge;
+        m_edgeScrollPoint = windowPoint;
+        if (scrollable && nearEdge)
+        {
+            if (!m_edgeScrollTimer.IsRunning())
+            {
+                m_edgeScrollTimer.Start(kEdgeScrollIntervalMs);
+            }
+        }
+        else
+        {
+            m_edgeScrollTimer.Stop();
+        }
+    }
+
+    void VncCanvas::OnEdgeScroll()
+    {
+        wxSize client = GetClientSize();
+        int edge = FromDIP(24);
+        int step = FromDIP(16);
+        int unitX = 1;
+        int unitY = 1;
+        GetScrollPixelsPerUnit(&unitX, &unitY);
+        wxPoint before = GetViewStart();
+        wxPoint target = before;
+        if (m_edgeScrollPoint.x < edge)
+        {
+            target.x -= step / std::max(unitX, 1);
+        }
+        else if (m_edgeScrollPoint.x >= client.x - edge)
+        {
+            target.x += step / std::max(unitX, 1);
+        }
+        if (m_edgeScrollPoint.y < edge)
+        {
+            target.y -= step / std::max(unitY, 1);
+        }
+        else if (m_edgeScrollPoint.y >= client.y - edge)
+        {
+            target.y += step / std::max(unitY, 1);
+        }
+        Scroll(std::max(0, target.x), std::max(0, target.y));
+        if (GetViewStart() == before)
+        {
+            m_edgeScrollTimer.Stop(); // the end of the picture
+            return;
+        }
+        Refresh(false);
+        if (!m_viewOnly)
+        {
+            SendPointer(m_edgeScrollPoint); // the desktop under the pointer moved
+        }
+    }
+
     void VncCanvas::OnMouseWheel(wxMouseEvent& event)
     {
+        if (event.CmdDown())
+        {
+            // Ctrl (Cmd on a Mac) and the wheel zoom the view; this never reaches the remote computer.
+            if (event.AltDown() || event.GetWheelAxis() == wxMOUSE_WHEEL_HORIZONTAL)
+            {
+                return;
+            }
+            m_zoomWheel += event.GetWheelRotation();
+            int delta = std::max(event.GetWheelDelta(), 1);
+            while (std::abs(m_zoomWheel) >= delta)
+            {
+                bool in = m_zoomWheel > 0;
+                m_zoomWheel += in ? -delta : delta;
+                ZoomStep(in, event.GetPosition());
+            }
+            return;
+        }
         if (m_viewOnly)
         {
             return;
@@ -466,10 +574,39 @@ namespace MarconiUI
     void VncCanvas::OnKeyDown(wxKeyEvent& event)
     {
         int code = event.GetKeyCode();
-        if (code >= WXK_F1 && code <= WXK_F24 && m_localCommandHandler)
+        if (m_localCommandHandler)
         {
-            Marconi::LocalCommand command = Marconi::GetLocalCommand(code - WXK_F1 + 1,
-                                                                     event.GetModifiers() != wxMOD_NONE);
+            Marconi::LocalCommand command = Marconi::LocalCommand::None;
+            if (code >= WXK_F1 && code <= WXK_F24)
+            {
+                command = Marconi::GetLocalCommand(code - WXK_F1 + 1, event.GetModifiers() != wxMOD_NONE);
+            }
+            else
+            {
+                char character = 0;
+                if (code == WXK_NUMPAD_ADD || code == WXK_ADD)
+                {
+                    character = '+';
+                }
+                else if (code == WXK_NUMPAD_SUBTRACT || code == WXK_SUBTRACT)
+                {
+                    character = '-';
+                }
+                else if (code == WXK_NUMPAD0)
+                {
+                    character = '0';
+                }
+                else if (event.GetUnicodeKey() != WXK_NONE && event.GetUnicodeKey() < 128)
+                {
+                    character = static_cast<char>(event.GetUnicodeKey());
+                }
+                command = Marconi::GetLocalZoomCommand(character, event.CmdDown(), event.AltDown());
+                if (command == Marconi::LocalCommand::None && (character == 'v' || character == 'V') &&
+                    event.CmdDown() && !event.AltDown() && !event.ShiftDown() && ClipboardHasFiles())
+                {
+                    command = Marconi::LocalCommand::PasteFiles; // files copied locally: Paste sends them over
+                }
+            }
             if (command != Marconi::LocalCommand::None)
             {
                 m_keptKey = code;

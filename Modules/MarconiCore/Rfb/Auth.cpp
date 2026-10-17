@@ -99,7 +99,7 @@ namespace Marconi
 
             // VeNCrypt: agree on version 0.2, pick an encrypted subtype, start TLS, then run the subtype's login.
             uint32_t AuthenticateVeNCrypt(InStream& in, ByteSink& out, const CredentialsProvider& provider,
-                                          const TlsStarter& startTls)
+                                          const TlsStarter& startTls, bool anonymousTls)
             {
                 if (!startTls)
                 {
@@ -128,9 +128,14 @@ namespace Marconi
                     offered.push_back(in.U32());
                 }
                 LOG_INFO("Rfb", "Server offers VeNCrypt subtypes [%s]", ListSubtypes(offered).c_str());
-                uint32_t chosen = ChooseVeNCryptSubtype(offered);
+                uint32_t chosen = ChooseVeNCryptSubtype(offered, anonymousTls);
                 if (chosen == 0)
                 {
+                    if (!anonymousTls && ChooseVeNCryptSubtype(offered, true) != 0)
+                    {
+                        throw EncryptionUnavailable("The server only offers encryption without a certificate, which "
+                                                    "this computer can't make");
+                    }
                     throw RfbError("The server offers no encrypted login method Marconi supports "
                                    "(VeNCrypt subtypes: " + ListSubtypes(offered) + ")");
                 }
@@ -176,12 +181,18 @@ namespace Marconi
             return types;
         }
 
-        uint32_t ChooseVeNCryptSubtype(const std::vector<uint32_t>& offered)
+        uint32_t ChooseVeNCryptSubtype(const std::vector<uint32_t>& offered, bool anonymousTls)
         {
             static const uint32_t kPreferred[] = {VeNCrypt::X509None, VeNCrypt::X509Vnc, VeNCrypt::X509Plain,
                                                   VeNCrypt::TlsNone,  VeNCrypt::TlsVnc,  VeNCrypt::TlsPlain};
             for (uint32_t candidate : kPreferred)
             {
+                bool anonymous = candidate == VeNCrypt::TlsNone || candidate == VeNCrypt::TlsVnc ||
+                                 candidate == VeNCrypt::TlsPlain;
+                if (anonymous && !anonymousTls)
+                {
+                    continue;
+                }
                 if (std::find(offered.begin(), offered.end(), candidate) != offered.end())
                 {
                     return candidate;
@@ -251,7 +262,7 @@ namespace Marconi
         }
 
         uint32_t Authenticate(uint8_t securityType, InStream& in, ByteSink& out, const CredentialsProvider& credentials,
-                              const TlsStarter& startTls)
+                              const TlsStarter& startTls, bool anonymousTls)
         {
             switch (securityType)
             {
@@ -264,7 +275,7 @@ namespace Marconi
                 AuthenticateArd(in, out, credentials);
                 return 0;
             case SecurityType::VeNCrypt:
-                return AuthenticateVeNCrypt(in, out, credentials, startTls);
+                return AuthenticateVeNCrypt(in, out, credentials, startTls, anonymousTls);
             default:
                 throw RfbError("Unsupported security type " + std::to_string(securityType));
             }

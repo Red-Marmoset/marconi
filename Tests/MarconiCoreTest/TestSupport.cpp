@@ -207,6 +207,13 @@ namespace MarconiTest
         changed.notify_all();
     }
 
+    void RecordingListener::OnServerClipboard(const Marconi::Rfb::ClipboardContent& content)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        clipboards.push_back(content);
+        changed.notify_all();
+    }
+
     void RecordingListener::OnCursorShape(const Rfb::CursorShape& shape)
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -229,6 +236,7 @@ namespace MarconiTest
         disconnectError = info.error;
         authenticationFailed = info.authenticationFailed;
         tightFailed = info.tightFailed;
+        encryptionUnusable = info.encryptionUnusable;
         changed.notify_all();
     }
 

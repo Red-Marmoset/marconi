@@ -4,23 +4,30 @@
 #include "ViewerFrame.h"
 
 #include "AppIcon.h"
+#include "ClipboardFiles.h"
 #include "ClipboardWatch.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
 #include "FilePanel.h"
 #include "ForegroundWindow.h"
+#include "Screenshot.h"
 #include "VncCanvas.h"
 
 #include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
 #include <MarconiCore/Text.h>
+#include <MarconiCore/Zoom.h>
 
 #include <Log/Log.h>
 
 #include <wx/datetime.h>
 #include <wx/app.h>
 #include <wx/aui/auibar.h>
+#include <wx/clipbrd.h>
+#include <wx/config.h>
+#include <wx/dataobj.h>
 #include <wx/display.h>
+#include <wx/filedlg.h>
 #include <wx/image.h>
 #include <wx/stdpaths.h>
 #include <wx/menu.h>
@@ -56,14 +63,33 @@ namespace MarconiUI
         enum CommandId
         {
             ID_SCALE_FIT = wxID_HIGHEST + 100,
-            ID_SCALE_ACTUAL,
+            ID_ZOOM_IN,
+            ID_ZOOM_OUT,
+            ID_ZOOM_LEVEL_FIRST, // one id per Marconi::Zoom::kLevels entry
+            ID_ZOOM_LEVEL_LAST = ID_ZOOM_LEVEL_FIRST + static_cast<int>(Marconi::Zoom::kLevelCount) - 1,
             ID_FULL_SCREEN,
             ID_VIEW_ONLY,
             ID_CLIPBOARD,
+            ID_SEND_CLIPBOARD,
+            ID_GET_CLIPBOARD,
+            ID_PASTE_FILES,
             ID_SEND_CTRL_ALT_DEL,
+            ID_SEND_ALT_TAB,
+            ID_SEND_ALT_F4,
+            ID_SEND_WINDOWS_KEY,
+            ID_SEND_CTRL_ESC,
+            ID_SEND_CTRL_SHIFT_ESC,
+            ID_SEND_PRINT_SCREEN,
+            ID_SEND_CMD_TAB,
             ID_SEND_F8,
             ID_SEND_F9,
             ID_SEND_F10,
+            ID_SEND_KEYS,   // the toolbar button that opens the Send Keys menu
+            ID_SYSTEM_KEYS, // send system shortcuts to the other computer
+            ID_SCREENSHOT,  // the toolbar button that opens the Screenshot menu
+            ID_SCREENSHOT_SAVE,
+            ID_SCREENSHOT_COPY,
+            ID_SCREENSHOT_POINTER,
             ID_SHOW_TOOLBAR,
             ID_FILES,
             ID_REFRESH,
@@ -106,12 +132,7 @@ namespace MarconiUI
                                    .Floatable(true)
                                    .Dockable(true)
                                    .Hide());
-        m_canvas->SetFileDropHandler([this](const std::vector<std::string>& paths) {
-            ShowFiles();
-            m_files->UploadToDesktop(paths);
-            SetStatusText(wxString::Format("Copying %zu item%s to the remote Desktop", paths.size(),
-                                           paths.size() == 1 ? "" : "s"));
-        });
+        m_canvas->SetFileDropHandler([this](const std::vector<std::string>& paths) { UploadToRemoteDesktop(paths); });
         m_aui.Update();
         m_defaultLayout = m_aui.SavePerspective();
         if (!m_options.layout.empty())
@@ -129,24 +150,45 @@ namespace MarconiUI
         SetClientSize(FromDIP(wxSize(800, 600)));
 
         m_canvas->SetLocalCommandHandler([this](Marconi::LocalCommand command) {
-            if (command == Marconi::LocalCommand::Menu)
+            switch (command)
             {
+            case Marconi::LocalCommand::Menu:
                 ShowMenu();
-            }
-            else if (command == Marconi::LocalCommand::Toolbar)
-            {
+                break;
+            case Marconi::LocalCommand::Toolbar:
                 ToggleToolbar();
-            }
-            else if (command == Marconi::LocalCommand::Files)
-            {
+                break;
+            case Marconi::LocalCommand::Files:
                 ToggleFiles();
+                break;
+            case Marconi::LocalCommand::ZoomIn:
+            case Marconi::LocalCommand::ZoomOut:
+                m_canvas->ZoomStep(command == Marconi::LocalCommand::ZoomIn,
+                                   m_canvas->ScreenToClient(wxGetMousePosition()));
+                UpdateControls();
+                UpdateStatus();
+                break;
+            case Marconi::LocalCommand::ZoomReset:
+                m_canvas->SetZoom(ScaleMode::Fixed, 100);
+                UpdateControls();
+                UpdateStatus();
+                break;
+            case Marconi::LocalCommand::PasteFiles:
+                PasteFilesFromClipboard();
+                break;
+            default:
+                break;
             }
         });
-        m_canvas->SetScaleMode(options.scaleMode);
+        m_canvas->SetZoom(options.scaleMode, options.zoomPercent);
         m_canvas->SetViewOnly(options.viewOnly);
         m_clipboard.SetEnabled(options.clipboard);
+        m_clipboard.SetStatusHandler([this](const wxString& message) { SetStatusText(message); });
+        m_sendSystemKeys = options.systemKeys && SystemKeyCapture::IsSupported();
         Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& event) {
             event.Skip();
+            m_active = event.GetActive();
+            UpdateSystemKeyCapture();
             if (event.GetActive())
             {
                 // Windows gives an activated frame the focus itself, and keys typed at the frame go nowhere:
@@ -209,8 +251,10 @@ namespace MarconiUI
             options.credentials.password = password.utf8_string();
         }
         options.scaleMode = connection.scaleMode;
+        options.zoomPercent = connection.zoomPercent;
         options.viewOnly = connection.viewOnly;
         options.clipboard = connection.clipboard;
+        options.systemKeys = connection.systemKeys;
         options.layout = connection.layout;
         options.sshHostKey = connection.sshHostKey;
         options.dropFolder = connection.dropFolder;
@@ -246,18 +290,113 @@ namespace MarconiUI
         SavePngInBackground(image, path);
     }
 
-    void ViewerFrame::SavePngInBackground(const wxImage& image, const wxString& path)
+    void ViewerFrame::SavePngInBackground(const wxImage& image, const wxString& path, std::function<void(bool)> done)
     {
         // Encoding a 4K PNG takes seconds; doing it here would stall the viewer. The thread gets its own deep copy
         // (wxImage's reference counting isn't thread-safe) and is joined when the window goes away.
         wxImage copy = image.Copy();
         copy.SetOption(wxIMAGE_OPTION_PNG_COMPRESSION_LEVEL, 1);
-        m_saveThreads.emplace_back([copy, path]() mutable {
-            if (!copy.SaveFile(path, wxBITMAP_TYPE_PNG))
+        m_saveThreads.emplace_back([this, copy, path, done]() mutable {
+            bool saved = copy.SaveFile(path, wxBITMAP_TYPE_PNG);
+            if (!saved)
             {
                 LOG_WARNING("Viewer", "Could not save %s", path.utf8_string().c_str());
             }
+            if (done)
+            {
+                CallAfter([done, saved]() { done(saved); });
+            }
         });
+    }
+
+    bool ViewerFrame::IncludePointerInScreenshots()
+    {
+        return wxConfigBase::Get()->ReadBool("/Screenshots/IncludePointer", false);
+    }
+
+    wxMenu* ViewerFrame::CreateScreenshotMenu() const
+    {
+        wxMenu* menu = new wxMenu();
+        menu->Append(ID_SCREENSHOT_SAVE, "&Save Screenshot...");
+        menu->Append(ID_SCREENSHOT_COPY, "&Copy Screenshot");
+        menu->AppendSeparator();
+        menu->AppendCheckItem(ID_SCREENSHOT_POINTER, "Include the Mouse &Pointer",
+                              "Servers that draw their own pointer into the picture include it either way");
+        menu->Check(ID_SCREENSHOT_POINTER, IncludePointerInScreenshots());
+        bool havePicture = m_connected && m_canvas->HasPicture();
+        menu->Enable(ID_SCREENSHOT_SAVE, havePicture);
+        menu->Enable(ID_SCREENSHOT_COPY, havePicture);
+        return menu;
+    }
+
+    wxImage ViewerFrame::TakeScreenshot() const
+    {
+        // The whole remote desktop at its own resolution, never the window around it.
+        wxImage picture = m_canvas->GetShownPicture();
+        if (IncludePointerInScreenshots() && m_canvas->HasRemoteCursor() && m_canvas->GetLastPointer().x >= 0)
+        {
+            return ComposeScreenshot(picture, &m_canvas->GetRemoteCursor(), m_canvas->GetLastPointer());
+        }
+        return picture;
+    }
+
+    void ViewerFrame::SaveScreenshot()
+    {
+        wxImage image = TakeScreenshot();
+        if (!image.IsOk())
+        {
+            SetStatusText("Nothing to save yet: no picture has arrived");
+            return;
+        }
+        wxString folder = m_screenshotFolder.empty() ? wxStandardPaths::Get().GetUserDir(wxStandardPaths::Dir_Pictures)
+                                                     : m_screenshotFolder;
+        wxString name = SuggestScreenshotName(GetServerDisplayName(), wxDateTime::Now());
+        m_canvas->ReleaseInput();
+        wxFileDialog dialog(this, "Save Screenshot", folder, name, "PNG image (*.png)|*.png",
+                            wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+        if (dialog.ShowModal() != wxID_OK)
+        {
+            return;
+        }
+        wxString path = dialog.GetPath();
+        m_screenshotFolder = dialog.GetDirectory();
+        SetStatusText("Saving " + path + "...");
+        SavePngInBackground(image, path, [this, path](bool saved) {
+            if (saved)
+            {
+                SetStatusText("Saved " + path);
+            }
+            else
+            {
+                SetStatusText("Could not save " + path);
+                wxMessageBox("The screenshot could not be saved to:\n\n" + path, "Marconi", wxOK | wxICON_ERROR, this);
+            }
+        });
+    }
+
+    void ViewerFrame::CopyScreenshot()
+    {
+        wxImage image = TakeScreenshot();
+        if (!image.IsOk())
+        {
+            SetStatusText("Nothing to copy yet: no picture has arrived");
+            return;
+        }
+        {
+            wxClipboardLocker locker;
+            if (!locker)
+            {
+                SetStatusText("Could not open the clipboard");
+                return;
+            }
+            wxTheClipboard->SetData(new wxBitmapDataObject(wxBitmap(image)));
+            wxTheClipboard->Flush();
+        }
+        // With clipboard sharing on and a server that takes images, the copy travels like any other.
+        bool shared = m_clipboard.IsEnabled() && m_client.ServerAcceptsClipboardImages();
+        SyncClipboardToServer();
+        SetStatusText(shared ? "Screenshot copied, and sent to the other computer's clipboard"
+                             : "Screenshot copied (to this computer's clipboard only)");
     }
 
     void ViewerFrame::StopTimers()
@@ -336,6 +475,7 @@ namespace MarconiUI
         connection.exactEncodings = !m_options.encodings.empty();
         connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
         connection.allowTight = m_allowTight;
+        connection.allowEncryption = m_allowEncryption;
         m_client.Connect(connection);
     }
 
@@ -454,6 +594,35 @@ namespace MarconiUI
     void ViewerFrame::OnServerCutText(const std::string& latin1Text)
     {
         CallAfter([this, latin1Text]() { m_clipboard.OnServerText(latin1Text); });
+    }
+
+    void ViewerFrame::OnServerClipboard(const Marconi::Rfb::ClipboardContent& content)
+    {
+        CallAfter([this, content]() { m_clipboard.OnServerContent(content); });
+    }
+
+    void ViewerFrame::UploadToRemoteDesktop(const std::vector<std::string>& paths)
+    {
+        if (paths.empty())
+        {
+            return;
+        }
+        ShowFiles();
+        m_files->UploadToDesktop(paths);
+        SetStatusText(wxString::Format("Copying %zu item%s to the remote Desktop", paths.size(),
+                                       paths.size() == 1 ? "" : "s"));
+    }
+
+    void ViewerFrame::PasteFilesFromClipboard()
+    {
+        // Files copied in Explorer or Finder: pasting on the remote screen copies them to its Desktop, as a drop does.
+        std::vector<std::string> files = GetClipboardFiles();
+        if (files.empty())
+        {
+            SetStatusText("The clipboard holds no files to paste");
+            return;
+        }
+        UploadToRemoteDesktop(files);
     }
 
     void ViewerFrame::SyncClipboardToServer()
@@ -679,6 +848,7 @@ namespace MarconiUI
             ToggleFullScreen();
         }
         UpdateControls();
+        UpdateSystemKeyCapture();
         UpdateStatus();
         m_canvas->SetFocus();
         SyncClipboardToServer();
@@ -779,6 +949,15 @@ namespace MarconiUI
             m_tightFiles->Close();
             m_files->SetTightFiles(nullptr, GetServerDisplayName());
         }
+        if (info.encryptionUnusable && m_allowEncryption)
+        {
+            // Typically a server offering only anonymous TLS, which this computer's TLS library can't make: connect
+            // again without asking for encryption. The status bar then says "not encrypted".
+            LOG_INFO("Viewer", "%s; connecting again without encryption", info.error.c_str());
+            m_allowEncryption = false;
+            ConnectVnc(m_port);
+            return;
+        }
         if (info.tightFailed && m_allowTight)
         {
             // Some servers offer TightVNC's own login but don't handle it well: try once more without it.
@@ -802,6 +981,7 @@ namespace MarconiUI
         m_clipboardTimer.Stop();
         m_canvas->ReleaseInput();
         m_connected = false;
+        UpdateSystemKeyCapture();
         UpdateControls();
         if (!info.error.empty() && m_usingRemembered && !m_reprobed && !info.wasConnected &&
             !info.authenticationFailed)
@@ -860,6 +1040,11 @@ namespace MarconiUI
         int displayIndex = wxDisplay::GetFromWindow(this);
         wxRect available = wxDisplay(displayIndex == wxNOT_FOUND ? 0u : static_cast<unsigned>(displayIndex)).GetClientArea();
         wxSize desktop = m_canvas->GetDesktopSize();
+        if (m_canvas->GetScaleMode() == ScaleMode::Fixed)
+        {
+            desktop.x = static_cast<int>(std::lround(desktop.x * m_canvas->GetZoomPercent() / 100.0));
+            desktop.y = static_cast<int>(std::lround(desktop.y * m_canvas->GetZoomPercent() / 100.0));
+        }
         wxSize decorations = GetSize() - m_canvas->GetSize(); // frame, status bar and any docked panels
         wxSize wanted = desktop + decorations;
         wanted.x = std::min(wanted.x, available.width);
@@ -879,7 +1064,10 @@ namespace MarconiUI
         m_toolBar = new wxAuiToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                      wxAUI_TB_TEXT | wxAUI_TB_HORZ_LAYOUT | wxAUI_TB_GRIPPER | wxAUI_TB_OVERFLOW);
         m_toolBar->AddTool(ID_SCALE_FIT, "Scale to Fit", wxNullBitmap,
-                           "Scale the remote desktop to fit the window (otherwise show it at 100%)", wxITEM_CHECK);
+                           "Scale the remote desktop to fit the window (otherwise show it at the chosen zoom level)",
+                           wxITEM_CHECK);
+        m_toolBar->AddTool(ID_ZOOM_IN, "Zoom In", wxNullBitmap, "Zoom in (Ctrl and +, or Ctrl and the mouse wheel)");
+        m_toolBar->AddTool(ID_ZOOM_OUT, "Zoom Out", wxNullBitmap, "Zoom out (Ctrl and -, or Ctrl and the mouse wheel)");
         m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap, "Full screen (F8 opens the menu)");
         m_toolBar->AddTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, "Watch without sending mouse or keyboard input",
                            wxITEM_CHECK);
@@ -887,6 +1075,9 @@ namespace MarconiUI
                            wxITEM_CHECK);
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+Del", wxNullBitmap, "Send Ctrl+Alt+Del");
+        m_toolBar->AddTool(ID_SEND_KEYS, "Send Keys", wxNullBitmap,
+                           "Send a shortcut the remote computer can't otherwise receive (Alt+Tab, the Windows key...)");
+        m_toolBar->AddTool(ID_SCREENSHOT, "Screenshot", wxNullBitmap, "Save or copy a picture of the remote desktop");
         // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
         m_toolBar->AddTool(ID_SEND_F8, "F8", wxNullBitmap, "Send F8 to the remote computer");
         m_toolBar->AddTool(ID_SEND_F9, "F9", wxNullBitmap, "Send F9 to the remote computer");
@@ -911,16 +1102,39 @@ namespace MarconiUI
     wxMenu* ViewerFrame::CreateMenu() const
     {
         wxMenu* menu = new wxMenu();
-        menu->AppendRadioItem(ID_SCALE_FIT, "Scale to &Fit");
-        menu->AppendRadioItem(ID_SCALE_ACTUAL, "&Actual Size (100%)");
+        wxMenu* zoom = new wxMenu();
+        zoom->AppendRadioItem(ID_SCALE_FIT, "Scale to &Fit the Window");
+        for (size_t i = 0; i < Marconi::Zoom::kLevelCount; ++i)
+        {
+            int level = Marconi::Zoom::kLevels[i];
+            wxString label = wxString::Format("%d%%", level);
+            if (level == 100)
+            {
+                label = "&Actual Size (100%)\tCtrl+0";
+            }
+            zoom->AppendRadioItem(ID_ZOOM_LEVEL_FIRST + static_cast<int>(i), label);
+        }
+        zoom->AppendSeparator();
+        zoom->Append(ID_ZOOM_IN, "Zoom &In\tCtrl++");
+        zoom->Append(ID_ZOOM_OUT, "Zoom &Out\tCtrl+-");
+        menu->AppendSubMenu(zoom, "&Zoom");
         menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
         menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
         menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
+        menu->Append(ID_SEND_CLIPBOARD, "Send Clipboard to the Other Computer");
+        menu->Append(ID_GET_CLIPBOARD, "Get Clipboard from the Other Computer");
+        menu->Append(ID_PASTE_FILES, "Paste Files onto the Other Computer's Desktop\tCtrl+V");
         menu->AppendSeparator();
-        menu->Append(ID_SEND_CTRL_ALT_DEL, "Send Ctrl+Alt+&Del");
-        menu->Append(ID_SEND_F8, "Send F&8");
-        menu->Append(ID_SEND_F9, "Send F&9");
-        menu->Append(ID_SEND_F10, "Send F1&0");
+        menu->AppendSubMenu(CreateSendKeysMenu(), "Send &Keys");
+        menu->AppendSubMenu(CreateScreenshotMenu(), "Screens&hot");
+        wxString systemKeysLabel = "Send System Shortcuts (Alt+Tab, Windows Key) to the Other Computer";
+#if defined(__WXOSX__)
+        systemKeysLabel = "Send System Shortcuts (Cmd+Tab, Cmd+Space) to the Other Computer";
+#endif
+        menu->AppendCheckItem(ID_SYSTEM_KEYS, systemKeysLabel,
+                              SystemKeyCapture::IsSupported()
+                                  ? wxString()
+                                  : wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
         menu->Append(ID_REFRESH, "&Refresh Screen");
         menu->AppendSeparator();
         menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
@@ -928,18 +1142,92 @@ namespace MarconiUI
         menu->AppendSeparator();
         menu->Append(ID_DISCONNECT, "Dis&connect");
 
-        bool fit = m_canvas->GetScaleMode() == ScaleMode::Fit;
-        menu->Check(fit ? ID_SCALE_FIT : ID_SCALE_ACTUAL, true);
+        if (m_canvas->GetScaleMode() == ScaleMode::Fit)
+        {
+            zoom->Check(ID_SCALE_FIT, true);
+        }
+        else
+        {
+            for (size_t i = 0; i < Marconi::Zoom::kLevelCount; ++i)
+            {
+                if (Marconi::Zoom::kLevels[i] == m_canvas->GetZoomPercent())
+                {
+                    zoom->Check(ID_ZOOM_LEVEL_FIRST + static_cast<int>(i), true);
+                }
+            }
+        }
         menu->Check(ID_FULL_SCREEN, IsFullScreen());
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
+        menu->Check(ID_SYSTEM_KEYS, m_sendSystemKeys);
+        menu->Enable(ID_SYSTEM_KEYS, SystemKeyCapture::IsSupported());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
         menu->Check(ID_FILES, m_files->IsShown());
-        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10, ID_REFRESH})
+        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_ALT_TAB, ID_SEND_ALT_F4, ID_SEND_WINDOWS_KEY, ID_SEND_CTRL_ESC,
+                       ID_SEND_CTRL_SHIFT_ESC, ID_SEND_PRINT_SCREEN, ID_SEND_CMD_TAB, ID_SEND_F8, ID_SEND_F9,
+                       ID_SEND_F10, ID_REFRESH})
         {
             menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
         }
+        menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
+        menu->Enable(ID_GET_CLIPBOARD, m_connected);
+        menu->Enable(ID_PASTE_FILES, m_connected && ClipboardHasFiles());
         return menu;
+    }
+
+    wxMenu* ViewerFrame::CreateSendKeysMenu() const
+    {
+        // Shortcuts the local system would act on itself, so they can't simply be typed.
+        wxMenu* keys = new wxMenu();
+        keys->Append(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+&Del");
+        keys->Append(ID_SEND_ALT_TAB, "Alt+&Tab");
+        keys->Append(ID_SEND_ALT_F4, "Alt+F&4");
+        keys->Append(ID_SEND_WINDOWS_KEY, "&Windows Key");
+        keys->Append(ID_SEND_CTRL_ESC, "Ctrl+&Esc");
+        keys->Append(ID_SEND_CTRL_SHIFT_ESC, "Ctrl+&Shift+Esc");
+        keys->Append(ID_SEND_PRINT_SCREEN, "&Print Screen");
+        keys->Append(ID_SEND_CMD_TAB, "&Cmd+Tab (Mac)");
+        keys->AppendSeparator();
+        // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
+        keys->Append(ID_SEND_F8, "F&8");
+        keys->Append(ID_SEND_F9, "F&9");
+        keys->Append(ID_SEND_F10, "F1&0");
+        return keys;
+    }
+
+    void ViewerFrame::UpdateSystemKeyCapture()
+    {
+        bool wanted = m_sendSystemKeys && m_connected && m_active && !m_canvas->IsViewOnly() &&
+                      SystemKeyCapture::IsSupported() && !m_options.headless;
+        if (!wanted)
+        {
+            if (m_systemKeys)
+            {
+                m_systemKeys->Stop();
+            }
+            return;
+        }
+        if (!m_systemKeys)
+        {
+            m_systemKeys = SystemKeyCapture::Create([this](uint32_t keysym, bool down) {
+                if (m_connected && !m_canvas->IsViewOnly())
+                {
+                    m_client.SendKeyEvent(keysym, down);
+                }
+            });
+        }
+        if (!m_systemKeys || m_systemKeys->IsActive())
+        {
+            return;
+        }
+        std::string problem;
+        if (!m_systemKeys->Start(problem))
+        {
+            LOG_INFO("Viewer", "Can't send system shortcuts: %s", problem.c_str());
+            m_sendSystemKeys = false;
+            wxMessageBox("Marconi can't send system shortcuts to the other computer: " + wxString::FromUTF8(problem),
+                         "Marconi", wxOK | wxICON_INFORMATION, this);
+        }
     }
 
     void ViewerFrame::ShowMenu()
@@ -958,17 +1246,22 @@ namespace MarconiUI
         {
         case ID_SCALE_FIT:
             // The toolbar button toggles; the menu's radio item always selects Fit.
-            m_canvas->SetScaleMode(event.GetEventType() == wxEVT_TOOL && !event.IsChecked() ? ScaleMode::Actual
+            m_canvas->SetScaleMode(event.GetEventType() == wxEVT_TOOL && !event.IsChecked() ? ScaleMode::Fixed
                                                                                             : ScaleMode::Fit);
             break;
-        case ID_SCALE_ACTUAL:
-            m_canvas->SetScaleMode(ScaleMode::Actual);
+        case ID_ZOOM_IN:
+        case ID_ZOOM_OUT:
+        {
+            wxSize client = m_canvas->GetClientSize();
+            m_canvas->ZoomStep(event.GetId() == ID_ZOOM_IN, wxPoint(client.x / 2, client.y / 2));
             break;
+        }
         case ID_FULL_SCREEN:
             ToggleFullScreen();
             break;
         case ID_VIEW_ONLY:
             m_canvas->SetViewOnly(!m_canvas->IsViewOnly());
+            UpdateSystemKeyCapture();
             break;
         case ID_CLIPBOARD:
             m_clipboard.SetEnabled(!m_clipboard.IsEnabled());
@@ -978,8 +1271,74 @@ namespace MarconiUI
                 SyncClipboardToServer();
             }
             break;
+        case ID_SEND_CLIPBOARD:
+            m_clipboard.SendNow();
+            return; // keep the status bar message; the automatic send below would repeat it
+        case ID_GET_CLIPBOARD:
+            m_clipboard.GetNow();
+            return;
+        case ID_PASTE_FILES:
+            PasteFilesFromClipboard();
+            return;
         case ID_SEND_CTRL_ALT_DEL:
             SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Alt_L, Marconi::Keysym::Delete});
+            break;
+        case ID_SEND_ALT_TAB:
+            SendKeyCombination({Marconi::Keysym::Alt_L, Marconi::Keysym::Tab});
+            break;
+        case ID_SEND_ALT_F4:
+            SendKeyCombination({Marconi::Keysym::Alt_L, Marconi::Keysym::F1 + 3});
+            break;
+        case ID_SEND_WINDOWS_KEY:
+            SendKeyCombination({Marconi::Keysym::Super_L});
+            break;
+        case ID_SEND_CTRL_ESC:
+            SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Escape});
+            break;
+        case ID_SEND_CTRL_SHIFT_ESC:
+            SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Shift_L, Marconi::Keysym::Escape});
+            break;
+        case ID_SEND_PRINT_SCREEN:
+            SendKeyCombination({Marconi::Keysym::Print});
+            break;
+        case ID_SEND_CMD_TAB:
+            SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Tab});
+            break;
+        case ID_SEND_KEYS:
+        {
+            std::unique_ptr<wxMenu> keys(CreateSendKeysMenu());
+            for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_ALT_TAB, ID_SEND_ALT_F4, ID_SEND_WINDOWS_KEY, ID_SEND_CTRL_ESC,
+                           ID_SEND_CTRL_SHIFT_ESC, ID_SEND_PRINT_SCREEN, ID_SEND_CMD_TAB, ID_SEND_F8, ID_SEND_F9,
+                           ID_SEND_F10})
+            {
+                keys->Enable(id, m_connected && !m_canvas->IsViewOnly());
+            }
+            m_canvas->ReleaseInput();
+            wxRect tool = m_toolBar->GetToolRect(ID_SEND_KEYS);
+            m_toolBar->PopupMenu(keys.get(), tool.GetBottomLeft());
+            break;
+        }
+        case ID_SYSTEM_KEYS:
+            m_sendSystemKeys = !m_sendSystemKeys;
+            UpdateSystemKeyCapture();
+            break;
+        case ID_SCREENSHOT:
+        {
+            std::unique_ptr<wxMenu> screenshot(CreateScreenshotMenu());
+            m_canvas->ReleaseInput();
+            wxRect tool = m_toolBar->GetToolRect(ID_SCREENSHOT);
+            m_toolBar->PopupMenu(screenshot.get(), tool.GetBottomLeft());
+            break;
+        }
+        case ID_SCREENSHOT_SAVE:
+            SaveScreenshot();
+            return; // keep the status bar message
+        case ID_SCREENSHOT_COPY:
+            CopyScreenshot();
+            return;
+        case ID_SCREENSHOT_POINTER:
+            wxConfigBase::Get()->Write("/Screenshots/IncludePointer", !IncludePointerInScreenshots());
+            wxConfigBase::Get()->Flush();
             break;
         case ID_SEND_F8:
             SendKeyCombination({Marconi::Keysym::F1 + 7});
@@ -1003,6 +1362,10 @@ namespace MarconiUI
             Close();
             return;
         default:
+            if (event.GetId() >= ID_ZOOM_LEVEL_FIRST && event.GetId() <= ID_ZOOM_LEVEL_LAST)
+            {
+                m_canvas->SetZoom(ScaleMode::Fixed, Marconi::Zoom::kLevels[event.GetId() - ID_ZOOM_LEVEL_FIRST]);
+            }
             break;
         }
         UpdateControls();
@@ -1088,11 +1451,12 @@ namespace MarconiUI
         m_toolBar->ToggleTool(ID_SCALE_FIT, m_canvas->GetScaleMode() == ScaleMode::Fit);
         m_toolBar->ToggleTool(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         m_toolBar->ToggleTool(ID_CLIPBOARD, m_clipboard.IsEnabled());
-        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10})
+        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_KEYS, ID_SEND_F8, ID_SEND_F9, ID_SEND_F10})
         {
             m_toolBar->EnableTool(id, m_connected && !m_canvas->IsViewOnly());
         }
         m_toolBar->EnableTool(ID_REFRESH, m_connected);
+        m_toolBar->EnableTool(ID_SCREENSHOT, m_connected && m_canvas->HasPicture());
         m_toolBar->ToggleTool(ID_FILES, m_files != nullptr && m_files->IsShown());
         m_toolBar->Refresh();
     }
@@ -1147,13 +1511,14 @@ namespace MarconiUI
         {
             status += " - waiting for the screen...";
         }
-        if (m_canvas->GetScaleMode() == ScaleMode::Fit)
-        {
-            status += wxString::Format(" - %d%%", static_cast<int>(m_canvas->GetScale() * 100.0 + 0.5));
-        }
+        status += wxString::Format(" - %d%%", m_canvas->GetShownPercent());
         if (m_canvas->IsViewOnly())
         {
             status += " - view only";
+        }
+        if (m_systemKeys && m_systemKeys->IsActive())
+        {
+            status += " - system shortcuts go to the other computer";
         }
         SetStatusText(status);
     }
@@ -1168,8 +1533,10 @@ namespace MarconiUI
             return;
         }
         saved.scaleMode = m_canvas->GetScaleMode();
+        saved.zoomPercent = m_canvas->GetZoomPercent();
         saved.viewOnly = m_canvas->IsViewOnly();
         saved.clipboard = m_clipboard.IsEnabled();
+        saved.systemKeys = m_sendSystemKeys;
         saved.layout = GetLayout();
         store.Save(saved);
     }
@@ -1202,6 +1569,10 @@ namespace MarconiUI
         m_questionChanged.notify_all();
         StopProbe();
         StopTimers();
+        if (m_systemKeys)
+        {
+            m_systemKeys->Stop();
+        }
         m_canvas->ReleaseInput();
         m_client.Disconnect();
         event.Skip(); // default handler destroys the frame

@@ -12,16 +12,18 @@ It works with:
 
 ## What it can do
 
-- See the other computer's screen, scaled to fit your window or at full size, in a window or full screen.
+- See the other computer's screen, scaled to fit your window or zoomed from 50% to 200%, in a window or full
+  screen.
 - Use its keyboard and mouse. Keys match your keyboard layout, and a Mac's Command key works as expected.
-- Copy and paste text between the two computers, in either direction.
+- Copy and paste text between the two computers, in either direction, and pictures with servers that allow it.
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
   Credential Manager, the macOS Keychain, or your Linux desktop's keyring).
 - Find computers on your home or office network by itself.
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
 - Send Ctrl+Alt+Del to a Windows computer.
-- Tell you, in the bar at the bottom of the window, whether the connection is encrypted.
+- Connect with encryption when the other computer offers it, and tell you, in the bar at the bottom of the window,
+  whether the connection is encrypted.
 
 ## Before you start: set up the other computer
 
@@ -66,10 +68,17 @@ Most of the time a name or address on its own is all you need. For special cases
 
 Press **F8** to open Marconi's menu, even in full screen. From it you can:
 
-- switch between fitting the window and full size;
+- zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same; in full screen,
+  a zoomed-in picture scrolls when the pointer rests at the edge of the screen);
 - go full screen or back;
-- turn view-only and clipboard sharing on or off;
-- send Ctrl+Alt+Del (or F8 itself) to the other computer;
+- turn view-only and clipboard sharing on or off, or send your clipboard to the other computer and get its
+  clipboard by hand;
+- send Ctrl+Alt+Del, Alt+Tab, the Windows key and other shortcuts your own computer would otherwise act on (or F8
+  itself) to the other computer;
+- send system shortcuts such as Alt+Tab, the Windows key and Cmd+Tab to the other computer as you press them, on
+  Windows and macOS (macOS asks you to allow Marconi under Privacy & Security > Accessibility first; Linux desktops
+  don't allow this);
+- save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
 - refresh the picture, or disconnect.
 
 ## Copying files
@@ -84,6 +93,11 @@ onto the other computer's screen are copied to its Desktop.
 - **Windows with TightVNC:** nothing more to set up; files travel over the same connection. The first time you drop
   files on its screen, Marconi asks which folder they should go to.
 
+Copy and paste works too. Copy files in Explorer or Finder, then press Ctrl+V on the other computer's screen (they
+go to its Desktop) or in the right side of the file panel (they go to the folder shown). Select files on either side
+of the panel and press Ctrl+C to copy them: files from the other computer are brought over first, then you can paste
+them in Explorer or Finder like any others.
+
 If a file with the same name is already there, Marconi asks whether to replace it, keep both, or skip it.
 
 ## Appearance and settings
@@ -95,16 +109,22 @@ On Windows, a few parts (menus and the title bar) only change colour after you r
 
 ## Is the connection private?
 
-Not yet. Marconi can't make encrypted connections, so the screen picture, everything you type and the password check
-itself travel over the network as they are. Anyone able to watch the network between the two computers could read
-them. The plain VNC password check in particular is weak: someone who records it can work out the password later. A
-Mac's account login protects the password itself, but nothing after it.
+Only when the other computer offers encryption. Servers such as TigerVNC and UltraVNC can be set up to encrypt the
+connection (a method called VeNCrypt, using TLS, the same encryption as secure websites). Marconi uses it whenever
+a server offers it with a certificate. The first time, it shows you the server's certificate and asks whether to
+trust it; it remembers your answer with the saved connection, and warns you if the certificate ever changes. The
+bar at the bottom of the window then says **encrypted**.
 
-So use Marconi on networks you trust, such as your home network, or over a VPN. As a reminder, the bar at the bottom
-of every connection window says **not encrypted**.
+Some servers offer encryption without a certificate (TigerVNC calls it "TLSVnc"). Marconi can't make that kind of
+connection, so it connects without encryption instead, and says so.
 
-Some servers insist on an encrypted connection (they use a method called VeNCrypt). Marconi recognises them and tells
-you it can't connect to them yet, rather than failing in a confusing way.
+Without encryption, the screen picture, everything you type and the password check itself travel over the network as
+they are. Anyone able to watch the network between the two computers could read them. The plain VNC password check
+in particular is weak: someone who records it can work out the password later. A Mac's account login protects the
+password itself, but nothing after it. Macs with Screen Sharing and TightVNC on Windows don't offer encryption.
+
+So on networks you don't trust, use a VPN, or a server that encrypts. As a reminder, the bar at the bottom of every
+connection window says **not encrypted** when the connection isn't.
 
 ## If something goes wrong
 
@@ -148,9 +168,11 @@ On macOS and Linux these files can only be read by your own account.
 
 ## Not available yet
 
-- **Encrypted connections.** See "Is the connection private?" above.
+- **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.
 - **Remote Desktop and SSH** connections (recognised, but not supported yet).
-- Copying text in some languages and symbols (the clipboard only carries Western European characters for now).
+- Copying text in some languages and symbols with servers that don't support the newer clipboard messages (Macs,
+  TightVNC): with those, the clipboard only carries Western European characters, and Marconi says so when some
+  can't be sent.
 - VNC passwords containing characters outside Western European languages. The VNC password check only carries
   those, so such a password won't work with Marconi. A Mac account login accepts any characters.
 - Changing the other computer's screen resolution from Marconi.
@@ -162,7 +184,7 @@ On macOS and Linux these files can only be read by your own account.
 
 ## Command line
 
-    marconi [--scale fit|100] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
+    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
     marconi --remove-my-data
 
 `--saved NAME` opens a saved connection by its name, address or id, using its stored password. `--remove-my-data`
@@ -294,8 +316,10 @@ ID Application certificate, and set `MARCONI_NOTARY_PROFILE` to a profile from `
 - address parsing and text conversion;
 - streams;
 - the handshake, VNC auth and Apple auth against a scripted fake server on loopback;
-- VeNCrypt negotiation, switching the connection to an encrypted stream, certificate trust decisions and the
-  handshake timeout, with a stand-in for TLS;
+- VeNCrypt negotiation, switching the connection to an encrypted stream, certificate trust decisions, falling back
+  to an unencrypted login when a server only offers encryption without a certificate, and the handshake timeout,
+  with a stand-in for TLS;
+- the extended clipboard messages (text in any language and images), against the fake server;
 - every decoder, using hand-built encoded data;
 - the client message loop;
 - connecting, probing for protocols, DNS messages and network discovery, against local fake services.
@@ -311,28 +335,28 @@ authentication and logs every key, pointer and clipboard event it receives:
 `Tools/fake_vencrypt_server.py` is the same idea for encryption: it only accepts VeNCrypt over real TLS (a
 self-signed certificate, or anonymous TLS), then serves one frame and waits for a key press.
 
-## Encryption: what's done and what's left
-
-Everything Marconi needs for encrypted connections is in place except the TLS stream itself:
+## Encryption: how it works and what's left
 
 - `Modules/MarconiCore/Net/Tls.h` is the interface: `TlsStream` (handshake, read, write, shutdown, protocol name)
   and `CreateTlsStream`, with `TlsOptions` carrying the host name, whether the server is anonymous and a callback
-  asked when this computer doesn't trust the certificate.
+  asked when this computer doesn't trust the certificate. `Net/Tls.cpp` adapts the engine's `Crypto::TlsClient`
+  to it.
+- The engine's `Crypto` module provides `TlsClient` on mbedTLS on every platform (it was already built for SSH on
+  macOS and Linux; Windows builds it for TLS alone, libssh2 there keeps Windows' own cryptography), with
+  `Tests/CryptoTest` running it against a loopback TLS server.
 - `Rfb::Handshake` and `Rfb::Auth` negotiate VeNCrypt (type 19, version 0.2) and prefer it whenever a build can
-  encrypt, choosing a subtype with a certificate over anonymous TLS and never the unencrypted Plain subtype.
-  `Rfb::Client` switches both directions of the connection to the stream and reports `IsEncrypted()`.
+  encrypt, choosing a subtype with a certificate over anonymous TLS and never the unencrypted Plain subtype. mbedTLS
+  has no anonymous suites, so when a server offers only the anonymous subtypes the handshake reports
+  `encryptionUnusable` and the viewer connects again without asking for encryption. `Rfb::Client` switches both
+  directions of the connection to the stream and reports `IsEncrypted()`.
 - The viewer shows the certificate's details and fingerprint when it isn't trusted, remembers the fingerprint the
   user accepts with the saved connection, and shows the encryption state in the status bar.
-- `Tools/TlsStream_OpenSSL.cpp` is a reference implementation of the interface on OpenSSL, run end to end against
-  `fake_vencrypt_server.py` (TLS 1.3 with a certificate, TLS 1.2 anonymous, VNC password and user name logins,
-  certificate refusal). It is not part of the build.
+- `Tools/TlsStream_OpenSSL.cpp` is the reference implementation the mbedTLS one follows (memory buffers and one
+  mutex, released while waiting for the network). It is not part of the build.
 
-What's left is to implement the interface with each platform's own TLS library, as the engine's `Crypto` module
-does for its other primitives: Schannel on Windows (certificates only; Schannel has no anonymous suites), the
-Security framework on macOS, OpenSSL on Linux. Then `Net/Tls.cpp` returns it, `IsTlsAvailable()` becomes true and
-the rest switches on by itself. The reference file documents the two things an implementation must get right: the
-handshake completes before the trust decision is asked, and `Read` and `Write` may run on two threads at once
-without a writer ever waiting for incoming data.
+Certificate trust comes from Windows' root store, or the system's certificate bundle elsewhere
+(`/etc/ssl/certs/ca-certificates.crt` and the usual alternatives, `/etc/ssl/cert.pem` on macOS); VNC servers almost
+always use self-signed certificates, so the trust question and the remembered fingerprint are the normal path.
 
 ## Layout
 

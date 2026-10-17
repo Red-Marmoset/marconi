@@ -71,6 +71,14 @@ namespace Marconi
             using RfbError::RfbError;
         };
 
+        // Thrown when the server was asked for encryption but offers only kinds this computer can't make (anonymous
+        // TLS without a certificate, say). Connecting again without asking for encryption may work.
+        class EncryptionUnavailable : public RfbError
+        {
+        public:
+            using RfbError::RfbError;
+        };
+
         // Parses "RFB xxx.yyy\n". Returns false if the banner isn't an RFB version string.
         bool ParseVersion(const std::string& banner, int& major, int& minor);
 
@@ -85,8 +93,10 @@ namespace Marconi
 
         // Runs the whole handshake up to and including ServerInit (and, with Tight security, the server's feature
         // lists). Throws RfbError / AuthenticationFailed.
+        // `anonymousTls` says whether `startTls` can make a connection without a server certificate.
         HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
                                          const CredentialsProvider& credentials, const TlsStarter& startTls = nullptr,
-                                         bool allowTight = false, bool* outChoseTight = nullptr);
+                                         bool allowTight = false, bool* outChoseTight = nullptr,
+                                         bool anonymousTls = true);
     } // namespace Rfb
 } // namespace Marconi

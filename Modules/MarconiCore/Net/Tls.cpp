@@ -1,25 +1,91 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Encrypted (TLS) connection over a Socket: the factory, until the engine's Crypto module provides TLS
+// Encrypted (TLS) connection over a Socket: the engine's Crypto module does the TLS, this adapts it to a Socket
 
 #include <MarconiCore/Net/Tls.h>
+
+#include <Crypto/Tls.h>
 
 namespace Marconi
 {
     namespace Net
     {
-        // Everything else (VeNCrypt negotiation, switching the connection to the encrypted stream, certificate
-        // prompts, the status bar) is in place; this is the one piece still missing. It belongs with the engine's
-        // Crypto module, which wraps each platform's own crypto library: Schannel on Windows, Security.framework on
-        // macOS, OpenSSL on Linux. Tools/TlsStream_OpenSSL.cpp is a working reference implementation of this
-        // interface, tested against a TLS server; port it to each platform's library and return it here.
+        namespace
+        {
+            class EngineTlsStream : public TlsStream
+            {
+            public:
+                EngineTlsStream(Socket& socket, const TlsOptions& options)
+                {
+                    Crypto::TlsClientOptions engineOptions;
+                    engineOptions.hostName = options.hostName;
+                    engineOptions.anonymous = options.anonymous;
+                    if (options.trustDecision)
+                    {
+                        std::function<bool(const TlsCertificate&)> decision = options.trustDecision;
+                        engineOptions.trustDecision = [decision](const Crypto::TlsCertificateInfo& info) {
+                            TlsCertificate certificate;
+                            certificate.sha256 = info.sha256;
+                            certificate.subject = info.subject;
+                            certificate.issuer = info.issuer;
+                            certificate.validUntil = info.validUntil;
+                            certificate.problem = info.problem;
+                            return decision(certificate);
+                        };
+                    }
+                    engineOptions.receive = [&socket](void* buffer, size_t length) {
+                        return socket.Receive(buffer, length);
+                    };
+                    engineOptions.sendAll = [&socket](const void* data, size_t length) {
+                        return socket.SendAll(data, length);
+                    };
+                    m_client = Crypto::TlsClient::Create(std::move(engineOptions));
+                }
+
+                bool Handshake(std::string& error) override
+                {
+                    if (!m_client)
+                    {
+                        error = "this build can't make encrypted connections";
+                        return false;
+                    }
+                    return m_client->Handshake(error);
+                }
+
+                ptrdiff_t Read(void* buffer, size_t length) override { return m_client ? m_client->Read(buffer, length) : -1; }
+                bool Write(const void* data, size_t length) override { return m_client && m_client->Write(data, length); }
+
+                void Shutdown() override
+                {
+                    if (m_client)
+                    {
+                        m_client->Shutdown();
+                    }
+                }
+
+                std::string GetProtocolName() const override { return m_client ? m_client->GetProtocolName() : ""; }
+
+            private:
+                std::unique_ptr<Crypto::TlsClient> m_client;
+            };
+        } // namespace
+
         bool IsTlsAvailable()
         {
-            return false;
+            return Crypto::TlsClient::IsAvailable();
         }
 
-        std::unique_ptr<TlsStream> CreateTlsStream(Socket&, const TlsOptions&)
+        bool IsAnonymousTlsAvailable()
         {
-            return nullptr;
+            return Crypto::TlsClient::IsAnonymousAvailable();
+        }
+
+        std::unique_ptr<TlsStream> CreateTlsStream(Socket& socket, const TlsOptions& options)
+        {
+            if (!IsTlsAvailable())
+            {
+                return nullptr;
+            }
+            return std::make_unique<EngineTlsStream>(socket, options);
         }
     } // namespace Net
 } // namespace Marconi

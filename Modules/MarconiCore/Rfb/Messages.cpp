@@ -31,6 +31,8 @@ namespace Marconi
                 return "LastRect";
             case Encoding::ExtendedDesktopSize:
                 return "ExtendedDesktopSize";
+            case Encoding::ExtendedClipboard:
+                return "ExtendedClipboard";
             default:
                 return "Unknown";
             }

@@ -9,6 +9,7 @@
 #include "UserData.h"
 #include "ViewerFrame.h"
 
+#include <MarconiCore/Zoom.h>
 #include <MarconiCore/Address.h>
 #include <MarconiCore/Files/SftpFiles.h>
 #include <MarconiCore/Net/Discovery.h>
@@ -136,7 +137,8 @@ namespace MarconiUI
         // "marconi [options] host[:display]" connects straight away.
         static const wxCmdLineEntryDesc kCommandLine[] = {
             {wxCMD_LINE_SWITCH, "h", "help", "show this help", wxCMD_LINE_VAL_NONE, wxCMD_LINE_OPTION_HELP},
-            {wxCMD_LINE_OPTION, nullptr, "scale", "fit (default) or 100", wxCMD_LINE_VAL_STRING, 0},
+            {wxCMD_LINE_OPTION, nullptr, "scale", "fit (default) or a zoom percentage: 50, 75, 100, 125, 150 or 200",
+             wxCMD_LINE_VAL_STRING, 0},
             {wxCMD_LINE_SWITCH, nullptr, "view-only", "don't send keyboard or mouse input", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "fullscreen", "start full screen", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "no-clipboard", "don't share the clipboard", wxCMD_LINE_VAL_NONE, 0},
@@ -246,9 +248,11 @@ namespace MarconiUI
             std::string error;
             wxString scale;
             bool ok = false;
-            if (parser.Found("scale", &scale) && scale != "fit" && scale != "100")
+            long zoomPercent = 0;
+            if (parser.Found("scale", &scale) && scale != "fit" &&
+                !(scale.ToLong(&zoomPercent) && Marconi::Zoom::IsLevel(static_cast<int>(zoomPercent))))
             {
-                error = "--scale must be 'fit' or '100'";
+                error = "--scale must be 'fit' or one of 50, 75, 100, 125, 150, 200";
             }
             else if (fromSaved)
             {
@@ -274,7 +278,11 @@ namespace MarconiUI
                 // Command-line switches override a saved connection's settings.
                 if (!scale.empty())
                 {
-                    options.scaleMode = scale == "100" ? ScaleMode::Actual : ScaleMode::Fit;
+                    options.scaleMode = scale == "fit" ? ScaleMode::Fit : ScaleMode::Fixed;
+                    if (zoomPercent > 0)
+                    {
+                        options.zoomPercent = static_cast<int>(zoomPercent);
+                    }
                 }
                 options.viewOnly = options.viewOnly || parser.Found("view-only");
                 options.fullScreen = parser.Found("fullscreen");

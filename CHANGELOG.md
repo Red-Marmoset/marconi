@@ -5,6 +5,30 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.4.2
+
+- Files copied in Explorer or Finder can be pasted onto the other computer's screen or into the file panel.
+- Files copied in the file panel (Ctrl+C) can be pasted on this computer, or on the other side.
+
+## 0.4.1
+
+- Encrypted connections on Windows too.
+
+## 0.4.0
+
+- Screenshots of the other computer's screen: save as PNG or copy, with or without the mouse pointer.
+- A Send Keys menu: Alt+Tab, Alt+F4, the Windows key, Ctrl+Esc, Ctrl+Shift+Esc, Print Screen and Cmd+Tab.
+- On Windows and macOS, a setting sends system shortcuts such as Alt+Tab and Cmd+Tab to the other computer.
+- Zoom levels from 50% to 200% besides fitting the window: Ctrl and the mouse wheel, Ctrl and + or -, or the menu.
+- A zoomed-in picture scrolls in full screen when the pointer rests at the edge of the screen.
+- Each saved connection remembers its zoom level.
+- Encrypted connections on macOS and Linux, with servers that offer them with a certificate.
+- Connects without encryption, and says so, when a server only offers encryption without a certificate.
+- Copied text in any language travels between the computers with servers that support it (TigerVNC, UltraVNC).
+- Copied images travel too, with servers that support it.
+- The menu can send your clipboard to the other computer, or get its clipboard, with sharing on or off.
+- Says when characters can't be sent to a server that only takes Western European text.
+
 ## 0.3.7
 
 - The Windows installer asks you to accept the MIT license before installing.

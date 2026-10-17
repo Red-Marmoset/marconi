@@ -74,6 +74,7 @@ namespace MarconiTest
         void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
         void OnDesktopResized(int width, int height) override;
         void OnServerCutText(const std::string& text) override;
+        void OnServerClipboard(const Marconi::Rfb::ClipboardContent& content) override;
         void OnBell() override;
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
@@ -90,11 +91,13 @@ namespace MarconiTest
         std::string disconnectError;
         bool authenticationFailed = false;
         bool tightFailed = false;
+        bool encryptionUnusable = false;
         Marconi::Rfb::ServerInit serverInit;
         int updates = 0;
         int bells = 0;
         std::vector<Marconi::Rfb::Rect> lastRects;
         std::vector<std::string> cutTexts;
+        std::vector<Marconi::Rfb::ClipboardContent> clipboards;
         int resizedWidth = 0;
         int resizedHeight = 0;
         int cursorUpdates = 0;
@@ -132,4 +135,5 @@ namespace MarconiTest
     void RunFilesTests();
     void RunTightFilesTests();
     void RunFileViewTests();
+    void RunExtendedClipboardTests();
 } // namespace MarconiTest

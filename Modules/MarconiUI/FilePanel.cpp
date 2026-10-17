@@ -3,6 +3,8 @@
 
 #include "FilePanel.h"
 
+#include "ClipboardFiles.h"
+
 #include "Appearance.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
@@ -681,6 +683,14 @@ namespace MarconiUI
                     m_list->Select(row);
                 }
             }
+            else if (event.GetKeyCode() == 'C' && event.ControlDown())
+            {
+                m_owner.CopyToClipboard(m_remote, GetSelectedPaths());
+            }
+            else if (event.GetKeyCode() == 'V' && event.ControlDown() && m_remote)
+            {
+                m_owner.PasteFromClipboard();
+            }
             else
             {
                 event.Skip();
@@ -976,7 +986,7 @@ namespace MarconiUI
         if (m_tight != nullptr && m_queue && m_queue->IsBusy())
         {
             // TightVNC can only send one file at a time on a connection.
-            SetMessage("Wait for the current copy to finish before dragging files out.");
+            SetMessage("Wait for the current copy to finish before copying files out.");
             return copies;
         }
         std::random_device random;
@@ -1275,6 +1285,43 @@ namespace MarconiUI
             return;
         }
         ShowRemote(m_sftp.get(), m_sftp->GetHome());
+    }
+
+    void FilePanel::CopyToClipboard(bool fromRemote, const std::vector<std::string>& paths)
+    {
+        if (paths.empty())
+        {
+            return;
+        }
+        std::vector<std::string> files = fromRemote ? DownloadForDrag(paths) : paths;
+        if (files.empty())
+        {
+            return;
+        }
+        if (!SetClipboardFiles(files))
+        {
+            SetMessage("Could not put the files on the clipboard.");
+            return;
+        }
+        wxString count = wxString::Format("%zu item%s", files.size(), files.size() == 1 ? "" : "s");
+        SetMessage(fromRemote ? "Copied " + count + ". Paste them in Explorer or Finder, or anywhere files go."
+                              : "Copied " + count + ". Paste them on the other side, or on the remote screen.");
+    }
+
+    void FilePanel::PasteFromClipboard()
+    {
+        std::vector<std::string> files = GetClipboardFiles();
+        if (files.empty())
+        {
+            SetMessage("The clipboard holds no files to paste.");
+            return;
+        }
+        if (m_state != State::Connected)
+        {
+            SetMessage("Not connected for file transfer yet.");
+            return;
+        }
+        CopyBetweenSides(false, files);
     }
 
     void FilePanel::CopyBetweenSides(bool fromRemote, const std::vector<std::string>& paths)

@@ -25,8 +25,10 @@ namespace MarconiUI
         wxString layout;      // where the viewer's panels were: a wxAUI perspective; empty = the default layout
         wxString certificate; // SHA-256 of a server certificate the user chose to trust, as hex; empty = none
         ScaleMode scaleMode = ScaleMode::Fit;
+        int zoomPercent = 100; // with ScaleMode::Fixed
         bool viewOnly = false;
         bool clipboard = true;
+        bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
         wxDateTime lastUsed;
 
         wxString GetDisplayName() const { return name.empty() ? address : name; }
