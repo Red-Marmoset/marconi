@@ -3,8 +3,6 @@
 What changed in each version of Marconi, newest first. Versions are `MAJOR.MINOR.PATCH` from `Project.json`; the
 build adds the commit count as a fourth number (see [README.md](README.md#versions)).
 
-## Unreleased
-
 ## 0.5.1
 
 - Fixed a black square appearing instead of the mouse pointer on Windows when the other computer hides its pointer.
@@ -27,6 +25,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - In full screen, resting the pointer at the top edge shows a small bar with the controls; it can be pinned.
 - A lost connection keeps the window open and reconnects by itself, with the old picture dimmed until it's back.
 - A dead network link is noticed within about a minute instead of only when something is sent.
+
 ## 0.4.2
 
 - Files copied in Explorer or Finder can be pasted onto the other computer's screen or into the file panel.
