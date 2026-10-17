@@ -29,6 +29,23 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - The menu can send your clipboard to the other computer, or get its clipboard, with sharing on or off.
 - Says when characters can't be sent to a server that only takes Western European text.
 
+## 0.3.7
+
+- The Windows installer asks you to accept the MIT license before installing.
+- The Windows installer can open the source code on GitHub and adds a Start menu link to it.
+
+## 0.3.6
+
+- The Windows installer asks whether to install just for you (no administrator permission needed) or for everyone on the PC.
+
+## 0.3.5
+
+- Fixed a warning about old Windows controls when starting an installed copy of Marconi.
+
+## 0.3.4
+
+- The license page in the installer no longer breaks lines in odd places.
+
 ## 0.3.3
 
 - The file panel is a proper file browser: folder tree, icons, a clickable path, Back and Forward, sortable columns.

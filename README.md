@@ -247,9 +247,10 @@ clone gets a revision that is too low.
 
 The installer is built with [NSIS 3.08 or newer](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`). It also
 needs the [ShellExecAsUser plug-in](https://nsis.sourceforge.io/ShellExecAsUser_plug-in), which lets the installer
-start Marconi as you rather than as administrator when you tick "Start Marconi now". Download its Unicode build and
-put `ShellExecAsUser.dll` in NSIS's `Plugins\x86-unicode` folder (normally
-`C:\Program Files (x86)\NSIS\Plugins\x86-unicode`). `Package.ps1` stops with a message if it isn't there.
+start Marconi, or open its source code on GitHub, as you rather than as administrator when you tick "Start Marconi
+now" or "Open the source code on GitHub". Download its Unicode build and put `ShellExecAsUser.dll` in NSIS's
+`Plugins\x86-unicode` folder (normally `C:\Program Files (x86)\NSIS\Plugins\x86-unicode`). `Package.ps1` stops with
+a message if it isn't there.
 
     .\Package.ps1                     # -> Build\Installer\Marconi-0.2.0.48-win64-setup.exe
 
@@ -267,13 +268,26 @@ Personal > Certificates). `Package.ps1` then uses `signtool` from the Windows SD
 uninstaller and the setup executable, each with a timestamp from `http://timestamp.digicert.com` so the signatures
 stay valid after the certificate expires. Set `MARCONI_SIGN_TIMESTAMP_URL` to use a different timestamp server.
 
-The installer installs to `Program Files\Marconi`, with a Start menu shortcut and an optional desktop one. It also
-adds an entry to Settings > Apps. Installing a newer version replaces the old one, as long as the old one is in
-`Program Files`; a copy installed somewhere else is left in place and the new version is installed over it, with a
-line in the installer's details saying so. Uninstalling keeps each user's saved connections, passwords and logs
-unless the "Saved connections, passwords and logs" option is ticked, which runs `Marconi.exe --remove-my-data` for
-the account signed in (and says so if the uninstaller is running as a different account). `Uninstall.exe /S`
-uninstalls silently, keeping the data, and the installer accepts `/S` and `/D=<folder>` too.
+The installer shows the MIT license, which must be accepted before installing. It then asks who Marconi is for:
+
+- **Just me** installs to `%LOCALAPPDATA%\Programs\Marconi`, with the shortcuts and the Settings > Apps entry for
+  your account only. It needs no administrator permission.
+- **Everyone on this PC** installs to `Program Files\Marconi` for every account. Setup asks for administrator
+  permission when you choose it, then carries on from the next page. "Start Marconi now" still starts Marconi as
+  you, not as the administrator.
+
+It suggests the kind already installed, if any, and says which versions are installed each way. Either way you get
+Start menu shortcuts to Marconi and to its source code on GitHub, and an optional desktop shortcut. Installing a newer
+version replaces the old one of the same kind.
+When Setup has administrator permission it only runs an old uninstaller from inside `Program Files`; a copy
+installed somewhere else is left in place and the new version is installed over it, with a line in the installer's
+details saying so. The uninstaller asks for administrator permission only for an install for everyone.
+
+Uninstalling keeps each user's saved connections, passwords and logs unless the "Saved connections, passwords and
+logs" option is ticked, which runs `Marconi.exe --remove-my-data` for the account signed in (and says so if the
+uninstaller is running as a different account). `Uninstall.exe /S` uninstalls silently, keeping the data. The
+installer accepts `/S`, `/D=<folder>`, and `/CURRENTUSER` or `/ALLUSERS` to choose without asking; a silent install
+with neither picks the kind already installed, or everyone when run as administrator, or otherwise just you.
 
 `Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico` and
 `Marconi.icns`, are rendered by `python Tools/make_app_icon.py` from the same drawing as the window icon in

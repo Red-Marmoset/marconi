@@ -8,6 +8,11 @@
 // Explorer, shortcuts and the taskbar use the icon with the lowest ID. Tools/make_app_icon.py renders it.
 1 ICON "Resources/Marconi.ico"
 
+// Built in, so it travels with Marconi.exe: the linker's own copy is a separate file the installer doesn't ship, and
+// without it wxWidgets warns that the old Windows controls are in use. 1 and 24 are CREATEPROCESS_MANIFEST_RESOURCE_ID
+// and RT_MANIFEST.
+1 24 "Resources/Marconi.manifest"
+
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION MARCONI_VERSION_MAJOR, MARCONI_VERSION_MINOR, MARCONI_VERSION_PATCH, MARCONI_VERSION_REVISION
 PRODUCTVERSION MARCONI_VERSION_MAJOR, MARCONI_VERSION_MINOR, MARCONI_VERSION_PATCH, MARCONI_VERSION_REVISION
