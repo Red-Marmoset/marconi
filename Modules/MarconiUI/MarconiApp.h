@@ -13,6 +13,10 @@ namespace MarconiUI
         bool OnInit() override;
         int OnExit() override;
         void OnUnhandledException() override;
+#if defined(__WXOSX__)
+        // A vnc:// link opened in another program (Marconi.app registers for them in its Info.plist).
+        void MacOpenURL(const wxString& url) override;
+#endif
     };
 } // namespace MarconiUI
 

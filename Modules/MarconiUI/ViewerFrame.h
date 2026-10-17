@@ -12,6 +12,7 @@
 #include <MarconiCore/Address.h>
 #include <MarconiCore/Files/TightFiles.h>
 #include <MarconiCore/Net/Probe.h>
+#include <MarconiCore/Quality.h>
 #include <MarconiCore/Rfb/Client.h>
 
 #include <wx/aui/framemanager.h>
@@ -47,6 +48,10 @@ namespace MarconiUI
         bool clipboard = true;
         bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
         long displayId = 0;     // which of the server's displays to show (its id), 0 for all of them
+        Marconi::PictureQuality quality = Marconi::PictureQuality::Balanced;
+        bool lockOnDisconnect = false; // send the lock shortcut to the other computer when the window closes
+        wxString macAddress;    // for waking the computer up when it doesn't answer
+        wxRect windowRect;      // where the window was last time; empty = fit it to the desktop
         wxString savedId;       // the saved connection this window was opened from, if any
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
@@ -154,6 +159,7 @@ namespace MarconiUI
         void CheckForPicture();
         // A connection that was up and went away: keep the window, dim the picture, retry on a schedule.
         void EnterLostState(const std::string& error);
+        void EnterWakeState();
         void ScheduleRetry(const std::string& error);
         void OnRetryTick();
         void RetryNow();
@@ -185,6 +191,9 @@ namespace MarconiUI
         bool m_retryUnderWay = false;  // an attempt is connecting right now
         int m_retryAttempt = 0;
         std::string m_lostError;
+        wxString m_lostHeadline;       // "Connection lost" or "Sent a wake-up call"
+        bool m_windowRestored = false; // the window took its saved place and size, so isn't fitted to the desktop
+        Marconi::PictureQuality m_quality = Marconi::PictureQuality::Balanced;
         wxTimer m_retryTimer;          // ticks every second while waiting for the next attempt
         std::chrono::steady_clock::time_point m_lostAt;
         std::chrono::steady_clock::time_point m_retryDue;

@@ -174,6 +174,13 @@ namespace Marconi
             void RequestDesktopSize(int width, int height);
             static Bytes BuildSetDesktopSize(int width, int height, const std::vector<Screen>& screens);
 
+            // Changes the compression and JPEG levels (see ConnectionOptions) on a live connection by sending the
+            // encodings again. Any thread; ignored until connected.
+            void SetQuality(int compressLevel, int qualityLevel);
+
+            // macOS Screen Sharing (RFB 3.889), which has its own quirks and keyboard. Meaningful once connected.
+            bool IsAppleServer() const { return m_appleServer.load(); }
+
             // How long since the last key or pointer event was sent (or attempted). Any thread.
             std::chrono::steady_clock::duration GetTimeSinceInput() const;
 
@@ -207,6 +214,9 @@ namespace Marconi
             void SendPixelFormat();
             void SendSetupMessages(const ConnectionOptions& options);
             void SendEncodings(const std::vector<int32_t>& encodings);
+            static Bytes BuildSetEncodings(const std::vector<int32_t>& encodings);
+            // The real encodings we decode, plus the level hints and pseudo-encodings, in the order to advertise.
+            std::vector<int32_t> ComposeEncodings(int compressLevel, int qualityLevel) const;
             void SendUpdateRequest(bool incremental);
             void MessageLoop(InStream& in);
             void HandleFramebufferUpdate(InStream& in);
@@ -226,7 +236,7 @@ namespace Marconi
             std::map<int32_t, std::unique_ptr<Decoder>> m_decoders;
             static constexpr int kDetailedUpdates = 3;
             int m_detailedUpdates = 0; // connection thread only: how many more updates to log in detail
-            bool m_appleServer = false; // connection thread only: macOS Screen Sharing (RFB 3.889)
+            std::atomic<bool> m_appleServer{false}; // macOS Screen Sharing (RFB 3.889)
             bool m_resendPixelFormatOnResize = true; // connection thread only
             std::atomic<int> m_statUpdates{0};
             std::atomic<int> m_statRectangles{0};
@@ -250,6 +260,8 @@ namespace Marconi
             mutable std::mutex m_infoMutex;
             std::string m_encryptionName; // guarded by m_infoMutex
             std::vector<Screen> m_screens; // guarded by m_infoMutex
+            std::vector<int32_t> m_baseEncodings; // guarded by m_infoMutex: the encodings with decoders, in order
+            bool m_wantExtendedClipboard = true;  // guarded by m_infoMutex
         };
     } // namespace Rfb
 } // namespace Marconi

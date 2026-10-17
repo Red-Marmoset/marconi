@@ -305,29 +305,52 @@ namespace Marconi
                 SendEncodings(options.encodings);
                 return;
             }
-            if (m_decoders.count(Encoding::Tight) != 0 || m_decoders.count(Encoding::Zrle) != 0)
             {
-                if (options.compressLevel >= 0 && options.compressLevel <= 9)
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_baseEncodings = encodings;
+                m_wantExtendedClipboard = options.extendedClipboard;
+            }
+            SendEncodings(ComposeEncodings(options.compressLevel, options.qualityLevel));
+        }
+
+        std::vector<int32_t> Client::ComposeEncodings(int compressLevel, int qualityLevel) const
+        {
+            std::vector<int32_t> encodings;
+            bool extendedClipboard;
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                encodings = m_baseEncodings;
+                extendedClipboard = m_wantExtendedClipboard;
+            }
+            if (encodings.empty())
+            {
+                return encodings;
+            }
+            bool tight = std::find(encodings.begin(), encodings.end(), Encoding::Tight) != encodings.end();
+            bool zrle = std::find(encodings.begin(), encodings.end(), Encoding::Zrle) != encodings.end();
+            if (tight || zrle)
+            {
+                if (compressLevel >= 0 && compressLevel <= 9)
                 {
-                    encodings.push_back(Encoding::CompressLevel0 + options.compressLevel);
+                    encodings.push_back(Encoding::CompressLevel0 + compressLevel);
                 }
-                if (m_decoders.count(Encoding::Tight) != 0 && options.qualityLevel >= 0 && options.qualityLevel <= 9)
+                if (tight && qualityLevel >= 0 && qualityLevel <= 9)
                 {
-                    encodings.push_back(Encoding::QualityLevel0 + options.qualityLevel);
+                    encodings.push_back(Encoding::QualityLevel0 + qualityLevel);
                 }
             }
             encodings.push_back(Encoding::ExtendedDesktopSize);
             encodings.push_back(Encoding::DesktopSize);
             encodings.push_back(Encoding::Cursor);
             encodings.push_back(Encoding::LastRect);
-            if (options.extendedClipboard)
+            if (extendedClipboard)
             {
                 encodings.push_back(Encoding::ExtendedClipboard);
             }
-            SendEncodings(encodings);
+            return encodings;
         }
 
-        void Client::SendEncodings(const std::vector<int32_t>& encodings)
+        Bytes Client::BuildSetEncodings(const std::vector<int32_t>& encodings)
         {
             OutBuffer setEncodings;
             setEncodings.U8(ClientMessage::SetEncodings).Padding(1).U16(static_cast<uint16_t>(encodings.size()));
@@ -335,13 +358,28 @@ namespace Marconi
             {
                 setEncodings.S32(encoding);
             }
-            Send(setEncodings.Data());
             std::string list;
             for (int32_t encoding : encodings)
             {
                 list += (list.empty() ? "" : ", ") + std::to_string(encoding);
             }
             LOG_INFO("Rfb", "Asked for encodings [%s]", list.c_str());
+            return setEncodings.Data();
+        }
+
+        void Client::SendEncodings(const std::vector<int32_t>& encodings)
+        {
+            Send(BuildSetEncodings(encodings));
+        }
+
+        void Client::SetQuality(int compressLevel, int qualityLevel)
+        {
+            std::vector<int32_t> encodings = ComposeEncodings(compressLevel, qualityLevel);
+            if (encodings.empty() || !m_connected)
+            {
+                return;
+            }
+            SendIfConnected(BuildSetEncodings(encodings));
         }
 
         void Client::Run(ConnectionOptions options)

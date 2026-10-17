@@ -5,6 +5,14 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.5.0
+
+- A picture quality setting per connection (best, balanced, low bandwidth), changeable while connected.
+- A setting to lock the other computer's screen when you disconnect.
+- Saved connections can hold the computer's hardware address, and Marconi can wake it up over the network.
+- Favourites are listed first, and each saved connection can carry notes.
+- Each saved connection remembers where its window was.
+- vnc:// links open in Marconi (Windows and macOS).
 - When the other computer has several displays, the menu can show just one of them; the choice is remembered.
 - The menu can ask the other computer to change its screen size to fit this window, where its server allows it.
 - In full screen, resting the pointer at the top edge shows a small bar with the controls; it can be pinned.

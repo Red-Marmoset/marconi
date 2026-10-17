@@ -9,6 +9,7 @@
 #include "UserData.h"
 #include "ViewerFrame.h"
 
+#include <MarconiCore/Net/WakeOnLan.h>
 #include <MarconiCore/Address.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
 #include <MarconiCore/Version.h>
@@ -285,10 +286,13 @@ namespace MarconiUI
         wxButton* add = button("New connection");
         m_edit = button("Edit");
         m_delete = button("Delete");
+        m_wake = button("Wake up");
+        m_wake->SetToolTip("Send a wake-up call to this computer over the network (needs its hardware address)");
         m_connect = button("Connect", true);
         buttons->Add(add, 0, wxRIGHT, gap);
         buttons->Add(m_edit, 0, wxRIGHT, gap);
-        buttons->Add(m_delete, 0);
+        buttons->Add(m_delete, 0, wxRIGHT, gap);
+        buttons->Add(m_wake, 0);
         buttons->AddStretchSpacer();
         buttons->Add(m_connect, 0);
         outer->Add(buttons, 0, wxEXPAND | wxALL, border);
@@ -344,6 +348,7 @@ namespace MarconiUI
         quickConnect->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnQuickConnect, this);
         m_address->Bind(wxEVT_TEXT_ENTER, &ConnectionsFrame::OnQuickConnect, this);
         m_connect->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnConnectSelected, this);
+        m_wake->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnWake, this);
         add->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnNew, this);
         m_edit->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnEdit, this);
         m_delete->Bind(wxEVT_BUTTON, &ConnectionsFrame::OnDelete, this);
@@ -485,7 +490,9 @@ namespace MarconiUI
         {
             selected = m_connections[previous].id;
         }
-        const auto all = m_store.LoadAll();
+        auto all = m_store.LoadAll();
+        // Favourites first, each group most recently used first.
+        std::stable_partition(all.begin(), all.end(), [](const SavedConnection& c) { return c.favourite; });
         const wxString query = m_search->GetValue().Strip(wxString::both).Lower();
         m_list->Freeze();
         m_list->DeleteAllItems();
@@ -493,13 +500,17 @@ namespace MarconiUI
         for (const SavedConnection& connection : all)
         {
             if (!query.empty() && !connection.GetDisplayName().Lower().Contains(query) &&
-                !connection.address.Lower().Contains(query))
+                !connection.address.Lower().Contains(query) && !connection.notes.Lower().Contains(query))
             {
                 continue;
             }
-            const long row = m_list->InsertItem(static_cast<long>(m_connections.size()), connection.GetDisplayName(), 0);
+            wxString name = (connection.favourite ? wxString::FromUTF8("\xE2\x98\x85 ") : wxString()) +
+                            connection.GetDisplayName();
+            const long row = m_list->InsertItem(static_cast<long>(m_connections.size()), name, 0);
             m_connections.push_back(connection);
-            m_list->SetItem(row, 1, connection.address);
+            wxString notes = connection.notes;
+            notes.Replace("\n", " ");
+            m_list->SetItem(row, 1, notes.empty() ? connection.address : connection.address + "  (" + notes + ")");
             m_list->SetItem(row, 2, FormatLastUsed(connection.lastUsed));
             if (!selected.empty() && connection.id == selected)
             {
@@ -641,10 +652,12 @@ namespace MarconiUI
 
     void ConnectionsFrame::UpdateButtons()
     {
-        bool selected = GetSelectedIndex() >= 0;
+        int index = GetSelectedIndex();
+        bool selected = index >= 0;
         m_connect->Enable(selected);
         m_edit->Enable(selected);
         m_delete->Enable(selected);
+        m_wake->Enable(selected && !m_connections[static_cast<size_t>(index)].macAddress.empty());
     }
 
     void ConnectionsFrame::Connect(const SavedConnection& connection)
@@ -753,6 +766,26 @@ namespace MarconiUI
         {
             Reload(connection.id);
         }
+    }
+
+    void ConnectionsFrame::OnWake(wxCommandEvent&)
+    {
+        int index = GetSelectedIndex();
+        if (index < 0)
+        {
+            return;
+        }
+        const SavedConnection& connection = m_connections[static_cast<size_t>(index)];
+        std::string error;
+        if (!Marconi::Net::SendWakeOnLan(connection.macAddress.utf8_string(), error))
+        {
+            wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
+            return;
+        }
+        wxMessageBox("Sent a wake-up call to " + connection.GetDisplayName() +
+                         ". Give it a minute to start, then connect.\n\nThis only works on the same network, and "
+                         "if that computer is set to wake from the network.",
+                     "Marconi", wxOK | wxICON_INFORMATION, this);
     }
 
     void ConnectionsFrame::OnDelete(wxCommandEvent&)

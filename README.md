@@ -17,7 +17,9 @@ It works with:
 - Use its keyboard and mouse. Keys match your keyboard layout, and a Mac's Command key works as expected.
 - Copy and paste text between the two computers, in either direction, and pictures with servers that allow it.
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
-  Credential Manager, the macOS Keychain, or your Linux desktop's keyring).
+  Credential Manager, the macOS Keychain, or your Linux desktop's keyring), plus notes, favourites, and where each
+  one's window was.
+- Open `vnc://` links from other programs (Windows and macOS).
 - Find computers on your home or office network by itself.
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
@@ -105,6 +107,13 @@ of the panel and press Ctrl+C to copy them: files from the other computer are br
 them in Explorer or Finder like any others.
 
 If a file with the same name is already there, Marconi asks whether to replace it, keep both, or skip it.
+
+## Waking a sleeping computer
+
+If you give a saved connection the other computer's hardware address (its "MAC address", which `ipconfig /all`
+on Windows shows as the Physical Address), the **Wake up** button sends it a wake-up call over the network, and
+Marconi offers to do the same when it can't connect. The computer has to be on the same network and set to wake
+from the network (usually a setting in its BIOS or network adapter).
 
 ## Appearance and settings
 

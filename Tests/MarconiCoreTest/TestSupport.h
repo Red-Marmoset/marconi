@@ -143,4 +143,5 @@ namespace MarconiTest
     void RunExtendedClipboardTests();
     void RunReconnectTests();
     void RunDesktopSizeTests();
+    void RunSettingsTests();
 } // namespace MarconiTest

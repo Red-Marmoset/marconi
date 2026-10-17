@@ -42,6 +42,7 @@ namespace MarconiUI
         void OnNew(wxCommandEvent& event);
         void OnEdit(wxCommandEvent& event);
         void OnDelete(wxCommandEvent& event);
+        void OnWake(wxCommandEvent& event);
         void OnItemActivated(wxListEvent& event);
         void OnListKey(wxListEvent& event);
 
@@ -73,6 +74,7 @@ namespace MarconiUI
         wxButton* m_connect = nullptr;
         wxButton* m_edit = nullptr;
         wxButton* m_delete = nullptr;
+        wxButton* m_wake = nullptr;
         wxListView* m_network = nullptr;
         wxStaticText* m_networkEmpty = nullptr;
         std::vector<NetworkEntry> m_networkEntries;

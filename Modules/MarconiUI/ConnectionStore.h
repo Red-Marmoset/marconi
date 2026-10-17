@@ -30,6 +30,12 @@ namespace MarconiUI
         bool viewOnly = false;
         bool clipboard = true;
         bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
+        wxString quality = "balanced"; // picture quality: "best", "balanced" or "low" (Marconi::QualityName)
+        bool lockOnDisconnect = false;  // lock the other computer's screen when the window closes
+        bool favourite = false;         // listed first
+        wxString notes;                 // anything worth remembering about the computer
+        wxString macAddress;            // hardware address, for waking it up (Wake-on-LAN)
+        wxRect windowRect;              // where the viewer window was; empty = not remembered
         wxDateTime lastUsed;
 
         wxString GetDisplayName() const { return name.empty() ? address : name; }

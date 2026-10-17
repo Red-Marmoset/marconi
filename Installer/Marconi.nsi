@@ -444,6 +444,16 @@ Section "${APP_NAME}" SecApp
     ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
     IntFmt $0 "0x%08X" $0
     WriteRegDWORD SHCTX "${UNINSTALL_KEY}" "EstimatedSize" "$0"
+
+    ; Open vnc:// links with Marconi, unless another program already handles them.
+    ReadRegStr $0 SHCTX "Software\Classes\vnc\shell\open\command" ""
+    ${If} $0 == ""
+    ${OrIf} $0 == '"$INSTDIR\${APP_EXE}" "%1"'
+        WriteRegStr SHCTX "Software\Classes\vnc" "" "URL:VNC connection"
+        WriteRegStr SHCTX "Software\Classes\vnc" "URL Protocol" ""
+        WriteRegStr SHCTX "Software\Classes\vnc\DefaultIcon" "" "$INSTDIR\${APP_EXE},0"
+        WriteRegStr SHCTX "Software\Classes\vnc\shell\open\command" "" '"$INSTDIR\${APP_EXE}" "%1"'
+    ${EndIf}
 SectionEnd
 
 ; The shortcuts follow SetShellVarContext (ApplyMode): everyone's Start menu and desktop, or just this account's.
@@ -543,6 +553,11 @@ Section "un.${APP_NAME}" SecUnApp
     Delete "$INSTDIR\Uninstall.exe"
     RMDir "$INSTDIR"
 
+    ; The vnc:// link handler, if it is still ours.
+    ReadRegStr $0 SHCTX "Software\Classes\vnc\shell\open\command" ""
+    ${If} $0 == '"$INSTDIR\${APP_EXE}" "%1"'
+        DeleteRegKey SHCTX "Software\Classes\vnc"
+    ${EndIf}
     DeleteRegKey SHCTX "${UNINSTALL_KEY}"
 SectionEnd
 
