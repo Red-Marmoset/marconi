@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.4.2
+
+- Files copied in Explorer or Finder can be pasted onto the other computer's screen or into the file panel.
+- Files copied in the file panel (Ctrl+C) can be pasted on this computer, or on the other side.
+
 ## 0.4.1
 
 - Encrypted connections on Windows too.

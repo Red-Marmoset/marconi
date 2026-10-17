@@ -14,6 +14,7 @@ namespace Marconi
         ZoomIn,    // Ctrl (Cmd on a Mac) and '+'
         ZoomOut,   // Ctrl and '-'
         ZoomReset, // Ctrl and '0': actual size
+        PasteFiles, // Ctrl and 'V' while the local clipboard holds files: copy them to the remote computer
     };
 
     // What a function key pressed in the viewer does locally. `functionKey` is 1-24 (F1 = 1); `modifiers` is whether

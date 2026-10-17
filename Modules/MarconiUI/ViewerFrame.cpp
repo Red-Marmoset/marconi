@@ -4,6 +4,7 @@
 #include "ViewerFrame.h"
 
 #include "AppIcon.h"
+#include "ClipboardFiles.h"
 #include "ClipboardWatch.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
@@ -71,6 +72,7 @@ namespace MarconiUI
             ID_CLIPBOARD,
             ID_SEND_CLIPBOARD,
             ID_GET_CLIPBOARD,
+            ID_PASTE_FILES,
             ID_SEND_CTRL_ALT_DEL,
             ID_SEND_ALT_TAB,
             ID_SEND_ALT_F4,
@@ -130,12 +132,7 @@ namespace MarconiUI
                                    .Floatable(true)
                                    .Dockable(true)
                                    .Hide());
-        m_canvas->SetFileDropHandler([this](const std::vector<std::string>& paths) {
-            ShowFiles();
-            m_files->UploadToDesktop(paths);
-            SetStatusText(wxString::Format("Copying %zu item%s to the remote Desktop", paths.size(),
-                                           paths.size() == 1 ? "" : "s"));
-        });
+        m_canvas->SetFileDropHandler([this](const std::vector<std::string>& paths) { UploadToRemoteDesktop(paths); });
         m_aui.Update();
         m_defaultLayout = m_aui.SavePerspective();
         if (!m_options.layout.empty())
@@ -175,6 +172,9 @@ namespace MarconiUI
                 m_canvas->SetZoom(ScaleMode::Fixed, 100);
                 UpdateControls();
                 UpdateStatus();
+                break;
+            case Marconi::LocalCommand::PasteFiles:
+                PasteFilesFromClipboard();
                 break;
             default:
                 break;
@@ -599,6 +599,30 @@ namespace MarconiUI
     void ViewerFrame::OnServerClipboard(const Marconi::Rfb::ClipboardContent& content)
     {
         CallAfter([this, content]() { m_clipboard.OnServerContent(content); });
+    }
+
+    void ViewerFrame::UploadToRemoteDesktop(const std::vector<std::string>& paths)
+    {
+        if (paths.empty())
+        {
+            return;
+        }
+        ShowFiles();
+        m_files->UploadToDesktop(paths);
+        SetStatusText(wxString::Format("Copying %zu item%s to the remote Desktop", paths.size(),
+                                       paths.size() == 1 ? "" : "s"));
+    }
+
+    void ViewerFrame::PasteFilesFromClipboard()
+    {
+        // Files copied in Explorer or Finder: pasting on the remote screen copies them to its Desktop, as a drop does.
+        std::vector<std::string> files = GetClipboardFiles();
+        if (files.empty())
+        {
+            SetStatusText("The clipboard holds no files to paste");
+            return;
+        }
+        UploadToRemoteDesktop(files);
     }
 
     void ViewerFrame::SyncClipboardToServer()
@@ -1099,6 +1123,7 @@ namespace MarconiUI
         menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
         menu->Append(ID_SEND_CLIPBOARD, "Send Clipboard to the Other Computer");
         menu->Append(ID_GET_CLIPBOARD, "Get Clipboard from the Other Computer");
+        menu->Append(ID_PASTE_FILES, "Paste Files onto the Other Computer's Desktop\tCtrl+V");
         menu->AppendSeparator();
         menu->AppendSubMenu(CreateSendKeysMenu(), "Send &Keys");
         menu->AppendSubMenu(CreateScreenshotMenu(), "Screens&hot");
@@ -1146,6 +1171,7 @@ namespace MarconiUI
         }
         menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
         menu->Enable(ID_GET_CLIPBOARD, m_connected);
+        menu->Enable(ID_PASTE_FILES, m_connected && ClipboardHasFiles());
         return menu;
     }
 
@@ -1250,6 +1276,9 @@ namespace MarconiUI
             return; // keep the status bar message; the automatic send below would repeat it
         case ID_GET_CLIPBOARD:
             m_clipboard.GetNow();
+            return;
+        case ID_PASTE_FILES:
+            PasteFilesFromClipboard();
             return;
         case ID_SEND_CTRL_ALT_DEL:
             SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Alt_L, Marconi::Keysym::Delete});

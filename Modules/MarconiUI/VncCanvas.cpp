@@ -4,6 +4,7 @@
 
 #include "VncCanvas.h"
 
+#include "ClipboardFiles.h"
 #include "ScaledBlit.h"
 
 #include <MarconiCore/Zoom.h>
@@ -600,6 +601,11 @@ namespace MarconiUI
                     character = static_cast<char>(event.GetUnicodeKey());
                 }
                 command = Marconi::GetLocalZoomCommand(character, event.CmdDown(), event.AltDown());
+                if (command == Marconi::LocalCommand::None && (character == 'v' || character == 'V') &&
+                    event.CmdDown() && !event.AltDown() && !event.ShiftDown() && ClipboardHasFiles())
+                {
+                    command = Marconi::LocalCommand::PasteFiles; // files copied locally: Paste sends them over
+                }
             }
             if (command != Marconi::LocalCommand::None)
             {

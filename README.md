@@ -93,6 +93,11 @@ onto the other computer's screen are copied to its Desktop.
 - **Windows with TightVNC:** nothing more to set up; files travel over the same connection. The first time you drop
   files on its screen, Marconi asks which folder they should go to.
 
+Copy and paste works too. Copy files in Explorer or Finder, then press Ctrl+V on the other computer's screen (they
+go to its Desktop) or in the right side of the file panel (they go to the folder shown). Select files on either side
+of the panel and press Ctrl+C to copy them: files from the other computer are brought over first, then you can paste
+them in Explorer or Finder like any others.
+
 If a file with the same name is already there, Marconi asks whether to replace it, keep both, or skip it.
 
 ## Appearance and settings

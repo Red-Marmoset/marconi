@@ -57,6 +57,11 @@ namespace MarconiUI
 
         // Called by the panes: copy `paths` from one side into the other side's folder.
         void CopyBetweenSides(bool fromRemote, const std::vector<std::string>& paths);
+        // Copy (Ctrl+C) in a pane: puts the files on the clipboard for pasting anywhere files go. Remote files are
+        // downloaded to a temporary folder first (blocking, like a drag out).
+        void CopyToClipboard(bool fromRemote, const std::vector<std::string>& paths);
+        // Paste (Ctrl+V) in the remote pane: copies the files on the clipboard into the remote pane's folder.
+        void PasteFromClipboard();
         // Remote files dragged out to Explorer or Finder: downloads them to a temporary folder (blocking) and
         // returns the local copies, which the drop then copies to where the user dropped them.
         std::vector<std::string> DownloadForDrag(const std::vector<std::string>& remotePaths);

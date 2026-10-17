@@ -140,6 +140,8 @@ namespace MarconiUI
         void ApplyLayout(const wxString& layout);
         wxString GetLayout() const;
         void SyncClipboardToServer();
+        void UploadToRemoteDesktop(const std::vector<std::string>& paths);
+        void PasteFilesFromClipboard();
         void SaveSettings();
         void WaitForPicture();
         void CheckForPicture();
