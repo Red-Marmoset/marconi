@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.5.1
+
+- Fixed a black square appearing instead of the mouse pointer on Windows when the other computer hides its pointer.
+
 ## 0.5.0
 
 - A picture quality setting per connection (best, balanced, low bandwidth), changeable while connected.

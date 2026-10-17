@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 
 namespace MarconiUI
 {
@@ -423,6 +424,39 @@ namespace MarconiUI
         ApplyCursor();
     }
 
+    namespace
+    {
+        // Windows ignores a cursor's alpha channel when every alpha value is zero, and then its empty mask makes the
+        // whole thing opaque: a hidden pointer would show as a black square. One pixel at alpha 1 (invisible) keeps
+        // the channel in use. Other systems honour the alpha either way.
+        void KeepAlphaInUse(wxImage& image)
+        {
+            if (!image.HasAlpha())
+            {
+                image.InitAlpha();
+            }
+            const unsigned char* alpha = image.GetAlpha();
+            size_t count = static_cast<size_t>(image.GetWidth()) * static_cast<size_t>(image.GetHeight());
+            for (size_t i = 0; i < count; ++i)
+            {
+                if (alpha[i] != 0)
+                {
+                    return;
+                }
+            }
+            image.SetRGB(0, 0, 0, 0, 0);
+            image.SetAlpha(0, 0, 1);
+        }
+
+        wxCursor MakeCursor(wxImage image, int hotspotX, int hotspotY)
+        {
+            KeepAlphaInUse(image);
+            image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, hotspotX);
+            image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, hotspotY);
+            return wxCursor(image);
+        }
+    } // namespace
+
     void VncCanvas::ApplyCursor()
     {
         if (!m_hasRemoteCursor || m_cursorScale == m_scale)
@@ -433,12 +467,13 @@ namespace MarconiUI
         const Marconi::Rfb::CursorShape& cursor = m_remoteCursor;
         if (cursor.width <= 0 || cursor.height <= 0)
         {
-            // The server hid its pointer (TightVNC does). A fully transparent 1x1 image: wxCURSOR_BLANK would need
-            // wxWidgets' own resource file on Windows.
-            wxImage blank(1, 1);
+            // The server hid its pointer (TightVNC does while you type). An invisible cursor: wxCURSOR_BLANK would
+            // need wxWidgets' own resource file on Windows. Not 1x1: Windows scales tiny cursors up with the
+            // pointer size setting, and the pixel KeepAlphaInUse leaves would show.
+            wxImage blank(32, 32);
             blank.InitAlpha();
-            blank.SetAlpha(0, 0, 0);
-            SetCursor(wxCursor(blank));
+            memset(blank.GetAlpha(), 0, 32 * 32);
+            SetCursor(MakeCursor(blank, 0, 0));
             return;
         }
 
@@ -466,9 +501,7 @@ namespace MarconiUI
             hotspotX = std::min(static_cast<int>(hotspotX * scale), width - 1);
             hotspotY = std::min(static_cast<int>(hotspotY * scale), height - 1);
         }
-        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_X, hotspotX);
-        image.SetOption(wxIMAGE_OPTION_CUR_HOTSPOT_Y, hotspotY);
-        SetCursor(wxCursor(image));
+        SetCursor(MakeCursor(image, hotspotX, hotspotY));
     }
 
     void VncCanvas::SendPointer(const wxPoint& windowPoint)
