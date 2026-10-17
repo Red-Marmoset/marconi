@@ -491,8 +491,19 @@ namespace MarconiUI
             selected = m_connections[previous].id;
         }
         auto all = m_store.LoadAll();
-        // Favourites first, each group most recently used first.
-        std::stable_partition(all.begin(), all.end(), [](const SavedConnection& c) { return c.favourite; });
+        // Favourites first; within those and the rest, grouped connections by group name (A to Z) and then the
+        // ungrouped; within a group, most recently used first (LoadAll's order).
+        std::stable_sort(all.begin(), all.end(), [](const SavedConnection& a, const SavedConnection& b) {
+            if (a.favourite != b.favourite)
+            {
+                return a.favourite;
+            }
+            if (a.group.empty() != b.group.empty())
+            {
+                return !a.group.empty();
+            }
+            return a.group.CmpNoCase(b.group) < 0;
+        });
         const wxString query = m_search->GetValue().Strip(wxString::both).Lower();
         m_list->Freeze();
         m_list->DeleteAllItems();
@@ -500,11 +511,13 @@ namespace MarconiUI
         for (const SavedConnection& connection : all)
         {
             if (!query.empty() && !connection.GetDisplayName().Lower().Contains(query) &&
-                !connection.address.Lower().Contains(query) && !connection.notes.Lower().Contains(query))
+                !connection.address.Lower().Contains(query) && !connection.notes.Lower().Contains(query) &&
+                !connection.group.Lower().Contains(query))
             {
                 continue;
             }
             wxString name = (connection.favourite ? wxString::FromUTF8("\xE2\x98\x85 ") : wxString()) +
+                            (connection.group.empty() ? wxString() : connection.group + wxString::FromUTF8(" \xE2\x80\xBA ")) +
                             connection.GetDisplayName();
             const long row = m_list->InsertItem(static_cast<long>(m_connections.size()), name, 0);
             m_connections.push_back(connection);

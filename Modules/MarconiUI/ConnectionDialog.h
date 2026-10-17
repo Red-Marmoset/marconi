@@ -9,6 +9,7 @@
 
 class wxCheckBox;
 class wxChoice;
+class wxComboBox;
 class wxTextCtrl;
 
 namespace MarconiUI
@@ -41,5 +42,6 @@ namespace MarconiUI
         wxCheckBox* m_favourite = nullptr;
         wxTextCtrl* m_mac = nullptr;
         wxTextCtrl* m_notes = nullptr;
+        wxComboBox* m_group = nullptr;
     };
 } // namespace MarconiUI

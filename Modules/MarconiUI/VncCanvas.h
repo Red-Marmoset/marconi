@@ -103,6 +103,11 @@ namespace MarconiUI
         void ZoomAround(int zoomPercent, const wxPoint& around);
         void UpdateEdgeScrolling(const wxPoint& windowPoint);
         void OnEdgeScroll();
+        // A zoomed-in picture bigger than the window: it can be moved around.
+        bool IsScrollable() const;
+        void ScrollByPixels(const wxPoint& delta);
+        // View only: dragging with the left button moves the picture instead of being sent.
+        void PanByDrag(const wxMouseEvent& event);
 
         // Window (client) coordinates <-> desktop coordinates, for the current mode, scroll position and scale.
         wxPoint ToDesktop(const wxPoint& windowPoint) const;
@@ -133,6 +138,9 @@ namespace MarconiUI
         wxTimer m_edgeScrollTimer; // full screen: the picture scrolls while the pointer rests at a window edge
         wxPoint m_edgeScrollPoint;
         int m_zoomWheel = 0; // Ctrl+wheel rotation not yet turned into a zoom step
+        bool m_panning = false; // a view-only drag is moving the picture
+        wxPoint m_panFrom;      // where the pointer was at the last pan step
+        wxPoint m_panRemainder; // pixels not yet scrolled (scrolling moves in whole units)
 
         KeyMapper m_keys;
         bool m_viewOnly = false;

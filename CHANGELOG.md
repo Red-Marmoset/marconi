@@ -9,6 +9,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 - Fixed a black square appearing instead of the mouse pointer on Windows when the other computer hides its pointer.
 - The status bar shows the round trip time to the other computer, and says when it has stopped answering.
+- Saved connections can be put in groups (a name typed when editing one); the list keeps each group together, and
+  searching for a group's name finds its connections.
+- Linux: a desktop file for opening vnc:// links in Marconi, with the steps in the README.
+- A zoomed-in picture scrolls with Ctrl+Shift and the mouse wheel, and can be dragged around when view only is on.
 
 ## 0.5.0
 

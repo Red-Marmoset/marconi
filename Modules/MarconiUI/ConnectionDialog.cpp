@@ -13,6 +13,7 @@
 
 #include <wx/checkbox.h>
 #include <wx/choice.h>
+#include <wx/combobox.h>
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
 #include <wx/statbox.h>
@@ -38,6 +39,19 @@ namespace MarconiUI
         m_name = new wxTextCtrl(this, wxID_ANY, connection.name, wxDefaultPosition, fieldSize);
         m_name->SetHint("optional, e.g. Studio Mac");
         addRow("Shown in list as:", m_name);
+        // Any name typed here is a group; the drop-down offers the ones already in use.
+        wxArrayString groups;
+        for (const SavedConnection& other : ConnectionStore().LoadAll())
+        {
+            if (!other.group.empty() && groups.Index(other.group, false) == wxNOT_FOUND)
+            {
+                groups.Add(other.group);
+            }
+        }
+        groups.Sort();
+        m_group = new wxComboBox(this, wxID_ANY, connection.group, wxDefaultPosition, fieldSize, groups);
+        m_group->SetHint("optional, e.g. Studio or Home, to keep these together in the list");
+        addRow("Group:", m_group);
         m_address = new wxTextCtrl(this, wxID_ANY, connection.address, wxDefaultPosition, fieldSize);
         m_address->SetHint("host, host:display or host::port");
         addRow("Address:", m_address);
@@ -191,6 +205,7 @@ namespace MarconiUI
                                     ? wxString(Marconi::Net::FormatMacAddress(mac))
                                     : wxString();
         connection.notes = m_notes->GetValue().Strip(wxString::both);
+        connection.group = m_group->GetValue().Strip(wxString::both);
         return connection;
     }
 

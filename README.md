@@ -17,9 +17,10 @@ It works with:
 - Use its keyboard and mouse. Keys match your keyboard layout, and a Mac's Command key works as expected.
 - Copy and paste text between the two computers, in either direction, and pictures with servers that allow it.
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
-  Credential Manager, the macOS Keychain, or your Linux desktop's keyring), plus notes, favourites, and where each
-  one's window was.
-- Open `vnc://` links from other programs (Windows and macOS).
+  Credential Manager, the macOS Keychain, or your Linux desktop's keyring), plus notes, favourites, groups, and
+  where each one's window was.
+- Open `vnc://` links from other programs (Windows and macOS do this once Marconi is installed; on Linux, see
+  Building).
 - Find computers on your home or office network by itself.
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
@@ -72,8 +73,9 @@ Press **F8** to open Marconi's menu, even in full screen. In full screen, restin
 screen also shows a small bar with the computer's name and the main controls; its **Pin** button keeps it there.
 From the menu you can:
 
-- zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same; in full screen,
-  a zoomed-in picture scrolls when the pointer rests at the edge of the screen);
+- zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same). A zoomed-in
+  picture has scrollbars, scrolls with Ctrl+Shift and the wheel, and in full screen scrolls when the pointer rests
+  at the edge of the screen; with view only on, you can also drag it around;
 - go full screen or back;
 - turn view-only and clipboard sharing on or off, or send your clipboard to the other computer and get its
   clipboard by hand;
@@ -241,6 +243,10 @@ You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildT
     sudo apt install build-essential pkg-config libgtk-3-dev libsecret-1-dev libgl1-mesa-dev \
                      libxxf86vm-dev libxtst-dev libsm-dev
     ./Build.sh
+
+To open `vnc://` links in Marconi on Linux, copy `Installer/Linux/marconi.desktop` to
+`~/.local/share/applications/`, change its `Exec` line to the path of the `Marconi` you built (keeping the `%u`),
+then run `xdg-mime default marconi.desktop x-scheme-handler/vnc`.
 
 Incremental builds rely on BuildTool's header dependency tracking (engine commit 3d0ce07 or later). With an older
 BuildTool, build with `-Clean` after editing a header.
