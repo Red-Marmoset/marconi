@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.3.7
+
+- The Windows installer asks you to accept the MIT license before installing.
+- The Windows installer can open the source code on GitHub and adds a Start menu link to it.
+
 ## 0.3.6
 
 - The Windows installer asks whether to install just for you (no administrator permission needed) or for everyone on the PC.

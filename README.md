@@ -225,9 +225,10 @@ clone gets a revision that is too low.
 
 The installer is built with [NSIS 3.08 or newer](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`). It also
 needs the [ShellExecAsUser plug-in](https://nsis.sourceforge.io/ShellExecAsUser_plug-in), which lets the installer
-start Marconi as you rather than as administrator when you tick "Start Marconi now". Download its Unicode build and
-put `ShellExecAsUser.dll` in NSIS's `Plugins\x86-unicode` folder (normally
-`C:\Program Files (x86)\NSIS\Plugins\x86-unicode`). `Package.ps1` stops with a message if it isn't there.
+start Marconi, or open its source code on GitHub, as you rather than as administrator when you tick "Start Marconi
+now" or "Open the source code on GitHub". Download its Unicode build and put `ShellExecAsUser.dll` in NSIS's
+`Plugins\x86-unicode` folder (normally `C:\Program Files (x86)\NSIS\Plugins\x86-unicode`). `Package.ps1` stops with
+a message if it isn't there.
 
     .\Package.ps1                     # -> Build\Installer\Marconi-0.2.0.48-win64-setup.exe
 
@@ -245,7 +246,7 @@ Personal > Certificates). `Package.ps1` then uses `signtool` from the Windows SD
 uninstaller and the setup executable, each with a timestamp from `http://timestamp.digicert.com` so the signatures
 stay valid after the certificate expires. Set `MARCONI_SIGN_TIMESTAMP_URL` to use a different timestamp server.
 
-The installer asks who Marconi is for:
+The installer shows the MIT license, which must be accepted before installing. It then asks who Marconi is for:
 
 - **Just me** installs to `%LOCALAPPDATA%\Programs\Marconi`, with the shortcuts and the Settings > Apps entry for
   your account only. It needs no administrator permission.
@@ -253,8 +254,9 @@ The installer asks who Marconi is for:
   permission when you choose it, then carries on from the next page. "Start Marconi now" still starts Marconi as
   you, not as the administrator.
 
-It suggests the kind already installed, if any, and says which versions are installed each way. Either way you get a
-Start menu shortcut and an optional desktop one. Installing a newer version replaces the old one of the same kind.
+It suggests the kind already installed, if any, and says which versions are installed each way. Either way you get
+Start menu shortcuts to Marconi and to its source code on GitHub, and an optional desktop shortcut. Installing a newer
+version replaces the old one of the same kind.
 When Setup has administrator permission it only runs an old uninstaller from inside `Program Files`; a copy
 installed somewhere else is left in place and the new version is installed over it, with a line in the installer's
 details saying so. The uninstaller asks for administrator permission only for an install for everyone.

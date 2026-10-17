@@ -8,8 +8,8 @@
 ;                              before it's embedded and on the setup executable once written (needs NSIS 3.08+).
 ; Paths are absolute; makensis runs from this folder, so the relative ones below are relative to it.
 ;
-; "Start Marconi now" on the finish page needs the ShellExecAsUser plug-in in the NSIS installation's
-; Plugins\x86-unicode folder (see Package.ps1, which checks for it).
+; "Start Marconi now" and "Open the source code on GitHub" on the finish page need the ShellExecAsUser plug-in in the
+; NSIS installation's Plugins\x86-unicode folder (see Package.ps1, which checks for it).
 ;
 ; Setup installs either just for the person running it (their own folder and registry, no administrator rights) or
 ; for everyone on the PC (Program Files, administrator rights). It starts without administrator rights and, when
@@ -23,6 +23,8 @@
 !define APP_NAME "Marconi"
 !define PUBLISHER "Red Marmoset Studios Ltd."
 !define APP_EXE "Marconi.exe"
+!define SOURCE_URL "https://github.com/Red-Marmoset/marconi"
+!define SOURCE_SHORTCUT "${APP_NAME} source code.url"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 !define APP_ICON "..\Modules\MarconiUI\Resources\Marconi.ico"
 ; Branding bitmaps from Tools/make_installer_art.py; rerun it after changing the icon, colours or fonts.
@@ -99,6 +101,14 @@ Var RadioAll
 !define MUI_FINISHPAGE_RUN ""
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchAsUser
 !define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME} now"
+; The second checkbox opens the source code in the user's browser, unelevated for the same reason.
+!define MUI_FINISHPAGE_SHOWREADME ""
+!define MUI_FINISHPAGE_SHOWREADME_FUNCTION OpenSourceAsUser
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "Open the source code on GitHub"
+!define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+
+; The MIT license. Its checkbox must be ticked before Next is enabled.
+!define MUI_LICENSEPAGE_CHECKBOX
 
 ; The copy started with administrator rights begins at the page after the choice.
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfRelaunched
@@ -386,6 +396,10 @@ Function LaunchAsUser
     ShellExecAsUser::ShellExecAsUser "" "$INSTDIR\${APP_EXE}" ""
 FunctionEnd
 
+Function OpenSourceAsUser
+    ShellExecAsUser::ShellExecAsUser "" "${SOURCE_URL}" ""
+FunctionEnd
+
 Section "${APP_NAME}" SecApp
     SectionIn RO
     Call ApplyMode
@@ -435,6 +449,8 @@ SectionEnd
 ; The shortcuts follow SetShellVarContext (ApplyMode): everyone's Start menu and desktop, or just this account's.
 Section "Start menu shortcut" SecStartMenu
     CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+    ; An internet shortcut, which opens the source code in the default browser.
+    WriteINIStr "$SMPROGRAMS\${SOURCE_SHORTCUT}" "InternetShortcut" "URL" "${SOURCE_URL}"
 SectionEnd
 
 Section /o "Desktop shortcut" SecDesktop
@@ -443,7 +459,7 @@ SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} VNC client."
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME} to the Start menu."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME}, and a link to its source code on GitHub, to the Start menu."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Add a ${APP_NAME} shortcut to the desktop."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
@@ -518,6 +534,7 @@ SectionEnd
 Section "un.${APP_NAME}" SecUnApp
     SectionIn RO
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
+    Delete "$SMPROGRAMS\${SOURCE_SHORTCUT}"
     Delete "$DESKTOP\${APP_NAME}.lnk"
 
     ; Only the files the installer put there, in case the folder was shared with something else.
