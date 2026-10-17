@@ -5,6 +5,9 @@ Read this before changing anything. It applies to every agent working in this re
 Cross-platform VNC client. It's an out-of-tree una project; the engine lives at `$UNA_ENGINE_PATH` (default
 `C:\code\engine`).
 
+The server component (Marconi Server) is planned in `SERVER_PLAN.md`: read it before working on the server, follow
+its phases in order, and keep it current (decisions, measurements, finished steps).
+
 ## Working with the owner
 
 - **Don't fill gaps with assumptions** (the owner's rule). When you notice you're assuming something about what the
