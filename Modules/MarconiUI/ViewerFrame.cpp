@@ -93,6 +93,10 @@ namespace MarconiUI
             ID_SCREENSHOT_POINTER,
             ID_SHOW_TOOLBAR,
             ID_SHOW_MENU, // the full-screen bar's Menu button
+            ID_DISPLAY_ALL,
+            ID_DISPLAY_FIRST,
+            ID_DISPLAY_LAST = ID_DISPLAY_FIRST + 15, // up to 16 remote displays
+            ID_MATCH_WINDOW_SIZE,
             ID_FILES,
             ID_REFRESH,
             ID_DISCONNECT,
@@ -235,11 +239,18 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
         m_retryTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnRetryTick(); }, m_retryTimer.GetId());
+        m_matchSizeTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { RequestMatchingSize(); }, m_matchSizeTimer.GetId());
+        m_displayId = options.displayId;
         Bind(wxEVT_MENU, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_TOOL, &ViewerFrame::OnCommand, this, ID_SCALE_FIT, ID_DISCONNECT);
         Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
             event.Skip();
             CallAfter([this]() { UpdateStatus(); }); // after the canvas has recomputed its scale
+            if (m_matchWindowSize && m_connected)
+            {
+                m_matchSizeTimer.StartOnce(500); // once the resize has settled
+            }
         });
         UpdateControls();
         if (m_options.headless)
@@ -278,6 +289,7 @@ namespace MarconiUI
         }
         options.scaleMode = connection.scaleMode;
         options.zoomPercent = connection.zoomPercent;
+        options.displayId = connection.displayId;
         options.viewOnly = connection.viewOnly;
         options.clipboard = connection.clipboard;
         options.systemKeys = connection.systemKeys;
@@ -361,7 +373,8 @@ namespace MarconiUI
         wxImage picture = m_canvas->GetShownPicture();
         if (IncludePointerInScreenshots() && m_canvas->HasRemoteCursor() && m_canvas->GetLastPointer().x >= 0)
         {
-            return ComposeScreenshot(picture, &m_canvas->GetRemoteCursor(), m_canvas->GetLastPointer());
+            wxPoint pointer = m_canvas->GetLastPointer() - m_canvas->GetPictureRect().GetPosition();
+            return ComposeScreenshot(picture, &m_canvas->GetRemoteCursor(), pointer);
         }
         return picture;
     }
@@ -600,6 +613,59 @@ namespace MarconiUI
                 UpdateStatus();
             }
         });
+    }
+
+    void ViewerFrame::OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens)
+    {
+        CallAfter([this, screens]() {
+            m_screens = screens;
+            ApplyDisplayChoice();
+        });
+    }
+
+    void ViewerFrame::OnDesktopResizeRefused(int status)
+    {
+        CallAfter([this, status]() {
+            SetStatusText(status == 1 ? "The other computer doesn't allow its screen size to be changed"
+                                      : "The other computer couldn't change its screen size");
+        });
+    }
+
+    void ViewerFrame::ApplyDisplayChoice()
+    {
+        // Show the chosen display when the server has one with that id; otherwise everything.
+        wxRect viewport;
+        for (const Marconi::Rfb::Screen& screen : m_screens)
+        {
+            if (m_displayId != 0 && static_cast<long>(screen.id) == m_displayId && m_screens.size() > 1)
+            {
+                viewport = wxRect(screen.x, screen.y, screen.width, screen.height);
+            }
+        }
+        if (viewport != m_canvas->GetViewport())
+        {
+            m_canvas->SetViewport(viewport);
+        }
+        UpdateStatus();
+    }
+
+    void ViewerFrame::RequestMatchingSize()
+    {
+        if (!m_matchWindowSize || !m_connected || !m_client.SupportsDesktopResize())
+        {
+            return;
+        }
+        wxSize client = m_canvas->GetClientSize();
+        if (m_canvas->GetScaleMode() == ScaleMode::Fixed)
+        {
+            client.x = static_cast<int>(std::lround(client.x * 100.0 / m_canvas->GetZoomPercent()));
+            client.y = static_cast<int>(std::lround(client.y * 100.0 / m_canvas->GetZoomPercent()));
+        }
+        if (client.x < 64 || client.y < 64 || client == m_canvas->GetDesktopSize())
+        {
+            return;
+        }
+        m_client.RequestDesktopSize(client.x, client.y);
     }
 
     void ViewerFrame::OnDesktopResized(int width, int height)
@@ -1246,6 +1312,32 @@ namespace MarconiUI
         zoom->Append(ID_ZOOM_IN, "Zoom &In\tCtrl++");
         zoom->Append(ID_ZOOM_OUT, "Zoom &Out\tCtrl+-");
         menu->AppendSubMenu(zoom, "&Zoom");
+        if (m_screens.size() > 1)
+        {
+            wxMenu* displays = new wxMenu();
+            displays->AppendRadioItem(ID_DISPLAY_ALL, "&All Displays");
+            bool chosen = false;
+            for (size_t i = 0; i < m_screens.size() && i < 16; ++i)
+            {
+                const Marconi::Rfb::Screen& screen = m_screens[i];
+                displays->AppendRadioItem(ID_DISPLAY_FIRST + static_cast<int>(i),
+                                          wxString::Format("Display &%zu (%d x %d)", i + 1, screen.width, screen.height));
+                if (static_cast<long>(screen.id) == m_displayId)
+                {
+                    displays->Check(ID_DISPLAY_FIRST + static_cast<int>(i), true);
+                    chosen = true;
+                }
+            }
+            if (!chosen)
+            {
+                displays->Check(ID_DISPLAY_ALL, true);
+            }
+            menu->AppendSubMenu(displays, "&Display");
+        }
+        menu->AppendCheckItem(ID_MATCH_WINDOW_SIZE, "&Match the Other Computer's Screen to This Window",
+                              "Asks the other computer to change its screen size to fit this window exactly");
+        menu->Check(ID_MATCH_WINDOW_SIZE, m_matchWindowSize);
+        menu->Enable(ID_MATCH_WINDOW_SIZE, m_connected && m_client.SupportsDesktopResize());
         menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
         menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
         menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
@@ -1499,10 +1591,30 @@ namespace MarconiUI
         case ID_DISCONNECT:
             Close();
             return;
+        case ID_DISPLAY_ALL:
+            m_displayId = 0;
+            ApplyDisplayChoice();
+            break;
+        case ID_MATCH_WINDOW_SIZE:
+            m_matchWindowSize = !m_matchWindowSize;
+            if (m_matchWindowSize)
+            {
+                RequestMatchingSize();
+            }
+            break;
         default:
             if (event.GetId() >= ID_ZOOM_LEVEL_FIRST && event.GetId() <= ID_ZOOM_LEVEL_LAST)
             {
                 m_canvas->SetZoom(ScaleMode::Fixed, Marconi::Zoom::kLevels[event.GetId() - ID_ZOOM_LEVEL_FIRST]);
+            }
+            else if (event.GetId() >= ID_DISPLAY_FIRST && event.GetId() <= ID_DISPLAY_LAST)
+            {
+                size_t index = static_cast<size_t>(event.GetId() - ID_DISPLAY_FIRST);
+                if (index < m_screens.size())
+                {
+                    m_displayId = static_cast<long>(m_screens[index].id);
+                    ApplyDisplayChoice();
+                }
             }
             break;
         }
@@ -1653,6 +1765,13 @@ namespace MarconiUI
             status += " - waiting for the screen...";
         }
         status += wxString::Format(" - %d%%", m_canvas->GetShownPercent());
+        for (size_t i = 0; i < m_screens.size(); ++i)
+        {
+            if (!m_canvas->GetViewport().IsEmpty() && static_cast<long>(m_screens[i].id) == m_displayId)
+            {
+                status += wxString::Format(" - display %zu of %zu", i + 1, m_screens.size());
+            }
+        }
         if (m_canvas->IsViewOnly())
         {
             status += " - view only";
@@ -1675,6 +1794,7 @@ namespace MarconiUI
         }
         saved.scaleMode = m_canvas->GetScaleMode();
         saved.zoomPercent = m_canvas->GetZoomPercent();
+        saved.displayId = m_displayId;
         saved.viewOnly = m_canvas->IsViewOnly();
         saved.clipboard = m_clipboard.IsEnabled();
         saved.systemKeys = m_sendSystemKeys;

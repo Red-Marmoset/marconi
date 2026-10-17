@@ -78,6 +78,39 @@ namespace MarconiUI
         return framebuffer.IsBlack();
     }
 
+    wxImage VncCanvas::GetShownPicture() const
+    {
+        if (!m_backing.IsOk())
+        {
+            return wxImage();
+        }
+        wxImage picture = m_backing.ConvertToImage();
+        wxRect shown = GetPictureRect();
+        if (shown.GetSize() != m_desktopSize)
+        {
+            picture = picture.GetSubImage(shown);
+        }
+        return picture;
+    }
+
+    wxRect VncCanvas::GetPictureRect() const
+    {
+        wxRect whole(wxPoint(0, 0), m_desktopSize);
+        if (m_viewport.IsEmpty())
+        {
+            return whole;
+        }
+        wxRect shown = m_viewport.Intersect(whole);
+        return shown.IsEmpty() ? whole : shown;
+    }
+
+    void VncCanvas::SetViewport(const wxRect& desktopRect)
+    {
+        m_viewport = desktopRect;
+        UpdateLayout();
+        Refresh(false);
+    }
+
     void VncCanvas::ApplyDesktopSize(int width, int height)
     {
         m_pending = false;
@@ -135,8 +168,9 @@ namespace MarconiUI
 
     wxSize VncCanvas::GetShownSize() const
     {
-        return wxSize(static_cast<int>(std::lround(m_desktopSize.x * m_scale)),
-                      static_cast<int>(std::lround(m_desktopSize.y * m_scale)));
+        wxRect picture = GetPictureRect();
+        return wxSize(static_cast<int>(std::lround(picture.width * m_scale)),
+                      static_cast<int>(std::lround(picture.height * m_scale)));
     }
 
     void VncCanvas::UpdateLayout()
@@ -155,8 +189,9 @@ namespace MarconiUI
             SetVirtualSize(client);
             Scroll(0, 0);
             client = GetClientSize();
-            m_scale = std::min(static_cast<double>(client.x) / m_desktopSize.x,
-                               static_cast<double>(client.y) / m_desktopSize.y);
+            wxRect picture = GetPictureRect();
+            m_scale = std::min(static_cast<double>(client.x) / picture.width,
+                               static_cast<double>(client.y) / picture.height);
             m_scale = std::max(m_scale, 0.01);
             wxSize shown = GetShownSize();
             m_offset = wxPoint((client.x - shown.x) / 2, (client.y - shown.y) / 2);
@@ -184,8 +219,9 @@ namespace MarconiUI
     wxPoint VncCanvas::ToDesktop(const wxPoint& windowPoint) const
     {
         wxPoint unscrolled = CalcUnscrolledPosition(windowPoint);
-        wxPoint point(static_cast<int>(std::floor((unscrolled.x - m_offset.x) / m_scale)),
-                      static_cast<int>(std::floor((unscrolled.y - m_offset.y) / m_scale)));
+        wxRect picture = GetPictureRect();
+        wxPoint point(picture.x + static_cast<int>(std::floor((unscrolled.x - m_offset.x) / m_scale)),
+                      picture.y + static_cast<int>(std::floor((unscrolled.y - m_offset.y) / m_scale)));
         wxSize target = m_desktopSize;
         if (m_pending && m_desktopSize.x > 0 && m_desktopSize.y > 0)
         {
@@ -202,10 +238,11 @@ namespace MarconiUI
     wxRect VncCanvas::ToWindow(const wxRect& desktopRect) const
     {
         // Round outwards so the repainted area always covers every partially affected screen pixel.
-        int left = m_offset.x + static_cast<int>(std::floor(desktopRect.x * m_scale)) - 1;
-        int top = m_offset.y + static_cast<int>(std::floor(desktopRect.y * m_scale)) - 1;
-        int right = m_offset.x + static_cast<int>(std::ceil((desktopRect.x + desktopRect.width) * m_scale)) + 1;
-        int bottom = m_offset.y + static_cast<int>(std::ceil((desktopRect.y + desktopRect.height) * m_scale)) + 1;
+        wxRect picture = GetPictureRect();
+        int left = m_offset.x + static_cast<int>(std::floor((desktopRect.x - picture.x) * m_scale)) - 1;
+        int top = m_offset.y + static_cast<int>(std::floor((desktopRect.y - picture.y) * m_scale)) - 1;
+        int right = m_offset.x + static_cast<int>(std::ceil((desktopRect.x + desktopRect.width - picture.x) * m_scale)) + 1;
+        int bottom = m_offset.y + static_cast<int>(std::ceil((desktopRect.y + desktopRect.height - picture.y) * m_scale)) + 1;
         return wxRect(CalcScrolledPosition(wxPoint(left, top)), wxSize(right - left, bottom - top));
     }
 
@@ -284,6 +321,7 @@ namespace MarconiUI
         wxSize client = GetClientSize();
         wxRect visible(CalcUnscrolledPosition(wxPoint(0, 0)), client);
         wxRect shown(m_offset, GetShownSize());
+        wxRect picture = GetPictureRect();
         dc.SetPen(*wxTRANSPARENT_PEN);
         dc.SetBrush(wxBrush(kOutsideColour));
 
@@ -302,16 +340,17 @@ namespace MarconiUI
                 }
                 if (unscaled)
                 {
-                    dc.Blit(area.GetPosition(), area.GetSize(), &source, area.GetPosition() - m_offset);
+                    dc.Blit(area.GetPosition(), area.GetSize(), &source, area.GetPosition() - m_offset + picture.GetPosition());
                     continue;
                 }
                 // Map each damaged area back to the desktop pixels covering it (plus a pixel of margin for the
                 // filter) and stretch those; the clip region keeps neighbouring draws seamless.
+                // x0..y1 are relative to the picture (the viewport); the backing bitmap holds the whole desktop.
                 int x0 = std::max(0, static_cast<int>(std::floor((area.x - m_offset.x) / m_scale)) - 1);
                 int y0 = std::max(0, static_cast<int>(std::floor((area.y - m_offset.y) / m_scale)) - 1);
-                int x1 = std::min(m_desktopSize.x, static_cast<int>(std::ceil((area.GetRight() + 1 - m_offset.x) / m_scale)) + 1);
-                int y1 = std::min(m_desktopSize.y, static_cast<int>(std::ceil((area.GetBottom() + 1 - m_offset.y) / m_scale)) + 1);
-                wxRect sourceRect(x0, y0, x1 - x0, y1 - y0);
+                int x1 = std::min(picture.width, static_cast<int>(std::ceil((area.GetRight() + 1 - m_offset.x) / m_scale)) + 1);
+                int y1 = std::min(picture.height, static_cast<int>(std::ceil((area.GetBottom() + 1 - m_offset.y) / m_scale)) + 1);
+                wxRect sourceRect(picture.x + x0, picture.y + y0, x1 - x0, y1 - y0);
                 wxRect destinationRect(m_offset.x + static_cast<int>(std::lround(x0 * m_scale)),
                                        m_offset.y + static_cast<int>(std::lround(y0 * m_scale)),
                                        static_cast<int>(std::lround(x1 * m_scale)) - static_cast<int>(std::lround(x0 * m_scale)),

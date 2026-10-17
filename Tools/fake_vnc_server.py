@@ -24,7 +24,7 @@ ENCODING_NAMES = {0: "Raw", 1: "CopyRect", 2: "RRE", 5: "Hextile", 7: "Tight", 1
 
 
 class Session:
-    def __init__(self, conn, width, height):
+    def __init__(self, conn, width, height, screens=0):
         self.conn = conn
         self.width = width
         self.height = height
@@ -32,6 +32,10 @@ class Session:
         self.update_requested = threading.Event()
         self.full_update = True
         self.encodings = []
+        self.screens = screens            # advertise this many side-by-side displays (ExtendedDesktopSize)
+        self.layout_sent = False
+        self.resize_reason = 0            # 1 when the next size change answers the client's SetDesktopSize
+        self.resize_status = 0
         self.frame = 0
         self.pending_resize = None
         self.alive = True
@@ -101,6 +105,17 @@ class Session:
                 out += bytes((b, g, r, 0))  # little-endian 0x00RRGGBB, as the client asked
         return bytes(out)
 
+    def layout_rect(self, reason, status):
+        # ExtendedDesktopSize: x = reason, y = status, then the screens, side by side across the width.
+        self.layout_sent = True
+        count = max(1, self.screens)
+        screens = b""
+        for i in range(count):
+            x0 = self.width * i // count
+            x1 = self.width * (i + 1) // count
+            screens += struct.pack(">IHHHHI", i + 1, x0, 0, x1 - x0, self.height, 0)
+        return struct.pack(">HHHHi", reason, status, self.width, self.height, -308) + struct.pack(">Bxxx", count) + screens
+
     def updater(self):
         while self.alive:
             if not self.update_requested.wait(0.1):
@@ -111,9 +126,16 @@ class Session:
             if self.pending_resize is not None:
                 self.width, self.height = self.pending_resize
                 self.pending_resize = None
-                rects.append(struct.pack(">HHHHi", 0, 0, self.width, self.height, -223))
+                if self.screens and -308 in self.encodings:
+                    rects.append(self.layout_rect(self.resize_reason, self.resize_status))
+                    self.resize_reason = 0
+                    self.resize_status = 0
+                else:
+                    rects.append(struct.pack(">HHHHi", 0, 0, self.width, self.height, -223))
                 self.full_update = True
                 self.silent = getattr(self, "silent_after_resize", False)
+            elif self.screens and -308 in self.encodings and not self.layout_sent:
+                rects.append(self.layout_rect(0, 0))  # tell the client about the displays once
             if getattr(self, "silent", False):
                 if rects:
                     self.send(struct.pack(">BxH", 0, len(rects)) + b"".join(rects))
@@ -160,6 +182,16 @@ class Session:
                 (length,) = struct.unpack(">i", self.recv_exact(4))
                 text = self.recv_exact(abs(length))
                 print("ClientCutText", text.decode("latin-1"))
+            elif message_type == 251:
+                self.recv_exact(1)
+                w, h, count = struct.unpack(">HHBx", self.recv_exact(6))
+                screens = [struct.unpack(">IHHHHI", self.recv_exact(16)) for _ in range(count)]
+                print("SetDesktopSize %dx%d screens=%r" % (w, h, screens), flush=True)
+                self.screens = max(1, count)
+                self.resize_reason = 1
+                self.resize_status = 0
+                self.pending_resize = (w, h)
+                self.update_requested.set()
             else:
                 print("Unknown client message", message_type)
                 return
@@ -200,6 +232,8 @@ def main():
     parser.add_argument("--flip-once", action="store_true", help="only switch size once per connection")
     parser.add_argument("--silent-after-resize", action="store_true",
                         help="like macOS at its lock screen: after a resize send no more pixels on that connection")
+    parser.add_argument("--screens", type=int, default=0,
+                        help="advertise this many side-by-side displays, and accept the client's screen size requests")
     args = parser.parse_args()
     width, height = (int(v) for v in args.size.split("x"))
 
@@ -212,7 +246,7 @@ def main():
         conn, peer = listener.accept()
         print("client connected from", peer, flush=True)
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        session = Session(conn, width, height)
+        session = Session(conn, width, height, args.screens)
         try:
             session.handshake()
             if args.cut_on_connect:

@@ -151,6 +151,7 @@ namespace MarconiUI
             out.scaleMode = ScaleMode::Fit;
         }
         out.viewOnly = config->ReadBool(path + "/ViewOnly", false);
+        out.displayId = config->ReadLong(path + "/Display", 0);
         out.systemKeys = config->ReadBool(path + "/SystemKeys", false);
         out.clipboard = config->ReadBool(path + "/Clipboard", true);
         long long lastUsed = config->ReadLongLong(path + "/LastUsed", 0);
@@ -191,6 +192,7 @@ namespace MarconiUI
                                            ? wxString::Format("%d", connection.zoomPercent)
                                            : wxString("fit"));
         config->Write(path + "/ViewOnly", connection.viewOnly);
+        config->Write(path + "/Display", connection.displayId);
         config->Write(path + "/SystemKeys", connection.systemKeys);
         config->Write(path + "/Clipboard", connection.clipboard);
         config->Write(path + "/LastUsed",

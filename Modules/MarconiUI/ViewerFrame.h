@@ -46,6 +46,7 @@ namespace MarconiUI
         bool fullScreen = false;
         bool clipboard = true;
         bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
+        long displayId = 0;     // which of the server's displays to show (its id), 0 for all of them
         wxString savedId;       // the saved connection this window was opened from, if any
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
@@ -87,6 +88,8 @@ namespace MarconiUI
         void OnConnected(const Marconi::Rfb::ServerInit& serverInit) override;
         void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
         void OnDesktopResized(int width, int height) override;
+        void OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens) override;
+        void OnDesktopResizeRefused(int status) override;
         void OnBell() override;
         void OnCursorShape(const Marconi::Rfb::CursorShape& cursor) override;
         void OnServerCutText(const std::string& latin1Text) override;
@@ -142,6 +145,8 @@ namespace MarconiUI
         void ApplyLayout(const wxString& layout);
         wxString GetLayout() const;
         void SyncClipboardToServer();
+        void ApplyDisplayChoice();
+        void RequestMatchingSize();
         void UploadToRemoteDesktop(const std::vector<std::string>& paths);
         void PasteFilesFromClipboard();
         void SaveSettings();
@@ -172,6 +177,10 @@ namespace MarconiUI
         bool m_connected = false;
         ConnectionLostBar* m_lostBar = nullptr;
         FullScreenBar* m_fullScreenBar = nullptr; // appears at the top edge in full screen
+        std::vector<Marconi::Rfb::Screen> m_screens; // the server's displays, when it describes them
+        long m_displayId = 0;         // the display shown, 0 for all
+        bool m_matchWindowSize = false; // ask the server to resize its screen to this window
+        wxTimer m_matchSizeTimer;      // settles window resizes before asking
         bool m_reconnecting = false;   // the connection was lost and attempts are being made (or waited for)
         bool m_retryUnderWay = false;  // an attempt is connecting right now
         int m_retryAttempt = 0;

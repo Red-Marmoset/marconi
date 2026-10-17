@@ -73,6 +73,8 @@ namespace MarconiTest
         void OnConnected(const Marconi::Rfb::ServerInit& serverInit) override;
         void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
         void OnDesktopResized(int width, int height) override;
+        void OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens) override;
+        void OnDesktopResizeRefused(int status) override;
         void OnServerCutText(const std::string& text) override;
         void OnServerClipboard(const Marconi::Rfb::ClipboardContent& content) override;
         void OnBell() override;
@@ -100,6 +102,9 @@ namespace MarconiTest
         std::vector<Marconi::Rfb::ClipboardContent> clipboards;
         int resizedWidth = 0;
         int resizedHeight = 0;
+        int screenLayouts = 0;
+        std::vector<Marconi::Rfb::Screen> screens;
+        int resizeRefusedStatus = -1;
         int cursorUpdates = 0;
         Marconi::Rfb::CursorShape cursor;
 
@@ -137,4 +142,5 @@ namespace MarconiTest
     void RunFileViewTests();
     void RunExtendedClipboardTests();
     void RunReconnectTests();
+    void RunDesktopSizeTests();
 } // namespace MarconiTest

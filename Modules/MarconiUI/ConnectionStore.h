@@ -26,6 +26,7 @@ namespace MarconiUI
         wxString certificate; // SHA-256 of a server certificate the user chose to trust, as hex; empty = none
         ScaleMode scaleMode = ScaleMode::Fit;
         int zoomPercent = 100; // with ScaleMode::Fixed
+        long displayId = 0;    // the remote display to show, by the id the server gives it; 0 for all
         bool viewOnly = false;
         bool clipboard = true;
         bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer

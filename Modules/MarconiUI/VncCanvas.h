@@ -40,10 +40,17 @@ namespace MarconiUI
         // False while an older picture is shown because the new size isn't complete yet.
         bool IsShowingCurrentPicture() const { return !m_pending; }
         // The picture currently shown, at desktop resolution (invalid before the first one).
-        wxImage GetShownPicture() const { return m_backing.IsOk() ? m_backing.ConvertToImage() : wxImage(); }
+        wxImage GetShownPicture() const;
         bool HasPicture() const { return m_hasPicture && m_backing.IsOk(); }
 
         wxSize GetDesktopSize() const { return m_desktopSize; }
+
+        // Show only this part of the desktop (one of the server's displays), or everything when empty. Pointer
+        // positions still go to the server in whole-desktop coordinates.
+        void SetViewport(const wxRect& desktopRect);
+        wxRect GetViewport() const { return m_viewport; }
+        // The part of the desktop being shown: the viewport, or the whole desktop.
+        wxRect GetPictureRect() const;
 
         // Fit, or a fixed zoom level. The level is kept while fitting, for when fitting is switched off again.
         void SetZoom(ScaleMode mode, int zoomPercent);
@@ -117,6 +124,7 @@ namespace MarconiUI
         bool m_pending = false;  // the server has a new size whose picture isn't complete yet
         wxSize m_pendingSize;
         wxRegion m_coverage;     // what the server has sent since the resize
+        wxRect m_viewport;       // empty: the whole desktop
 
         ScaleMode m_scaleMode = ScaleMode::Fit;
         int m_zoomPercent = 100;

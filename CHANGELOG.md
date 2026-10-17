@@ -5,6 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- When the other computer has several displays, the menu can show just one of them; the choice is remembered.
+- The menu can ask the other computer to change its screen size to fit this window, where its server allows it.
 - In full screen, resting the pointer at the top edge shows a small bar with the controls; it can be pinned.
 - A lost connection keeps the window open and reconnects by itself, with the old picture dimmed until it's back.
 - A dead network link is noticed within about a minute instead of only when something is sent.

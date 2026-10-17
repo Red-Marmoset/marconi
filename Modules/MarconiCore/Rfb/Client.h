@@ -87,6 +87,11 @@ namespace Marconi
             // A complete FramebufferUpdate has been applied; `rects` are the areas that changed.
             virtual void OnFramebufferUpdated(const std::vector<Rect>& /*rects*/) {}
             virtual void OnDesktopResized(int /*width*/, int /*height*/) {}
+            // The server described its displays (ExtendedDesktopSize), after any OnDesktopResized for the same
+            // message. Servers that don't send it never call this.
+            virtual void OnScreenLayout(const std::vector<Screen>& /*screens*/) {}
+            // The server turned down RequestDesktopSize (status 1 forbidden, 2 out of resources, 3 bad layout).
+            virtual void OnDesktopResizeRefused(int /*status*/) {}
             // The server sent its cursor shape: draw it locally (the framebuffer no longer contains it).
             virtual void OnCursorShape(const CursorShape& /*cursor*/) {}
             virtual void OnServerCutText(const std::string& /*latin1Text*/) {}
@@ -160,6 +165,15 @@ namespace Marconi
             bool RequestServerClipboard() { return m_clipboardChannel.RequestFromServer(); }
             void RequestFullUpdate();
 
+            // The server's displays, once it has described them (ExtendedDesktopSize); empty otherwise. Any thread.
+            std::vector<Screen> GetScreens() const;
+            // Whether the server can be asked to change its screen size (it sent ExtendedDesktopSize). Any thread.
+            bool SupportsDesktopResize() const { return m_supportsResize.load(); }
+            // Asks the server to make its desktop one display of this size. Ignored unless SupportsDesktopResize();
+            // the answer comes as OnDesktopResized and OnScreenLayout, or OnDesktopResizeRefused. Any thread.
+            void RequestDesktopSize(int width, int height);
+            static Bytes BuildSetDesktopSize(int width, int height, const std::vector<Screen>& screens);
+
             // How long since the last key or pointer event was sent (or attempted). Any thread.
             std::chrono::steady_clock::duration GetTimeSinceInput() const;
 
@@ -232,8 +246,10 @@ namespace Marconi
         std::function<void(const FileTransfer::Reply&)> m_fileTransferHandler;
             std::atomic<bool> m_stopping{false};
             std::atomic<bool> m_encrypted{false};
+            std::atomic<bool> m_supportsResize{false};
             mutable std::mutex m_infoMutex;
             std::string m_encryptionName; // guarded by m_infoMutex
+            std::vector<Screen> m_screens; // guarded by m_infoMutex
         };
     } // namespace Rfb
 } // namespace Marconi

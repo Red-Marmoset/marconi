@@ -80,6 +80,10 @@ From the menu you can:
 - send system shortcuts such as Alt+Tab, the Windows key and Cmd+Tab to the other computer as you press them, on
   Windows and macOS (macOS asks you to allow Marconi under Privacy & Security > Accessibility first; Linux desktops
   don't allow this);
+- show just one of the other computer's displays, if it has several and its server says so (TigerVNC and UltraVNC
+  do; Marconi remembers the choice);
+- ask the other computer to change its screen size to fit this window, where its server allows it (this changes
+  the screen for anyone sitting at it too);
 - save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
 - refresh the picture, or disconnect.
 
@@ -182,7 +186,7 @@ On macOS and Linux these files can only be read by your own account.
   can't be sent.
 - VNC passwords containing characters outside Western European languages. The VNC password check only carries
   those, so such a password won't work with Marconi. A Mac account login accepts any characters.
-- Changing the other computer's screen resolution from Marconi.
+- Changing the other computer's screen resolution with servers that don't support it (Macs, TightVNC).
 - Apple's newest login methods. The one every recent macOS version offers works.
 
 ---

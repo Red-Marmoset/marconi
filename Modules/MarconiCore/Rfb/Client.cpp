@@ -353,6 +353,11 @@ namespace Marconi
             m_encrypted = false;
             m_extendedClipboard = options.extendedClipboard;
             m_clipboardChannel.Reset();
+            m_supportsResize = false;
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_screens.clear();
+            }
             {
                 std::lock_guard<std::mutex> lock(m_infoMutex);
                 m_encryptionName.clear();
@@ -720,15 +725,70 @@ namespace Marconi
         void Client::HandleExtendedDesktopSize(InStream& in, const Rect& rect)
         {
             // x = reason (0 server, 1 our request, 2 another client), y = status, w/h = new size; then screens.
-            uint8_t screens = in.U8();
+            uint8_t count = in.U8();
             in.Skip(3);
-            in.Skip(static_cast<size_t>(screens) * 16);
+            std::vector<Screen> screens;
+            for (uint8_t i = 0; i < count; ++i)
+            {
+                Screen screen;
+                screen.id = in.U32();
+                screen.x = in.U16();
+                screen.y = in.U16();
+                screen.width = in.U16();
+                screen.height = in.U16();
+                screen.flags = in.U32();
+                screens.push_back(screen);
+            }
+            m_supportsResize = true;
             if (rect.x == 1 && rect.y != 0)
             {
                 LOG_WARNING("Rfb", "The server refused to resize the desktop (status %d)", rect.y);
+                m_listener.OnDesktopResizeRefused(rect.y);
                 return;
             }
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_screens = screens;
+            }
             ResizeFramebuffer(rect.width, rect.height);
+            LOG_INFO("Rfb", "The server has %zu display%s", screens.size(), screens.size() == 1 ? "" : "s");
+            m_listener.OnScreenLayout(screens);
+        }
+
+        std::vector<Screen> Client::GetScreens() const
+        {
+            std::lock_guard<std::mutex> lock(m_infoMutex);
+            return m_screens;
+        }
+
+        Bytes Client::BuildSetDesktopSize(int width, int height, const std::vector<Screen>& screens)
+        {
+            // One display covering the whole desktop, keeping the first display's id and flags so the server sees
+            // a change of size rather than a new display.
+            Screen screen;
+            screen.id = 1;
+            if (!screens.empty())
+            {
+                screen.id = screens[0].id;
+                screen.flags = screens[0].flags;
+            }
+            OutBuffer message;
+            message.U8(ClientMessage::SetDesktopSize).Padding(1);
+            message.U16(static_cast<uint16_t>(width)).U16(static_cast<uint16_t>(height));
+            message.U8(1).Padding(1);
+            message.U32(screen.id).U16(0).U16(0);
+            message.U16(static_cast<uint16_t>(width)).U16(static_cast<uint16_t>(height)).U32(screen.flags);
+            return message.Data();
+        }
+
+        void Client::RequestDesktopSize(int width, int height)
+        {
+            if (!m_supportsResize || width <= 0 || height <= 0 || width > 0xFFFF || height > 0xFFFF)
+            {
+                return;
+            }
+            SendIfConnected(BuildSetDesktopSize(width, height, GetScreens()));
+            LOG_INFO("Rfb", "Asked the server to change its screen to %dx%d", width, height);
         }
 
         void Client::HandleCursor(InStream& in, const Rect& rect)
