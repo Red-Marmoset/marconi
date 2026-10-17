@@ -379,6 +379,8 @@ namespace MarconiUI
         WaitForPicture();
         m_client.TakeTrafficStats(); // start counting from here
         m_statsTimer.Start(10000);
+        m_healthTicks = 0;
+        m_healthTimer.Start(1000);
         m_clipboardChangeCount = GetClipboardChangeCount();
         m_clipboardTimer.Start(500);
     }
@@ -420,15 +422,11 @@ namespace MarconiUI
         {
             m_autoReconnecting = false;
             m_connected = false;
-            m_pictureTimer.Stop();
-            m_statsTimer.Stop();
-            m_clipboardTimer.Stop();
+            StopConnectionTimers();
             ConnectVnc(m_port);
             return;
         }
-        m_pictureTimer.Stop();
-        m_statsTimer.Stop();
-        m_clipboardTimer.Stop();
+        StopConnectionTimers();
         m_canvas->ReleaseInput();
         m_connected = false;
         UpdateSystemKeyCapture();

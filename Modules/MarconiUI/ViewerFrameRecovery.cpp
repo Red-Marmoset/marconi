@@ -7,6 +7,8 @@
 
 #include <Log/Log.h>
 
+#include <wx/statusbr.h>
+
 #include <chrono>
 
 namespace MarconiUI
@@ -15,8 +17,42 @@ namespace MarconiUI
     {
         // Shows whether the server keeps sending pictures, e.g. when the view freezes.
         Marconi::Rfb::TrafficStats stats = m_client.TakeTrafficStats();
-        LOG_INFO("Viewer", "Last 10s: %d updates with %d rectangles, %d requests, %d pointer and %d key events sent",
-                 stats.updates, stats.rectangles, stats.requests, stats.pointerEvents, stats.keyEvents);
+        Marconi::Rfb::Client::Health health = m_client.GetHealth();
+        LOG_INFO("Viewer", "Last 10s: %d updates with %d rectangles, %d requests, %d pointer and %d key events sent; "
+                 "round trip %d ms%s",
+                 stats.updates, stats.rectangles, stats.requests, stats.pointerEvents, stats.keyEvents,
+                 health.roundTripMs, health.waitingMs >= 0 ? " (a ping is unanswered)" : "");
+    }
+
+    void ViewerFrame::OnHealthTick()
+    {
+        // Once a second while connected: every few seconds a one-pixel update request goes out, and its answer
+        // times the round trip. The right-hand end of the status bar shows that, or how long the server has gone
+        // without answering, so a frozen connection can be told from a slow one at a glance.
+        constexpr int kPingEverySeconds = 5;
+        constexpr int kNoReplyAfterMs = 2000;
+        if (!m_connected)
+        {
+            return;
+        }
+        if (++m_healthTicks % kPingEverySeconds == 1)
+        {
+            m_client.SendPing();
+        }
+        Marconi::Rfb::Client::Health health = m_client.GetHealth();
+        wxString text;
+        if (health.waitingMs >= kNoReplyAfterMs)
+        {
+            text = wxString::Format("No reply for %d s", health.waitingMs / 1000);
+        }
+        else if (health.roundTripMs >= 0)
+        {
+            text = wxString::Format("%d ms", health.roundTripMs);
+        }
+        if (GetStatusBar() != nullptr && text != GetStatusBar()->GetStatusText(1))
+        {
+            SetStatusText(text, 1);
+        }
     }
 
     void ViewerFrame::WaitForPicture()

@@ -374,5 +374,29 @@ namespace MarconiTest
             other.SendPointerEvent(5, 5, 1);
             CHECK(other.GetTimeSinceInput() < std::chrono::seconds(1));
         });
+
+        RunTest("A ping asks for one pixel and the server's answer times the round trip", []() {
+            ConnectedSession s(4, 3);
+            Rfb::Client::Health before = s.client.GetHealth();
+            CHECK(before.roundTripMs == -1 && before.waitingMs == -1 && before.sinceUpdateMs == -1);
+
+            s.client.SendPing();
+            s.ExpectUpdateRequest(false, 1, 1);
+            CHECK(s.client.GetHealth().waitingMs >= 0);
+            s.client.SendPing(); // one at a time: this sends nothing (checked below)
+
+            Rfb::OutBuffer update;
+            update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(0); // the pixel hadn't changed
+            s.server.Send(update);
+            CHECK(s.listener.WaitFor([&]() { return s.client.GetHealth().roundTripMs >= 0; }));
+            Rfb::Client::Health after = s.client.GetHealth();
+            CHECK(after.waitingMs == -1 && after.roundTripMs < 5000 && after.sinceUpdateMs >= 0);
+            s.ExpectUpdateRequest(true, 4, 3); // the usual request after an update, and not a second ping
+
+            s.client.SendPing(); // answered, so a new one goes out
+            s.ExpectUpdateRequest(false, 1, 1);
+            s.client.Disconnect();
+            CHECK(s.client.GetHealth().waitingMs == -1); // nothing outstanding once the connection is gone
+        });
     }
 } // namespace MarconiTest

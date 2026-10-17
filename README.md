@@ -89,6 +89,10 @@ From the menu you can:
 - save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
 - refresh the picture, or disconnect.
 
+The right-hand end of the status bar shows how long a message takes to reach the other computer and come back,
+measured every few seconds. If the other computer stops answering, it says so and for how long, so you can tell a
+frozen connection from a slow one.
+
 ## Copying files
 
 Press **F10**, or click **Files** on the toolbar, to open the file panel: this computer on the left, the other

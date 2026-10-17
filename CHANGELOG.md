@@ -8,6 +8,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 ## 0.5.1
 
 - Fixed a black square appearing instead of the mouse pointer on Windows when the other computer hides its pointer.
+- The status bar shows the round trip time to the other computer, and says when it has stopped answering.
 
 ## 0.5.0
 

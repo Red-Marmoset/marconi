@@ -129,6 +129,7 @@ namespace MarconiUI
         void CopyScreenshot();
         static bool IncludePointerInScreenshots();
         void StopTimers();
+        void StopConnectionTimers(); // the ones that only run while connected
         void FitToDesktop();
         void OnClose(wxCloseEvent& event);
         wxString GetServerDisplayName() const;
@@ -165,6 +166,7 @@ namespace MarconiUI
         void RetryNow();
         void LeaveLostState();
         void LogTraffic();
+        void OnHealthTick();
 
         ViewerOptions m_options;
         Marconi::Rfb::Client m_client;
@@ -206,6 +208,8 @@ namespace MarconiUI
         int m_autoReconnects = 0;         // reconnects made because the server stopped sending pixels
         bool m_autoReconnecting = false;
         wxTimer m_statsTimer;     // logs traffic every 10 seconds
+        wxTimer m_healthTimer;    // pings the server every few seconds and shows the round trip in the status bar
+        int m_healthTicks = 0;
         wxTimer m_headlessSnapshotTimer;
         wxTimer m_quitTimer;
         int m_headlessSnapshots = 0;

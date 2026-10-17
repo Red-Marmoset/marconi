@@ -45,7 +45,9 @@ namespace MarconiUI
         m_aui.AddPane(m_canvas, wxAuiPaneInfo().Name("Screen").CenterPane());
 
         CreateToolbar();
-        CreateStatusBar();
+        CreateStatusBar(2); // the connection on the left; the round trip to the server on the right
+        const int statusWidths[] = {-1, FromDIP(130)};
+        SetStatusWidths(2, statusWidths);
         m_lostBar = new ConnectionLostBar(this, [this]() { RetryNow(); }, [this]() { Close(); });
         // Not managed by AUI: it floats over everything at the top of the screen while in full screen.
         m_fullScreenBar = new FullScreenBar(
@@ -168,6 +170,8 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { CheckForPicture(); }, m_pictureTimer.GetId());
         m_statsTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { LogTraffic(); }, m_statsTimer.GetId());
+        m_healthTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnHealthTick(); }, m_healthTimer.GetId());
         m_clipboardTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
         m_retryTimer.SetOwner(this);
@@ -240,11 +244,18 @@ namespace MarconiUI
 
     void ViewerFrame::StopTimers()
     {
+        StopConnectionTimers();
+        m_headlessSnapshotTimer.Stop();
+        m_quitTimer.Stop();
+    }
+
+    void ViewerFrame::StopConnectionTimers()
+    {
         m_pictureTimer.Stop();
         m_statsTimer.Stop();
         m_clipboardTimer.Stop();
-        m_headlessSnapshotTimer.Stop();
-        m_quitTimer.Stop();
+        m_healthTimer.Stop();
+        SetStatusText(wxEmptyString, 1); // no connection, no round trip
     }
 
     ViewerFrame::~ViewerFrame()

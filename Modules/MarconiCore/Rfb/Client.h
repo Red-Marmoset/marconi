@@ -187,6 +187,19 @@ namespace Marconi
             // Returns the counts so far and starts again from zero. Any thread.
             TrafficStats TakeTrafficStats();
 
+            // How the connection is doing, for a status readout. Any thread.
+            struct Health
+            {
+                int roundTripMs = -1;   // the last measured round trip to the server; -1 before the first
+                int waitingMs = -1;     // how long the current ping has gone unanswered; -1 when none is outstanding
+                int sinceUpdateMs = -1; // how long since the last FramebufferUpdate arrived; -1 before the first
+            };
+            // Asks for a single pixel (a non-incremental update request for 1x1 at the origin): servers answer
+            // those straight away, so the reply times the round trip. Does nothing while one is unanswered or
+            // before the connection is up.
+            void SendPing();
+            Health GetHealth() const;
+
             // The encodings advertised by default, most preferred first (only those with decoders).
             static std::vector<int32_t> GetDefaultEncodings();
 
@@ -244,6 +257,9 @@ namespace Marconi
             std::atomic<int> m_statPointerEvents{0};
             std::atomic<int> m_statKeyEvents{0};
             std::atomic<std::chrono::steady_clock::rep> m_lastInputTime{0}; // steady_clock ticks
+            std::atomic<std::chrono::steady_clock::rep> m_pingSentAt{0};    // 0 when no ping is outstanding
+            std::atomic<std::chrono::steady_clock::rep> m_lastUpdateAt{0};  // 0 before the first update
+            std::atomic<int> m_roundTripMs{-1};
 
             std::thread m_thread;
             std::mutex m_socketMutex; // guards m_socket's handle against Shutdown() racing with assignment
