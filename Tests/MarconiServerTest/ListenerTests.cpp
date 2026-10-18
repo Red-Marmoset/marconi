@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // The server over a real loopback socket: a client connects, handshakes and gets a frame through the Listener and
-// SocketTransport
+// the shared socket transport
 
 #include "TestSupport.h"
 
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiServerCore/Listener.h>
-#include <MarconiServerCore/SocketTransport.h>
+#include <MarconiCore/Wire/WireChannel.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
 #include <thread>
@@ -36,7 +36,7 @@ namespace MarconiServerTest
 
             Net::Socket clientSocket;
             CHECK(clientSocket.Connect("127.0.0.1", port, 5000, error));
-            Server::SocketTransport clientTransport(clientSocket);
+            Wire::SocketTransport clientTransport(clientSocket);
             Wire::MessageReader reader(clientTransport);
 
             Wire::Hello hello;

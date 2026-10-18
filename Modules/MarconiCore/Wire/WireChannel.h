@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/Wire/WireStream.h>
 
 #include <cstddef>
@@ -47,5 +48,19 @@ namespace Marconi
         // Writes an already-framed message (from a message's Encode()) to the transport. False if the transport
         // failed.
         bool WriteMessage(Transport& transport, const Bytes& framed);
+
+        // The protocol straight over a connected TCP socket (the loopback skeleton, before encryption). The TLS
+        // stream will be another Transport once it exists. The socket is owned by the caller; reading and writing
+        // from two threads is allowed, and shutting the socket down unblocks both.
+        class SocketTransport : public Transport
+        {
+        public:
+            explicit SocketTransport(Net::Socket& socket) : m_socket(socket) {}
+            ptrdiff_t Read(void* buffer, size_t length) override { return m_socket.Receive(buffer, length); }
+            bool Write(const void* data, size_t length) override { return m_socket.SendAll(data, length); }
+
+        private:
+            Net::Socket& m_socket;
+        };
     } // namespace Wire
 } // namespace Marconi

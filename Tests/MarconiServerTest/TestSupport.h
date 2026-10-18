@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Wire/WireChannel.h>
 #include <MarconiServerCore/InputSink.h>
 
@@ -84,6 +85,29 @@ namespace MarconiServerTest
         std::vector<std::string> texts;
     };
 
+    // The client side's callbacks, recorded so a test can wait for them. Callbacks arrive on the client's worker
+    // thread, so everything is guarded.
+    class RecordingClientListener : public Marconi::SessionListener
+    {
+    public:
+        void OnConnected(const Marconi::Rfb::ServerInit& serverInit) override;
+        void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
+        void OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens) override;
+        void OnDisconnected(const Marconi::DisconnectInfo& info) override;
+
+        bool WaitFor(const std::function<bool()>& predicate, int timeoutMs = 5000);
+
+        std::mutex mutex;
+        std::condition_variable changed;
+        bool connected = false;
+        bool disconnected = false;
+        std::string disconnectError;
+        Marconi::Rfb::ServerInit serverInit;
+        int updates = 0;
+        int screenLayouts = 0;
+    };
+
     void RunSessionTests();
     void RunListenerTests();
+    void RunEndToEndTests();
 } // namespace MarconiServerTest

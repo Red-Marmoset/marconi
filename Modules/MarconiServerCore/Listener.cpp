@@ -3,7 +3,7 @@
 
 #include "Listener.h"
 
-#include "SocketTransport.h"
+#include <MarconiCore/Wire/WireChannel.h>
 
 #include <Log/Log.h>
 
@@ -44,7 +44,7 @@ namespace Marconi
                 return false; // timed out, was shut down, or failed; the caller (or Run) decides what next
             }
 
-            SocketTransport transport(client);
+            Wire::SocketTransport transport(client);
             Session session(transport, m_screen, m_input, m_settings);
             session.SetFrameIntervalMs(m_frameIntervalMs);
             m_current = &session;

@@ -4,6 +4,7 @@
 #include "TestSupport.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 namespace MarconiServerTest
@@ -89,5 +90,41 @@ namespace MarconiServerTest
     {
         std::lock_guard<std::mutex> lock(mutex);
         texts.push_back(utf8);
+    }
+
+    void RecordingClientListener::OnConnected(const Marconi::Rfb::ServerInit& init)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        connected = true;
+        serverInit = init;
+        changed.notify_all();
+    }
+
+    void RecordingClientListener::OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>&)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++updates;
+        changed.notify_all();
+    }
+
+    void RecordingClientListener::OnScreenLayout(const std::vector<Marconi::Rfb::Screen>&)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++screenLayouts;
+        changed.notify_all();
+    }
+
+    void RecordingClientListener::OnDisconnected(const Marconi::DisconnectInfo& info)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        disconnected = true;
+        disconnectError = info.error;
+        changed.notify_all();
+    }
+
+    bool RecordingClientListener::WaitFor(const std::function<bool()>& predicate, int timeoutMs)
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        return changed.wait_for(lock, std::chrono::milliseconds(timeoutMs), predicate);
     }
 } // namespace MarconiServerTest
