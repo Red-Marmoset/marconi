@@ -108,15 +108,14 @@ namespace MarconiUI
 
     ViewerFrame::ViewerFrame(const ViewerOptions& options)
         : wxFrame(nullptr, wxID_ANY, wxString::FromUTF8(Marconi::FormatAddress(options.address)) + " - Marconi"),
-          m_options(options),
-          m_client(*this)
+          m_options(options)
     {
         if (m_options.credentials.username.empty())
         {
             m_options.credentials.username = m_options.address.username;
         }
         SetIcons(GetAppIcons());
-        m_canvas = new VncCanvas(this, m_client);
+        m_canvas = new VncCanvas(this);
         m_aui.SetManagedWindow(this);
         m_aui.SetDockSizeConstraint(0.5, 0.6); // the file panel needs room: up to 60% of the height (wx: 30%)
         m_aui.AddPane(m_canvas, wxAuiPaneInfo().Name("Screen").CenterPane());
@@ -323,10 +322,11 @@ namespace MarconiUI
             LOG_INFO("Viewer", "Headless snapshot: nothing shown yet");
             return;
         }
-        int serverWidth;
-        int serverHeight;
+        int serverWidth = 0;
+        int serverHeight = 0;
+        if (m_session)
         {
-            Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+            Marconi::Rfb::Framebuffer& framebuffer = m_session->GetFramebuffer();
             std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
             serverWidth = framebuffer.GetWidth();
             serverHeight = framebuffer.GetHeight();
@@ -446,7 +446,7 @@ namespace MarconiUI
             wxTheClipboard->Flush();
         }
         // With clipboard sharing on and a server that takes images, the copy travels like any other.
-        bool shared = m_clipboard.IsEnabled() && m_client.ServerAcceptsClipboardImages();
+        bool shared = m_clipboard.IsEnabled() && m_session && m_session->ServerAcceptsClipboardImages();
         SyncClipboardToServer();
         SetStatusText(shared ? "Screenshot copied, and sent to the other computer's clipboard"
                              : "Screenshot copied (to this computer's clipboard only)");
@@ -483,7 +483,10 @@ namespace MarconiUI
             m_closing = true;
         }
         m_questionChanged.notify_all();
-        m_client.Disconnect();
+        if (m_session)
+        {
+            m_session->Disconnect();
+        }
     }
 
     wxString ViewerFrame::GetServerDisplayName() const
@@ -532,7 +535,20 @@ namespace MarconiUI
         Marconi::QualitySettings quality = Marconi::SettingsFor(m_quality);
         connection.compressLevel = quality.compressLevel;
         connection.qualityLevel = quality.qualityLevel;
-        m_client.Connect(connection);
+        EnsureRfbClient().Connect(connection);
+    }
+
+    Marconi::Rfb::Client& ViewerFrame::EnsureRfbClient()
+    {
+        if (m_rfb == nullptr)
+        {
+            std::unique_ptr<Marconi::Rfb::Client> client = std::make_unique<Marconi::Rfb::Client>(*this);
+            m_rfb = client.get();
+            m_session = std::move(client);
+            m_canvas->SetSession(m_session.get());
+            m_clipboard.SetSession(m_session.get());
+        }
+        return *m_rfb;
     }
 
     void ViewerFrame::StartProbe()
@@ -668,7 +684,7 @@ namespace MarconiUI
 
     void ViewerFrame::RequestMatchingSize()
     {
-        if (!m_matchWindowSize || !m_connected || !m_client.SupportsDesktopResize())
+        if (!m_matchWindowSize || !m_connected || !m_session || !m_session->SupportsDesktopResize())
         {
             return;
         }
@@ -682,7 +698,7 @@ namespace MarconiUI
         {
             return;
         }
-        m_client.RequestDesktopSize(client.x, client.y);
+        m_session->RequestDesktopSize(client.x, client.y);
     }
 
     void ViewerFrame::OnDesktopResized(int width, int height)
@@ -880,17 +896,17 @@ namespace MarconiUI
         m_desktopName = wxString::FromUTF8(serverInit.name);
         SetTitle(GetServerDisplayName() + " - Marconi");
         m_connected = true;
-        if (m_client.HasFileTransfer())
+        if (m_rfb != nullptr && m_rfb->HasFileTransfer())
         {
             // TightVNC: files travel on this connection, with no second login.
             if (!m_tightFiles)
             {
                 m_tightFiles = std::make_unique<Marconi::Files::TightFiles>(
-                    [this](const Marconi::Rfb::Bytes& request) { return m_client.SendFileTransferRequest(request); });
+                    [this](const Marconi::Rfb::Bytes& request) { return m_rfb->SendFileTransferRequest(request); });
             }
             m_tightFiles->Reopen();
             Marconi::Files::TightFiles* files = m_tightFiles.get();
-            m_client.SetFileTransferHandler([files](const Marconi::Rfb::FileTransfer::Reply& reply) {
+            m_rfb->SetFileTransferHandler([files](const Marconi::Rfb::FileTransfer::Reply& reply) {
                 files->OnReply(reply);
             });
             m_files->SetTightFiles(files, GetServerDisplayName());
@@ -969,7 +985,7 @@ namespace MarconiUI
         m_canvas->SetFocus();
         SyncClipboardToServer();
         WaitForPicture();
-        m_client.TakeTrafficStats(); // start counting from here
+        m_session->TakeTrafficStats(); // start counting from here
         m_statsTimer.Start(10000);
         m_clipboardChangeCount = GetClipboardChangeCount();
         m_clipboardTimer.Start(500);
@@ -992,7 +1008,11 @@ namespace MarconiUI
     void ViewerFrame::LogTraffic()
     {
         // Shows whether the server keeps sending pictures, e.g. when the view freezes.
-        Marconi::Rfb::TrafficStats stats = m_client.TakeTrafficStats();
+        if (!m_session)
+        {
+            return;
+        }
+        Marconi::TrafficStats stats = m_session->TakeTrafficStats();
         LOG_INFO("Viewer", "Last 10s: %d updates with %d rectangles, %d requests, %d pointer and %d key events sent",
                  stats.updates, stats.rectangles, stats.requests, stats.pointerEvents, stats.keyEvents);
     }
@@ -1013,7 +1033,7 @@ namespace MarconiUI
         // since a fresh connection always gets a full picture.
         constexpr int kMaxRetries = 4;
         constexpr int kMaxAutoReconnects = 3;
-        if (!m_connected || !m_waitingForPicture || !m_options.recovery)
+        if (!m_connected || !m_waitingForPicture || !m_options.recovery || !m_session)
         {
             m_pictureTimer.Stop();
             return;
@@ -1023,16 +1043,16 @@ namespace MarconiUI
             ++m_pictureRetries;
             LOG_INFO("Viewer", "No picture from the server yet, asking for the whole desktop again (%d/%d)",
                      m_pictureRetries, kMaxRetries);
-            m_client.RequestFullUpdate();
+            m_session->RequestFullUpdate();
             return;
         }
         // Input sent during the reconnect would be lost (e.g. a password typed blind at the lock screen), and it
         // still reaches the server while the picture is stuck. Wait for a pause before reconnecting.
         constexpr std::chrono::seconds kQuietBeforeReconnect(3);
-        if (m_client.GetTimeSinceInput() < kQuietBeforeReconnect)
+        if (m_session->GetTimeSinceInput() < kQuietBeforeReconnect)
         {
             LOG_INFO("Viewer", "Still no picture, but the user is typing or using the mouse; reconnecting later");
-            m_client.RequestFullUpdate();
+            m_session->RequestFullUpdate();
             return;
         }
         m_pictureTimer.Stop();
@@ -1046,7 +1066,7 @@ namespace MarconiUI
         LOG_INFO("Viewer", "Still no picture; reconnecting (%d/%d)", m_autoReconnects, kMaxAutoReconnects);
         SetStatusText("The server stopped sending a picture; reconnecting...");
         m_autoReconnecting = true;
-        m_client.Disconnect(); // OnDisconnected follows; HandleDisconnected reconnects
+        m_session->Disconnect(); // OnDisconnected follows; HandleDisconnected reconnects
     }
 
     void ViewerFrame::HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info)
@@ -1061,7 +1081,10 @@ namespace MarconiUI
         LOG_INFO("Viewer", "Disconnected: %s", info.error.empty() ? "(no error)" : info.error.c_str());
         if (m_tightFiles)
         {
-            m_client.SetFileTransferHandler(nullptr);
+            if (m_rfb != nullptr)
+            {
+                m_rfb->SetFileTransferHandler(nullptr);
+            }
             m_tightFiles->Close();
             m_files->SetTightFiles(nullptr, GetServerDisplayName());
         }
@@ -1402,7 +1425,7 @@ namespace MarconiUI
         menu->AppendCheckItem(ID_MATCH_WINDOW_SIZE, "&Match the Other Computer's Screen to This Window",
                               "Asks the other computer to change its screen size to fit this window exactly");
         menu->Check(ID_MATCH_WINDOW_SIZE, m_matchWindowSize);
-        menu->Enable(ID_MATCH_WINDOW_SIZE, m_connected && m_client.SupportsDesktopResize());
+        menu->Enable(ID_MATCH_WINDOW_SIZE, m_connected && m_session && m_session->SupportsDesktopResize());
         menu->AppendCheckItem(ID_FULL_SCREEN, "F&ull Screen");
         menu->AppendCheckItem(ID_VIEW_ONLY, "&View Only");
         menu->AppendCheckItem(ID_CLIPBOARD, "Share C&lipboard");
@@ -1495,9 +1518,9 @@ namespace MarconiUI
         if (!m_systemKeys)
         {
             m_systemKeys = SystemKeyCapture::Create([this](uint32_t keysym, bool down) {
-                if (m_connected && !m_canvas->IsViewOnly())
+                if (m_connected && !m_canvas->IsViewOnly() && m_session)
                 {
-                    m_client.SendKeyEvent(keysym, down);
+                    m_session->SendKeyEvent(keysym, down);
                 }
             });
         }
@@ -1651,7 +1674,10 @@ namespace MarconiUI
             ToggleFiles();
             break;
         case ID_REFRESH:
-            m_client.RequestFullUpdate();
+            if (m_session)
+            {
+                m_session->RequestFullUpdate();
+            }
             break;
         case ID_DISCONNECT:
             Close();
@@ -1679,7 +1705,10 @@ namespace MarconiUI
                                                                       Marconi::PictureQuality::LowBandwidth};
                 m_quality = kQualities[event.GetId() - ID_QUALITY_FIRST];
                 Marconi::QualitySettings settings = Marconi::SettingsFor(m_quality);
-                m_client.SetQuality(settings.compressLevel, settings.qualityLevel);
+                if (m_session)
+                {
+                    m_session->SetQuality(settings.compressLevel, settings.qualityLevel);
+                }
             }
             else if (event.GetId() >= ID_DISPLAY_FIRST && event.GetId() <= ID_DISPLAY_LAST)
             {
@@ -1700,18 +1729,18 @@ namespace MarconiUI
 
     void ViewerFrame::SendKeyCombination(std::initializer_list<uint32_t> keysyms)
     {
-        if (m_canvas->IsViewOnly())
+        if (m_canvas->IsViewOnly() || !m_session)
         {
             return;
         }
         m_canvas->ReleaseInput();
         for (uint32_t keysym : keysyms)
         {
-            m_client.SendKeyEvent(keysym, true);
+            m_session->SendKeyEvent(keysym, true);
         }
         for (auto it = std::rbegin(keysyms); it != std::rend(keysyms); ++it)
         {
-            m_client.SendKeyEvent(*it, false);
+            m_session->SendKeyEvent(*it, false);
         }
     }
 
@@ -1832,8 +1861,9 @@ namespace MarconiUI
         wxString status = wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), desktop.x, desktop.y);
         // Always say whether the connection is encrypted: without encryption, the picture and every key typed can
         // be read by anyone on the network between the two computers.
-        status += m_client.IsEncrypted() ? " - encrypted, " + wxString::FromUTF8(m_client.GetEncryptionName())
-                                         : wxString(" - not encrypted");
+        bool encrypted = m_session && m_session->IsEncrypted();
+        status += encrypted ? " - encrypted, " + wxString::FromUTF8(m_session->GetEncryptionName())
+                            : wxString(" - not encrypted");
         if (m_waitingForPicture)
         {
             status += " - waiting for the screen...";
@@ -1919,7 +1949,7 @@ namespace MarconiUI
         {
             // Win+L on Windows and most Linux desktops; Ctrl+Cmd+Q on a Mac (Command is Super over VNC).
             LOG_INFO("Viewer", "Locking the other computer's screen before disconnecting");
-            if (m_client.IsAppleServer())
+            if (m_rfb != nullptr && m_rfb->IsAppleServer())
             {
                 SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Super_L, 'q'});
             }
@@ -1928,7 +1958,10 @@ namespace MarconiUI
                 SendKeyCombination({Marconi::Keysym::Super_L, 'l'});
             }
         }
-        m_client.Disconnect();
+        if (m_session)
+        {
+            m_session->Disconnect();
+        }
         event.Skip(); // default handler destroys the frame
         if (m_options.headless)
         {

@@ -114,7 +114,7 @@ namespace MarconiUI
             }
         }
         // Images cost more to read, so only when there is somewhere for them to go.
-        if (out.utf8Text.empty() && m_client.ServerAcceptsClipboardImages() && wxTheClipboard->IsSupported(wxDF_BITMAP))
+        if (out.utf8Text.empty() && m_session != nullptr && m_session->ServerAcceptsClipboardImages() && wxTheClipboard->IsSupported(wxDF_BITMAP))
         {
             wxBitmapDataObject data;
             if (wxTheClipboard->GetData(data))
@@ -127,7 +127,7 @@ namespace MarconiUI
 
     void ClipboardSync::SendIfChanged()
     {
-        if (!m_enabled || !m_client.IsConnected())
+        if (!m_enabled || m_session == nullptr || !m_session->IsConnected())
         {
             return;
         }
@@ -141,7 +141,7 @@ namespace MarconiUI
 
     void ClipboardSync::SendNow()
     {
-        if (!m_client.IsConnected())
+        if (m_session == nullptr || !m_session->IsConnected())
         {
             return;
         }
@@ -165,7 +165,7 @@ namespace MarconiUI
             return;
         }
         m_lastExchanged = content;
-        if (m_client.OfferClipboard(content))
+        if (m_session->OfferClipboard(content))
         {
             if (explicitly)
             {
@@ -191,20 +191,20 @@ namespace MarconiUI
         {
             Report("Sent the text to the other computer; paste it there");
         }
-        m_client.SendClientCutText(latin1);
+        m_session->SendClientCutText(latin1);
     }
 
     void ClipboardSync::GetNow()
     {
-        if (!m_client.IsConnected())
+        if (m_session == nullptr || !m_session->IsConnected())
         {
             return;
         }
-        if (m_client.HasExtendedClipboard())
+        if (m_session->HasExtendedClipboard())
         {
             m_applyNextFromServer = true;
             m_lastExchanged = Marconi::Rfb::ClipboardContent(); // apply whatever comes, even if seen before
-            m_client.RequestServerClipboard();
+            m_session->RequestServerClipboard();
             Report("Asked the other computer for its clipboard");
             return;
         }

@@ -31,6 +31,7 @@ class wxMenu;
 #include <atomic>
 #include <condition_variable>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -82,14 +83,14 @@ namespace MarconiUI
     bool ViewerOptionsFromSaved(const SavedConnection& connection, ConnectionStore& store, ViewerOptions& out,
                                 std::string& error);
 
-    class ViewerFrame : public wxFrame, private Marconi::Rfb::ClientListener
+    class ViewerFrame : public wxFrame, private Marconi::SessionListener
     {
     public:
         explicit ViewerFrame(const ViewerOptions& options);
         ~ViewerFrame() override;
 
     private:
-        // ClientListener (connection thread)
+        // SessionListener (connection thread)
         void OnConnected(const Marconi::Rfb::ServerInit& serverInit) override;
         void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
         void OnDesktopResized(int width, int height) override;
@@ -116,6 +117,9 @@ namespace MarconiUI
         void StopProbe();
         void HandleProbe(const std::vector<Marconi::Net::ProbeResult>& results);
         void ConnectVnc(uint16_t port);
+        // The VNC connection object, made on the first VNC connect and kept for the window's life (reconnects reuse
+        // it); m_session points at it afterwards.
+        Marconi::Rfb::Client& EnsureRfbClient();
         void RememberDetected(const wxString& detected);
         void HandleConnected(const Marconi::Rfb::ServerInit& serverInit);
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
@@ -167,8 +171,12 @@ namespace MarconiUI
         void LogTraffic();
 
         ViewerOptions m_options;
-        Marconi::Rfb::Client m_client;
-        ClipboardSync m_clipboard{m_client};
+        // The connection, whatever protocol it speaks: null until the first connect. The canvas and the clipboard
+        // sync hold the same pointer. m_rfb is the same object when it is a VNC connection, for VNC-only features
+        // (TightVNC file transfer, Mac quirks); null otherwise.
+        std::unique_ptr<Marconi::RemoteSession> m_session;
+        Marconi::Rfb::Client* m_rfb = nullptr;
+        ClipboardSync m_clipboard;
         VncCanvas* m_canvas = nullptr;
         wxAuiManager m_aui;               // docks the toolbar (and later the file panel) around the screen
         wxAuiToolBar* m_toolBar = nullptr;

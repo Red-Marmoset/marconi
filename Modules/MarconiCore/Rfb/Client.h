@@ -5,6 +5,7 @@
 
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/Net/Tls.h>
+#include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Rfb/ClipboardChannel.h>
 #include <MarconiCore/Rfb/Decoders/Decoder.h>
 #include <MarconiCore/Rfb/Framebuffer.h>
@@ -57,69 +58,10 @@ namespace Marconi
             bool extendedClipboard = true;
         };
 
-        // Cursor image for local rendering: ARGB pixels (alpha 0 or 255), hotspot in pixels. Empty = hidden.
-        struct CursorShape
-        {
-            int width = 0;
-            int height = 0;
-            int hotspotX = 0;
-            int hotspotY = 0;
-            std::vector<uint32_t> argb;
-        };
+        // CursorShape, DisconnectInfo, TrafficStats and ClientListener live in <MarconiCore/RemoteSession.h>: they are
+        // shared with every other kind of connection.
 
-        struct DisconnectInfo
-        {
-            std::string error;                 // empty for a clean, locally requested or cancelled disconnect
-            bool authenticationFailed = false; // the server rejected the credentials; retrying may help
-            bool wasConnected = false;         // got as far as ServerInit
-            bool tightFailed = false;          // the TightVNC login went wrong (not the password): retry without it
-            bool encryptionUnusable = false;   // the server only offers encryption this computer can't make: retry
-                                               // without asking for encryption
-        };
-
-        // Callbacks arrive on the connection thread. UI implementations should marshal to the UI thread.
-        class ClientListener
-        {
-        public:
-            virtual ~ClientListener() = default;
-
-            virtual void OnConnected(const ServerInit& /*serverInit*/) {}
-            // A complete FramebufferUpdate has been applied; `rects` are the areas that changed.
-            virtual void OnFramebufferUpdated(const std::vector<Rect>& /*rects*/) {}
-            virtual void OnDesktopResized(int /*width*/, int /*height*/) {}
-            // The server described its displays (ExtendedDesktopSize), after any OnDesktopResized for the same
-            // message. Servers that don't send it never call this.
-            virtual void OnScreenLayout(const std::vector<Screen>& /*screens*/) {}
-            // The server turned down RequestDesktopSize (status 1 forbidden, 2 out of resources, 3 bad layout).
-            virtual void OnDesktopResizeRefused(int /*status*/) {}
-            // The server sent its cursor shape: draw it locally (the framebuffer no longer contains it).
-            virtual void OnCursorShape(const CursorShape& /*cursor*/) {}
-            virtual void OnServerCutText(const std::string& /*latin1Text*/) {}
-            // The server's clipboard over the Extended Clipboard: UTF-8 text and/or an image.
-            virtual void OnServerClipboard(const ClipboardContent& /*content*/) {}
-            virtual void OnBell() {}
-            // Exactly once per Connect().
-            virtual void OnDisconnected(const DisconnectInfo& /*info*/) {}
-            // Blocking request for credentials. Return false to cancel the connection.
-            virtual bool OnCredentialsRequired(CredentialsKind /*kind*/, Credentials& /*inOutCredentials*/)
-            {
-                return false;
-            }
-            // Blocking: the server's certificate isn't trusted by this computer. Return true to connect anyway.
-            virtual bool OnUntrustedCertificate(const Net::TlsCertificate& /*certificate*/) { return false; }
-        };
-
-        // Counts since the last TakeTrafficStats().
-        struct TrafficStats
-        {
-            int updates = 0;
-            int rectangles = 0;
-            int requests = 0;
-            int pointerEvents = 0;
-            int keyEvents = 0;
-        };
-
-        class Client : private ByteSink
+        class Client : public RemoteSession, private ByteSink
         {
         public:
             explicit Client(ClientListener& listener);
@@ -133,12 +75,12 @@ namespace Marconi
             // Closes the connection and waits for the connection thread to finish. If called from a listener
             // callback (i.e. on the connection thread) it can't wait, so the thread is detached and finishes by
             // itself: the Client must then outlive it, and Connect() must not be called until OnDisconnected.
-            void Disconnect();
-            bool IsConnected() const { return m_connected.load(); }
+            void Disconnect() override;
+            bool IsConnected() const override { return m_connected.load(); }
 
             // Whether the connection is encrypted, and with what (e.g. "TLS 1.3"). Meaningful once connected. Any
             // thread.
-            bool IsEncrypted() const { return m_encrypted.load(); }
+            bool IsEncrypted() const override { return m_encrypted.load(); }
 
             // TightVNC file transfer on this connection (the server offered it during the Tight login).
             bool HasFileTransfer() const { return m_fileTransfer.load(); }
@@ -146,46 +88,46 @@ namespace Marconi
             bool SendFileTransferRequest(const Bytes& request);
             // Called on the connection thread with each file transfer reply.
             void SetFileTransferHandler(std::function<void(const FileTransfer::Reply&)> handler);
-            std::string GetEncryptionName() const;
+            std::string GetEncryptionName() const override;
 
-            Framebuffer& GetFramebuffer() { return m_framebuffer; }
+            Framebuffer& GetFramebuffer() override { return m_framebuffer; }
 
             // Input. Safe to call from any thread; silently ignored while not connected.
-            void SendPointerEvent(int x, int y, uint8_t buttonMask);
-            void SendKeyEvent(uint32_t keysym, bool down);
-            void SendClientCutText(const std::string& latin1Text);
+            void SendPointerEvent(int x, int y, uint8_t buttonMask) override;
+            void SendKeyEvent(uint32_t keysym, bool down) override;
+            void SendClientCutText(const std::string& latin1Text) override;
 
             // The Extended Clipboard, once a server has announced it (any thread). OfferClipboard tells the server
             // what we have (it fetches it when someone pastes); false means the extension isn't active or the
             // server takes none of the content's formats, so text should go through SendClientCutText instead.
             // RequestServerClipboard asks for the server's clipboard, delivered through OnServerClipboard.
-            bool HasExtendedClipboard() const { return m_clipboardChannel.IsActive(); }
-            bool ServerAcceptsClipboardImages() const { return m_clipboardChannel.AcceptsImages(); }
-            bool OfferClipboard(const ClipboardContent& content) { return m_clipboardChannel.Offer(content); }
-            bool RequestServerClipboard() { return m_clipboardChannel.RequestFromServer(); }
-            void RequestFullUpdate();
+            bool HasExtendedClipboard() const override { return m_clipboardChannel.IsActive(); }
+            bool ServerAcceptsClipboardImages() const override { return m_clipboardChannel.AcceptsImages(); }
+            bool OfferClipboard(const ClipboardContent& content) override { return m_clipboardChannel.Offer(content); }
+            bool RequestServerClipboard() override { return m_clipboardChannel.RequestFromServer(); }
+            void RequestFullUpdate() override;
 
             // The server's displays, once it has described them (ExtendedDesktopSize); empty otherwise. Any thread.
-            std::vector<Screen> GetScreens() const;
+            std::vector<Screen> GetScreens() const override;
             // Whether the server can be asked to change its screen size (it sent ExtendedDesktopSize). Any thread.
-            bool SupportsDesktopResize() const { return m_supportsResize.load(); }
+            bool SupportsDesktopResize() const override { return m_supportsResize.load(); }
             // Asks the server to make its desktop one display of this size. Ignored unless SupportsDesktopResize();
             // the answer comes as OnDesktopResized and OnScreenLayout, or OnDesktopResizeRefused. Any thread.
-            void RequestDesktopSize(int width, int height);
+            void RequestDesktopSize(int width, int height) override;
             static Bytes BuildSetDesktopSize(int width, int height, const std::vector<Screen>& screens);
 
             // Changes the compression and JPEG levels (see ConnectionOptions) on a live connection by sending the
             // encodings again. Any thread; ignored until connected.
-            void SetQuality(int compressLevel, int qualityLevel);
+            void SetQuality(int compressLevel, int qualityLevel) override;
 
             // macOS Screen Sharing (RFB 3.889), which has its own quirks and keyboard. Meaningful once connected.
             bool IsAppleServer() const { return m_appleServer.load(); }
 
             // How long since the last key or pointer event was sent (or attempted). Any thread.
-            std::chrono::steady_clock::duration GetTimeSinceInput() const;
+            std::chrono::steady_clock::duration GetTimeSinceInput() const override;
 
             // Returns the counts so far and starts again from zero. Any thread.
-            TrafficStats TakeTrafficStats();
+            TrafficStats TakeTrafficStats() override;
 
             // The encodings advertised by default, most preferred first (only those with decoders).
             static std::vector<int32_t> GetDefaultEncodings();

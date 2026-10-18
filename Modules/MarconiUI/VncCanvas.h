@@ -7,7 +7,7 @@
 #include "KeyMapper.h"
 
 #include <MarconiCore/LocalKeys.h>
-#include <MarconiCore/Rfb/Client.h>
+#include <MarconiCore/RemoteSession.h>
 
 #include <wx/bitmap.h>
 #include <wx/image.h>
@@ -29,7 +29,11 @@ namespace MarconiUI
     class VncCanvas : public wxScrolledCanvas
     {
     public:
-        VncCanvas(wxWindow* parent, Marconi::Rfb::Client& client);
+        explicit VncCanvas(wxWindow* parent);
+
+        // The connection the picture comes from and input goes to; null until the viewer has made one. UI thread.
+        // The session must outlive the canvas or be replaced first.
+        void SetSession(Marconi::RemoteSession* session) { m_session = session; }
 
         // UI thread only. The server's desktop changed size. Once a picture has been shown, it stays on screen
         // (scaled) until the server has sent the whole desktop at the new size, so partial or black pictures are
@@ -117,7 +121,7 @@ namespace MarconiUI
         void OnChar(wxKeyEvent& event);
         void OnKillFocus(wxFocusEvent& event);
 
-        Marconi::Rfb::Client& m_client;
+        Marconi::RemoteSession* m_session = nullptr;
         wxBitmap m_backing;
         wxSize m_desktopSize; // size of the picture shown (the server's, unless a resize is pending)
         bool m_hasPicture = false;

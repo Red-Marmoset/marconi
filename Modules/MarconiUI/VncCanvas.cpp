@@ -30,10 +30,14 @@ namespace MarconiUI
         constexpr int kEdgeScrollIntervalMs = 30;
     }
 
-    VncCanvas::VncCanvas(wxWindow* parent, Marconi::Rfb::Client& client)
+    VncCanvas::VncCanvas(wxWindow* parent)
         : wxScrolledCanvas(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxWANTS_CHARS | wxFULL_REPAINT_ON_RESIZE),
-          m_client(client),
-          m_keys([&client](uint32_t keysym, bool down) { client.SendKeyEvent(keysym, down); })
+          m_keys([this](uint32_t keysym, bool down) {
+              if (m_session != nullptr)
+              {
+                  m_session->SendKeyEvent(keysym, down);
+              }
+          })
     {
         SetBackgroundStyle(wxBG_STYLE_PAINT);
         SetScrollRate(16, 16);
@@ -74,7 +78,11 @@ namespace MarconiUI
     bool VncCanvas::FramebufferIsBlack()
     {
         // A Mac's screen goes dark for a moment while it switches modes; that's not a picture worth showing.
-        Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+        if (m_session == nullptr)
+        {
+            return true;
+        }
+        Marconi::Rfb::Framebuffer& framebuffer = m_session->GetFramebuffer();
         std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
         return framebuffer.IsBlack();
     }
@@ -278,9 +286,13 @@ namespace MarconiUI
         {
             return;
         }
+        if (m_session == nullptr)
+        {
+            return;
+        }
         // The framebuffer may have been resized by the connection thread since this update was queued; clip to
         // both sizes so we never read or draw outside either.
-        Marconi::Rfb::Framebuffer& framebuffer = m_client.GetFramebuffer();
+        Marconi::Rfb::Framebuffer& framebuffer = m_session->GetFramebuffer();
         wxImage image;
         Marconi::Rfb::Rect rect = requested;
         {
@@ -405,9 +417,9 @@ namespace MarconiUI
     void VncCanvas::ReleaseInput()
     {
         m_keys.ReleaseAll();
-        if (m_buttons != 0 && m_lastPointer.x >= 0)
+        if (m_buttons != 0 && m_lastPointer.x >= 0 && m_session != nullptr)
         {
-            m_client.SendPointerEvent(m_lastPointer.x, m_lastPointer.y, 0);
+            m_session->SendPointerEvent(m_lastPointer.x, m_lastPointer.y, 0);
         }
         m_buttons = 0;
         if (HasCapture())
@@ -507,7 +519,10 @@ namespace MarconiUI
     void VncCanvas::SendPointer(const wxPoint& windowPoint)
     {
         m_lastPointer = ToDesktop(windowPoint);
-        m_client.SendPointerEvent(m_lastPointer.x, m_lastPointer.y, m_buttons);
+        if (m_session != nullptr)
+        {
+            m_session->SendPointerEvent(m_lastPointer.x, m_lastPointer.y, m_buttons);
+        }
     }
 
     void VncCanvas::OnMouse(wxMouseEvent& event)
@@ -658,9 +673,9 @@ namespace MarconiUI
 
     void VncCanvas::OnCaptureLost(wxMouseCaptureLostEvent&)
     {
-        if (m_buttons != 0 && m_lastPointer.x >= 0)
+        if (m_buttons != 0 && m_lastPointer.x >= 0 && m_session != nullptr)
         {
-            m_client.SendPointerEvent(m_lastPointer.x, m_lastPointer.y, 0);
+            m_session->SendPointerEvent(m_lastPointer.x, m_lastPointer.y, 0);
         }
         m_buttons = 0;
     }

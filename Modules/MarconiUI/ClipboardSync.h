@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <MarconiCore/Rfb/Client.h>
+#include <MarconiCore/RemoteSession.h>
 
 #include <wx/string.h>
 
@@ -15,7 +15,10 @@ namespace MarconiUI
     class ClipboardSync
     {
     public:
-        explicit ClipboardSync(Marconi::Rfb::Client& client) : m_client(client) {}
+        ClipboardSync() = default;
+
+        // The connection the clipboard travels over; null until the viewer has made one. UI thread.
+        void SetSession(Marconi::RemoteSession* session) { m_session = session; }
 
         void SetEnabled(bool enabled) { m_enabled = enabled; }
         bool IsEnabled() const { return m_enabled; }
@@ -48,7 +51,7 @@ namespace MarconiUI
         void Apply(const Marconi::Rfb::ClipboardContent& content);
         void Report(const wxString& message);
 
-        Marconi::Rfb::Client& m_client;
+        Marconi::RemoteSession* m_session = nullptr;
         bool m_enabled = true;
         std::function<void(const wxString&)> m_status;
         Marconi::Rfb::ClipboardContent m_lastExchanged; // text with local line endings as "\n"
