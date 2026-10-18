@@ -1,7 +1,7 @@
 {
     "name": "Marconi",
     "type": "windowed",
-    "version": "0.5.1",
+    "version": "0.5.2",
     "description": "Marconi - cross-platform VNC client",
     "modules": [
         "MarconiCore",

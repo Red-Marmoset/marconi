@@ -4,6 +4,7 @@
 #include "FilePanel.h"
 
 #include "Appearance.h"
+#include "Controls.h"
 #include "ClipboardFiles.h"
 #include "ConnectionStore.h"
 #include "CredentialsDialog.h"
@@ -74,40 +75,56 @@ namespace MarconiUI
 
     FilePanel::FilePanel(wxWindow* parent, const Remote& remote) : wxPanel(parent), m_remote(remote)
     {
+        wxFont bodyFont = GetFont();
+        bodyFont.SetPointSize(10);
+        SetFont(bodyFont);
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+        sizer->AddSpacer(FromDIP(12));
         m_message = new wxStaticText(this, wxID_ANY, "");
-        sizer->Add(m_message, 0, wxEXPAND | wxALL, FromDIP(6));
+        m_message->SetName("MarconiMutedLabel");
+        sizer->Add(m_message, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(16));
 
         wxBoxSizer* panes = new wxBoxSizer(wxHORIZONTAL);
         m_localPane = new FilePane(this, *this, false, "This computer");
         m_remotePane = new FilePane(this, *this, true, m_remote.displayName);
         wxBoxSizer* middle = new wxBoxSizer(wxVERTICAL);
-        m_upload = new wxButton(this, wxID_ANY, wxString::FromUTF8("Upload \xE2\x86\x92"));
-        m_download = new wxButton(this, wxID_ANY, wxString::FromUTF8("\xE2\x86\x90 Download"));
+        m_upload = new ActionButton(this, wxID_ANY, wxString::FromUTF8("Upload \xE2\x86\x92"), true, wxSize(108, 40));
+        m_download = new ActionButton(this, wxID_ANY, wxString::FromUTF8("\xE2\x86\x90 Download"), true, wxSize(108, 40));
         m_upload->SetToolTip("Copy the files selected on this computer to the remote computer's folder");
         m_download->SetToolTip("Copy the files selected on the remote computer to this computer's folder");
         middle->AddStretchSpacer();
-        middle->Add(m_upload, 0, wxEXPAND | wxBOTTOM, FromDIP(6));
+        middle->Add(m_upload, 0, wxEXPAND | wxBOTTOM, FromDIP(8));
         middle->Add(m_download, 0, wxEXPAND);
         middle->AddStretchSpacer();
-        panes->Add(m_localPane, 1, wxEXPAND | wxRIGHT, FromDIP(6));
-        panes->Add(middle, 0, wxEXPAND | wxRIGHT, FromDIP(6));
+        panes->Add(m_localPane, 1, wxEXPAND | wxRIGHT, FromDIP(12));
+        panes->Add(middle, 0, wxEXPAND | wxRIGHT, FromDIP(12));
         panes->Add(m_remotePane, 1, wxEXPAND);
-        sizer->Add(panes, 1, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(6));
+        sizer->Add(panes, 1, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(16));
 
         wxBoxSizer* transfersBar = new wxBoxSizer(wxHORIZONTAL);
         wxStaticText* transfersHeading = new wxStaticText(this, wxID_ANY, "Transfers");
-        transfersHeading->SetFont(transfersHeading->GetFont().Bold());
-        m_cancel = new wxButton(this, wxID_ANY, "Cancel All", wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+        transfersHeading->SetFont(HeadingFont(transfersHeading->GetFont(), 1.1f));
+        m_cancel = new ActionButton(this, wxID_ANY, "Cancel all", false, wxSize(-1, 34));
+        m_cancel->Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& event) { event.Enable(IsBusy()); });
         transfersBar->Add(transfersHeading, 1, wxALIGN_CENTER_VERTICAL);
         transfersBar->Add(m_cancel, 0);
-        sizer->Add(transfersBar, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(6));
+        sizer->Add(transfersBar, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(16));
+        m_transferEmpty = new wxStaticText(this, wxID_ANY, "Select files above, then choose Upload or Download.");
+        m_transferEmpty->SetName("MarconiMutedLabel");
+        sizer->Add(m_transferEmpty, 0, wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(16));
         m_transfers = new wxListView(this, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 60)),
-                                     wxLC_REPORT | wxLC_NO_HEADER | wxBORDER_SIMPLE);
+                                     wxLC_REPORT | wxLC_NO_HEADER | wxBORDER_NONE);
         m_transfers->SetMinSize(FromDIP(wxSize(-1, 72)));
         m_transfers->AppendColumn("File", wxLIST_FORMAT_LEFT, FromDIP(260));
         m_transfers->AppendColumn("Progress", wxLIST_FORMAT_LEFT, FromDIP(260));
-        sizer->Add(m_transfers, 0, wxEXPAND | wxALL, FromDIP(6));
+        sizer->Add(m_transfers, 0, wxEXPAND | wxALL, FromDIP(16));
+        m_transfers->Hide();
+        m_transfers->Bind(wxEVT_SIZE, [this](wxSizeEvent& event) {
+            const int width = m_transfers->GetClientSize().x;
+            m_transfers->SetColumnWidth(0, width * 2 / 3);
+            m_transfers->SetColumnWidth(1, std::max(0, width / 3 - FromDIP(4)));
+            event.Skip();
+        });
         SetSizer(sizer);
 
         m_upload->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
@@ -242,7 +259,7 @@ namespace MarconiUI
     {
         m_messageText = message;
         m_message->SetLabel(message);
-        m_message->Wrap(std::max(GetClientSize().x - FromDIP(12), FromDIP(200)));
+        m_message->Wrap(std::max(GetClientSize().x - FromDIP(32), FromDIP(200)));
         m_message->Show(!message.empty());
         Layout();
     }
@@ -591,6 +608,12 @@ namespace MarconiUI
 
     void FilePanel::ShowStatus(const Marconi::Files::TransferStatus& status)
     {
+        if (!m_transfers->IsShown())
+        {
+            m_transferEmpty->Hide();
+            m_transfers->Show();
+            Layout();
+        }
         auto row = m_transferRows.find(status.id);
         long index = 0;
         if (row == m_transferRows.end())

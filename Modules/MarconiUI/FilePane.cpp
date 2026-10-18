@@ -5,10 +5,12 @@
 #include "FilePane.h"
 
 #include "Appearance.h"
+#include "Controls.h"
 #include "FilePanel.h"
 
 #include <wx/artprov.h>
-#include <wx/bmpbuttn.h>
+#include <wx/scrolwin.h>
+#include <wx/settings.h>
 #include <wx/button.h>
 #include <wx/dataobj.h>
 #include <wx/datetime.h>
@@ -165,46 +167,60 @@ namespace MarconiUI
           m_owner(owner),
           m_remote(remote)
     {
+        // Explicit minima stop a long path or host name from stealing the other pane's width.
+        SetMinSize(FromDIP(wxSize(0, 0)));
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-        m_heading = new wxStaticText(this, wxID_ANY, heading);
-        m_heading->SetFont(m_heading->GetFont().Bold());
-        sizer->Add(m_heading, 0, wxBOTTOM, FromDIP(4));
-
         wxBoxSizer* bar = new wxBoxSizer(wxHORIZONTAL);
-        auto barButton = [this, bar](const wxArtID& art, const wxString& tip) {
-            wxBitmapButton* button = new wxBitmapButton(
-                this, wxID_ANY, wxArtProvider::GetBitmapBundle(art, wxART_BUTTON, FromDIP(wxSize(16, 16))));
+        m_heading = new wxStaticText(this, wxID_ANY, heading, wxDefaultPosition, wxDefaultSize,
+                                     wxST_ELLIPSIZE_END | wxST_NO_AUTORESIZE);
+        m_heading->SetMinSize(FromDIP(wxSize(0, 24)));
+        m_heading->SetFont(HeadingFont(GetFont(), 1.2f));
+        m_heading->SetToolTip(heading);
+        bar->Add(m_heading, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(8));
+        auto barButton = [this, bar](const wxString& symbol, const wxString& tip) {
+            auto* button = new ActionButton(this, wxID_ANY, symbol, false, wxSize(34, 34));
+            button->SetFont(GetFont().Scaled(1.3f));
             button->SetToolTip(tip);
-            bar->Add(button, 0, wxRIGHT, FromDIP(2));
+            button->SetName(tip);
+            bar->Add(button, 0, wxLEFT, FromDIP(2));
             return button;
         };
-        m_back = barButton(wxART_GO_BACK, "Back");
-        m_forward = barButton(wxART_GO_FORWARD, "Forward");
-        m_up = barButton(wxART_GO_UP, "Up to the folder above (Backspace)");
-        wxBitmapButton* refresh = barButton(wxART_REDO, "Refresh (F5)");
-        m_crumbs = new wxPanel(this);
+        m_back = barButton(wxString::FromUTF8("\xE2\x80\xB9"), "Back");
+        m_forward = barButton(wxString::FromUTF8("\xE2\x80\xBA"), "Forward");
+        m_up = barButton(wxString::FromUTF8("\xE2\x86\x91"), "Up to the folder above (Backspace)");
+        wxButton* refresh = barButton(wxString::FromUTF8("\xE2\x86\xBB"), "Refresh (F5)");
+        sizer->Add(bar, 0, wxEXPAND | wxBOTTOM, FromDIP(8));
+        const int pathHeight = FromDIP(32) + wxSystemSettings::GetMetric(wxSYS_HSCROLL_Y, this);
+        m_crumbs = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxSize(1, pathHeight),
+                                       wxHSCROLL | wxBORDER_NONE);
+        m_crumbs->SetMinSize(wxSize(1, pathHeight));
+        m_crumbs->SetScrollRate(FromDIP(8), 0);
         m_crumbs->SetSizer(new wxBoxSizer(wxHORIZONTAL));
-        bar->Add(m_crumbs, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(6));
-        sizer->Add(bar, 0, wxEXPAND | wxBOTTOM, FromDIP(4));
+        sizer->Add(m_crumbs, 0, wxEXPAND | wxBOTTOM, FromDIP(8));
 
         m_split = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                       wxSP_LIVE_UPDATE | wxSP_3DSASH);
+                                       wxSP_LIVE_UPDATE | wxSP_NOBORDER);
         m_split->SetMinimumPaneSize(FromDIP(80));
         m_tree = new wxTreeCtrl(m_split, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                wxTR_HAS_BUTTONS | wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_NO_LINES | wxBORDER_SIMPLE);
-        m_list = new wxListView(m_split, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxBORDER_SIMPLE);
-        m_icons = new wxImageList(FromDIP(16), FromDIP(16), true);
-        m_icons->Add(wxArtProvider::GetIcon(wxART_FOLDER, wxART_LIST, FromDIP(wxSize(16, 16))));
-        m_icons->Add(wxArtProvider::GetIcon(wxART_NORMAL_FILE, wxART_LIST, FromDIP(wxSize(16, 16))));
-        m_icons->Add(wxArtProvider::GetIcon(wxART_HARDDISK, wxART_LIST, FromDIP(wxSize(16, 16))));
+                                wxTR_HAS_BUTTONS | wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_NO_LINES | wxBORDER_NONE);
+        m_list = new ThemedListView(m_split, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxBORDER_NONE);
+        m_icons = new wxImageList(FromDIP(16), FromDIP(28), true);
+        for (const wxArtID& art : {wxART_FOLDER, wxART_NORMAL_FILE, wxART_HARDDISK})
+        {
+            wxImage icon = wxArtProvider::GetBitmap(art, wxART_LIST, FromDIP(wxSize(16, 16))).ConvertToImage();
+            m_icons->Add(wxBitmap(icon.Size(FromDIP(wxSize(16, 28)), FromDIP(wxPoint(0, 6)))));
+        }
+        m_tree->SetName(remote ? "Remote folders" : "Local folders");
+        m_list->SetName(remote ? "Remote files" : "Local files");
         m_list->SetImageList(m_icons, wxIMAGE_LIST_SMALL);
         m_tree->SetImageList(m_icons);
         m_list->AppendColumn("Name", wxLIST_FORMAT_LEFT, FromDIP(180));
         m_list->AppendColumn("Size", wxLIST_FORMAT_RIGHT, FromDIP(70));
         m_list->AppendColumn("Modified", wxLIST_FORMAT_LEFT, FromDIP(115));
         m_list->AppendColumn("Type", wxLIST_FORMAT_LEFT, FromDIP(80));
-        m_split->SplitVertically(m_tree, m_list, FromDIP(160));
+        m_split->SplitVertically(m_tree, m_list, FromDIP(112));
         m_split->SetSashGravity(0.0);
+        m_tree->SetIndent(FromDIP(14));
         sizer->Add(m_split, 1, wxEXPAND);
         SetSizer(sizer);
 
@@ -269,6 +285,7 @@ namespace MarconiUI
     void FilePane::SetHeading(const wxString& heading)
     {
         m_heading->SetLabel(heading);
+        m_heading->SetToolTip(heading);
     }
 
     void FilePane::Navigate(const std::string& folder, bool remember)
@@ -369,8 +386,8 @@ namespace MarconiUI
             }
             wxString label = parts[i].label == "/" && m_remote && m_source != nullptr ? wxString("/")
                                                                                         : wxString::FromUTF8(parts[i].label);
-            wxButton* crumb = new wxButton(m_crumbs, wxID_ANY, label, wxDefaultPosition, wxDefaultSize,
-                                           wxBU_EXACTFIT | wxBORDER_NONE);
+            wxButton* crumb = new ActionButton(m_crumbs, wxID_ANY, label, false, wxSize(-1, 30));
+            crumb->SetToolTip(wxString::FromUTF8(parts[i].path));
             if (i + 1 == parts.size())
             {
                 crumb->SetFont(crumb->GetFont().Bold());
@@ -381,6 +398,9 @@ namespace MarconiUI
         }
         StyleWindow(m_crumbs);
         m_crumbs->Layout();
+        m_crumbs->FitInside();
+        m_crumbs->Scroll(m_crumbs->GetVirtualSize().x / FromDIP(8), 0);
+        m_crumbs->SetToolTip(wxString::FromUTF8(m_folder));
         m_crumbs->Thaw();
     }
 

@@ -2,6 +2,7 @@
 // Light, dark or system appearance: the saved choice, the shared colour palette and applying it to windows
 
 #include "Appearance.h"
+#include "Controls.h"
 
 #include <wx/app.h>
 #include <wx/button.h>
@@ -10,6 +11,7 @@
 #include <wx/settings.h>
 #include <wx/statline.h>
 #include <wx/textctrl.h>
+#include <wx/treectrl.h>
 #include <wx/window.h>
 
 namespace MarconiUI
@@ -85,10 +87,10 @@ namespace MarconiUI
         if (dark)
         {
             return {wxColour(34, 38, 43), wxColour(42, 47, 54), wxColour(242, 244, 247),
-                    wxColour(178, 188, 201), wxColour(69, 77, 88), wxColour(194, 35, 55), wxColour(61, 78, 99)};
+                    wxColour(178, 188, 201), wxColour(69, 77, 88), wxColour(194, 35, 55), wxColour(74, 43, 52)};
         }
         return {wxColour(250, 251, 253), wxColour(255, 255, 255), wxColour(27, 35, 47),
-                wxColour(87, 101, 120), wxColour(215, 221, 230), wxColour(178, 34, 52), wxColour(226, 237, 250)};
+                wxColour(87, 101, 120), wxColour(215, 221, 230), wxColour(178, 34, 52), wxColour(250, 231, 234)};
     }
 
     void StyleWindow(wxWindow* window)
@@ -97,9 +99,14 @@ namespace MarconiUI
         window->SetBackgroundColour(palette.background);
         window->SetForegroundColour(palette.text);
         if (wxDynamicCast(window, wxTextCtrl) || wxDynamicCast(window, wxListCtrl) ||
-            wxDynamicCast(window, wxButton) || window->GetName() == "MarconiTextField")
+            wxDynamicCast(window, wxButton) || wxDynamicCast(window, wxTreeCtrl) ||
+            window->GetName() == "MarconiTextField")
         {
             window->SetBackgroundColour(palette.surface);
+        }
+        if (auto* list = wxDynamicCast(window, wxListCtrl))
+        {
+            list->SetHeaderAttr(wxItemAttr(palette.muted, palette.surface, HeadingFont(list->GetFont())));
         }
         if (window->GetName() == "MarconiFieldHint")
         {
@@ -109,6 +116,15 @@ namespace MarconiUI
         if (window->GetName() == "MarconiTableHeader" || window->GetName() == "MarconiHeaderLabel")
         {
             window->SetBackgroundColour(palette.surface);
+        }
+        if (window->GetName() == "MarconiMutedLabel")
+        {
+            window->SetForegroundColour(palette.muted);
+        }
+        if (window->GetName() == "MarconiPrimaryButton")
+        {
+            window->SetBackgroundColour(palette.accent);
+            window->SetForegroundColour(*wxWHITE);
         }
         if (wxDynamicCast(window, wxStaticLine) || window->GetName() == "MarconiDivider")
         {

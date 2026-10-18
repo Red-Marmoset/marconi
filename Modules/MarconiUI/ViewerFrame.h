@@ -139,6 +139,7 @@ namespace MarconiUI
 
         // Toolbar / F8 menu
         void CreateToolbar();
+        void ApplyAppearance();
         wxMenu* CreateMenu() const;
         void ShowMenu();
         void OnCommand(wxCommandEvent& event);
