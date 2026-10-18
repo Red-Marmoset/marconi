@@ -1,0 +1,8 @@
+{
+    "name": "MarconiServerTest",
+    "version": "0.1.0",
+    "type": "console",
+    "description": "Tests for the Marconi server core: the protocol session against an in-memory viewer",
+    "dependencies": ["Test", "MarconiServerCore", "MarconiCore"],
+    "platforms": ["Windows", "Linux", "macOS"]
+}

@@ -15,6 +15,11 @@ namespace Marconi
     {
         using Bytes = std::vector<uint8_t>;
 
+        // The largest a single framed message may be. A reader refuses a length prefix beyond this instead of
+        // trying to allocate it, so a corrupt or hostile length can't exhaust memory. A picture larger than this
+        // is split across several messages.
+        constexpr uint64_t kMaxMessageBytes = 64 * 1024 * 1024;
+
         // Thrown when a message can't be parsed (a length past the end, a varint that never terminates, a string
         // that isn't valid): the connection is dropped. The message is for the log, not the user.
         class WireError : public std::runtime_error

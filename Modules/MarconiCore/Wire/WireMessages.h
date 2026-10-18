@@ -103,10 +103,9 @@ namespace Marconi
         // -- The frame envelope: how a whole message sits on the control channel --------------------------------
         //
         // varint totalLength, then that many bytes: one Type byte and the message body. The length lets a reader
-        // take in a whole message before parsing it, and skip a type it doesn't know. kMaxMessageBytes caps it so
-        // a hostile or corrupt length can't make the reader allocate wildly; a picture larger than this is split
-        // across several Still messages.
-        constexpr uint64_t kMaxMessageBytes = 64 * 1024 * 1024;
+        // take in a whole message before parsing it, and skip a type it doesn't know. kMaxMessageBytes (in
+        // WireStream.h) caps it so a hostile or corrupt length can't make the reader allocate wildly; a picture
+        // larger than this is split across several Still messages.
 
         // Wraps an already-built message body (its first byte is the Type) in the length prefix.
         Bytes Frame(const Bytes& body);
