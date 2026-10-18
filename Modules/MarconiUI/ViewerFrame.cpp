@@ -15,6 +15,7 @@
 
 #include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Net/ProtocolChoice.h>
+#include <MarconiCore/Wire/WireClient.h>
 #include <MarconiCore/Net/WakeOnLan.h>
 #include <MarconiCore/Reconnect.h>
 #include <MarconiCore/Text.h>
@@ -498,9 +499,19 @@ namespace MarconiUI
     {
         const Marconi::Address& address = m_options.address;
         long rememberedPort = 0;
-        if (address.protocol == Marconi::Protocol::Vnc || m_options.skipProbe)
+        if (address.protocol == Marconi::Protocol::Marconi)
+        {
+            ConnectMarconi(Marconi::EffectivePort(address));
+        }
+        else if (address.protocol == Marconi::Protocol::Vnc || m_options.skipProbe)
         {
             ConnectVnc(Marconi::EffectivePort(address));
+        }
+        else if (address.protocol == Marconi::Protocol::Auto && m_options.detected.StartsWith("marconi ") &&
+                 m_options.detected.Mid(8).ToLong(&rememberedPort) && rememberedPort > 0 && rememberedPort < 65536)
+        {
+            m_usingRemembered = true;
+            ConnectMarconi(static_cast<uint16_t>(rememberedPort));
         }
         else if (address.protocol == Marconi::Protocol::Auto && m_options.detected.StartsWith("vnc ") &&
                  m_options.detected.Mid(4).ToLong(&rememberedPort) && rememberedPort > 0 && rememberedPort < 65536)
@@ -517,6 +528,7 @@ namespace MarconiUI
     void ViewerFrame::ConnectVnc(uint16_t port)
     {
         m_port = port;
+        m_reconnect = [this]() { ConnectVnc(m_port); };
         m_clipboard.Reset();
         Marconi::Address shown = m_options.address;
         shown.port = port;
@@ -552,6 +564,38 @@ namespace MarconiUI
             m_clipboard.SetSession(m_session.get());
         }
         return *m_rfb;
+    }
+
+    Marconi::Wire::Client& ViewerFrame::EnsureWireClient()
+    {
+        if (m_wire == nullptr)
+        {
+            Marconi::SessionListener& listener = *this;
+            std::unique_ptr<Marconi::Wire::Client> client = std::make_unique<Marconi::Wire::Client>(listener);
+            m_wire = client.get();
+            m_session = std::move(client);
+            m_canvas->SetSession(m_session.get());
+            m_clipboard.SetSession(m_session.get());
+        }
+        return *m_wire;
+    }
+
+    void ViewerFrame::ConnectMarconi(uint16_t port)
+    {
+        m_port = port;
+        m_reconnect = [this]() { ConnectMarconi(m_port); };
+        m_clipboard.Reset();
+        Marconi::Address shown = m_options.address;
+        shown.port = port;
+        shown.protocol = Marconi::Protocol::Marconi;
+        SetStatusText("Connecting to " + wxString::FromUTF8(Marconi::FormatAddress(shown)) +
+                      wxString::FromUTF8("\xE2\x80\xA6"));
+        Marconi::Wire::ClientOptions options;
+        options.host = m_options.address.host;
+        options.port = port;
+        options.password = m_options.credentials.password;
+        options.clientName = "Marconi";
+        EnsureWireClient().Connect(options);
     }
 
     void ViewerFrame::StartProbe()
@@ -598,11 +642,20 @@ namespace MarconiUI
         Marconi::Net::Choice choice = Marconi::Net::ChooseProtocol(m_options.address, results);
         if (choice.kind == Marconi::Net::Choice::Kind::Connect)
         {
+            bool marconi = choice.protocol == Marconi::Protocol::Marconi;
             if (m_options.address.protocol == Marconi::Protocol::Auto && m_options.address.port == 0)
             {
-                RememberDetected(wxString::Format("vnc %u", static_cast<unsigned>(choice.port)));
+                RememberDetected(wxString::Format(marconi ? "marconi %u" : "vnc %u",
+                                                  static_cast<unsigned>(choice.port)));
             }
-            ConnectVnc(choice.port);
+            if (marconi)
+            {
+                ConnectMarconi(choice.port);
+            }
+            else
+            {
+                ConnectVnc(choice.port);
+            }
             return;
         }
         wxString message = wxString::FromUTF8(Marconi::Net::DescribeChoice(choice, m_options.address));
@@ -1115,7 +1168,7 @@ namespace MarconiUI
             m_pictureTimer.Stop();
             m_statsTimer.Stop();
             m_clipboardTimer.Stop();
-            ConnectVnc(m_port);
+            m_reconnect();
             return;
         }
         m_pictureTimer.Stop();
@@ -1164,7 +1217,7 @@ namespace MarconiUI
             if (retry.ShowModal() == wxID_YES)
             {
                 m_options.credentials.password.clear(); // rejected: ask again
-                ConnectVnc(m_port);
+                m_reconnect();
                 return;
             }
             Close(true);
@@ -1198,7 +1251,7 @@ namespace MarconiUI
             }
             if (answer == wxID_YES || answer == wxID_NO)
             {
-                ConnectVnc(m_port);
+                m_reconnect();
                 return;
             }
             Close(true);
@@ -1208,7 +1261,7 @@ namespace MarconiUI
         retry.SetYesNoLabels("Try Again", "Close");
         if (retry.ShowModal() == wxID_YES)
         {
-            ConnectVnc(m_port);
+            m_reconnect();
             return;
         }
         Close(true);
@@ -1294,7 +1347,7 @@ namespace MarconiUI
         m_retryUnderWay = true;
         m_lostBar->EnableRetry(false);
         m_lostBar->SetMessage("Reconnecting to " + GetServerDisplayName() + wxString::FromUTF8("\xE2\x80\xA6"));
-        ConnectVnc(m_port);
+        m_reconnect();
     }
 
     void ViewerFrame::LeaveLostState()

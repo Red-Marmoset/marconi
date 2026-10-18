@@ -74,18 +74,15 @@ namespace MarconiTest
                   "Something is listening on port 7000 of drips, but it isn't a remote desktop Marconi recognises.");
         });
 
-        RunTest("ChooseProtocol handles a Marconi server", []() {
+        RunTest("ChooseProtocol prefers a Marconi server", []() {
             Address studio{"studio"};
-            // A box running both Marconi and VNC: Marconi ranks first but can't be connected to yet, so VNC still
-            // carries the connection while Marconi is listed first among what was found.
+            // A box running both Marconi and VNC: Marconi wins, since it is the better protocol.
             Net::Choice both = Net::ChooseProtocol(studio, {Found(5900, Protocol::Vnc), Found(1895, Protocol::Marconi)});
-            CHECK(both.kind == Net::Choice::Kind::Connect && both.protocol == Protocol::Vnc);
+            CHECK(both.kind == Net::Choice::Kind::Connect && both.protocol == Protocol::Marconi && both.port == 1895);
             CHECK(both.found.front().protocol == Protocol::Marconi); // best first
-            // A box running only a Marconi server: recognised, not connectable yet, with its own plain message.
+            // A box running only a Marconi server connects over Marconi.
             Net::Choice only = Net::ChooseProtocol(studio, {Found(1895, Protocol::Marconi), Missing(5900)});
-            CHECK(only.kind == Net::Choice::Kind::Unsupported);
-            CHECK(Net::DescribeChoice(only, studio) ==
-                  "studio is running a Marconi server, which this version can't connect to yet.");
+            CHECK(only.kind == Net::Choice::Kind::Connect && only.protocol == Protocol::Marconi);
         });
 
         RunTest("ChooseProtocol honours a forced protocol", []() {

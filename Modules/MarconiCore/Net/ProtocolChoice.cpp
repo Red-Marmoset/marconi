@@ -28,10 +28,7 @@ namespace Marconi
 
         bool IsSupported(Protocol protocol)
         {
-            // Marconi's own protocol is recognised here (so a probe identifies it and the network list shows it),
-            // but connecting to a Marconi server comes with the Wire client in a later step. Until then it ranks
-            // first but reports as not-yet-connectable, the way RDP and SSH do.
-            return protocol == Protocol::Vnc;
+            return protocol == Protocol::Vnc || protocol == Protocol::Marconi;
         }
 
         Choice ChooseProtocol(const Address& address, const std::vector<ProbeResult>& results)
@@ -78,10 +75,6 @@ namespace Marconi
                 case Choice::Kind::Connect:
                     return "";
                 case Choice::Kind::Unsupported:
-                    if (choice.found.front().protocol == Protocol::Marconi)
-                    {
-                        return host + " is running a Marconi server, which this version can't connect to yet.";
-                    }
                     if (choice.found.front().protocol == Protocol::Ssh)
                     {
                         return host + " only offers SSH (a text terminal), which Marconi doesn't support yet.";
