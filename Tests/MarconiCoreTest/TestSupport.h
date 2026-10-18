@@ -152,4 +152,5 @@ namespace MarconiTest
     void RunSettingsTests();
     void RunSshTunnelTests();
     void RunRdpTests();
+    void RunRdpBitmapTests();
 } // namespace MarconiTest

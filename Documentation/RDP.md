@@ -53,9 +53,16 @@ milestone 1.
 - The probe recognises an RDP server (sends an X.224 Connection Request, looks for a Connection Confirm) and the
   protocol chooser reports it; `rdp://host` parses; `Protocol::Rdp` and port 3389 exist. Today the viewer then says
   "recognised, not supported yet". These stay and become the entry point.
-- The engine Crypto module has AES-128, DES, MD5, SHA-256 (inside TLS), Diffie-Hellman, secure random, a big-integer
-  modpow, and a TLS client (`Crypto::TlsClient`) on mbedTLS / SChannel / Security.framework. `Net::TlsStream` wraps
-  it over any byte link (a socket or an SSH tunnel), which RDP reuses.
+- The engine Crypto module has AES-128, DES, MD4, MD5, RC4, SHA-1, SHA-256, HMAC-MD5, HMAC-SHA256,
+  Diffie-Hellman, secure random, a big-integer modpow, and a TLS client (`Crypto::TlsClient`) on mbedTLS.
+  `Net::TlsStream` wraps it over any byte link (a socket or an SSH tunnel), which RDP reuses. That is every hash
+  and cipher NTLMv2 and CredSSP need.
+- Milestone 1's negotiation: `Rdp/Negotiation` builds the X.224 Connection Request and parses the Confirm, and
+  `Rdp/Security` runs the exchange over a byte link. Tested, and verified against xrdp (it chose TLS, then a TLS
+  1.3 handshake succeeded); not yet wired into the viewer.
+- Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
+  (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
+  specification; it has nothing to decode until milestones 2 and 3 bring a session up.
 
 ## What RDP needs that VNC didn't
 
