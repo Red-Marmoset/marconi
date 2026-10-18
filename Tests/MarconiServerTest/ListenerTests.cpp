@@ -37,6 +37,7 @@ namespace MarconiServerTest
             Net::Socket clientSocket;
             CHECK(clientSocket.Connect("127.0.0.1", port, 5000, error));
             Wire::SocketTransport clientTransport(clientSocket);
+            ReadMagic(clientTransport); // the server's four-byte preamble
             Wire::MessageReader reader(clientTransport);
 
             Wire::Hello hello;

@@ -8,6 +8,7 @@
 #include <zlib.h>
 
 #include <algorithm>
+#include <cstring>
 
 namespace Marconi
 {
@@ -107,6 +108,26 @@ namespace Marconi
             {
                 std::lock_guard<std::mutex> lock(m_writeMutex);
                 m_transport = std::make_unique<SocketTransport>(m_socket);
+            }
+            // The server sends the four magic bytes first; read and check them before anything else.
+            uint8_t magic[sizeof(kMagic)] = {};
+            size_t got = 0;
+            while (got < sizeof(magic))
+            {
+                ptrdiff_t n = m_transport->Read(magic + got, sizeof(magic) - got);
+                if (n <= 0)
+                {
+                    break;
+                }
+                got += static_cast<size_t>(n);
+            }
+            if (got != sizeof(magic) || std::memcmp(magic, kMagic, sizeof(magic)) != 0)
+            {
+                std::lock_guard<std::mutex> lock(m_writeMutex);
+                m_transport.reset();
+                info.error = m_stopping ? "" : "This doesn't look like a Marconi server";
+                m_listener.OnDisconnected(info);
+                return;
             }
             MessageReader reader(*m_transport);
             try

@@ -20,7 +20,10 @@ namespace MarconiServerTest
         class Viewer
         {
         public:
-            explicit Viewer(Wire::Transport& transport) : m_reader(transport), m_transport(transport) {}
+            explicit Viewer(Wire::Transport& transport) : m_reader(transport), m_transport(transport)
+            {
+                ReadMagic(transport); // the server's four-byte preamble, before any framed message
+            }
 
             void Send(const Wire::Bytes& framed) { m_transport.Write(framed.data(), framed.size()); }
 
@@ -149,16 +152,17 @@ namespace MarconiServerTest
             Server::Session session(serverTransport, screen, input, Server::Settings{});
             std::thread serverThread([&]() { session.Run(); });
 
-            // Send a Pointer instead of Hello: the server drops the connection without ever sending a Welcome.
+            // The server still sends its four-byte preamble on connect; read it. Then send a Pointer instead of
+            // Hello: the server drops the connection without ever sending a Welcome.
+            ReadMagic(clientTransport);
             Wire::Bytes wrong = Wire::Pointer{}.Encode();
             clientTransport.Write(wrong.data(), wrong.size());
 
-            // The viewer's read returns end of stream once the server has closed, not a Welcome.
             serverThread.join(); // Run() returns on its own because the handshake was refused
             serverToClient.Close();
             uint8_t buffer[16];
-            CHECK(serverToClient.Read(buffer, sizeof(buffer)) == 0);
-            CHECK(input.pointers.empty()); // input before a successful handshake is never applied
+            CHECK(serverToClient.Read(buffer, sizeof(buffer)) == 0); // nothing after the preamble: no Welcome
+            CHECK(input.pointers.empty());                          // input before a successful handshake is never applied
         });
     }
 } // namespace MarconiServerTest

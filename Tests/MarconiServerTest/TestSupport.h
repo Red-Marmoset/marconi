@@ -107,6 +107,10 @@ namespace MarconiServerTest
         int screenLayouts = 0;
     };
 
+    // Reads the four magic bytes a Marconi server sends on connect and checks they are "MRCN". Every viewer does
+    // this before reading any framed message.
+    void ReadMagic(Marconi::Wire::Transport& transport);
+
     void RunSessionTests();
     void RunListenerTests();
     void RunEndToEndTests();
