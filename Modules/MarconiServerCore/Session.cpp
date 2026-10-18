@@ -3,6 +3,8 @@
 
 #include "Session.h"
 
+#include <MarconiCore/Wire/WireCompress.h>
+
 #include <Log/Log.h>
 
 #include <chrono>
@@ -178,8 +180,20 @@ namespace Marconi
                 }
                 Wire::Still still;
                 still.rect = rect;
-                still.compression = Wire::Still::Compression::None; // zlib arrives with the real capture
-                still.data = PackRect(capture, rect);
+                Wire::Bytes raw = PackRect(capture, rect);
+                // Compress unless zlib can't beat the raw pixels (tiny or already-random rectangles): a screen is
+                // mostly flat colour and text, so this usually sends far less, which is what keeps the link lean.
+                Wire::Bytes packed = Wire::ZlibCompress(raw);
+                if (!packed.empty() && packed.size() < raw.size())
+                {
+                    still.compression = Wire::Still::Compression::Zlib;
+                    still.data = std::move(packed);
+                }
+                else
+                {
+                    still.compression = Wire::Still::Compression::None;
+                    still.data = std::move(raw);
+                }
                 if (!Send(still.Encode()))
                 {
                     m_stop = true;

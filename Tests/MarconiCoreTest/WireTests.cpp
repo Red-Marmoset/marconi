@@ -4,6 +4,7 @@
 
 #include "TestSupport.h"
 
+#include <MarconiCore/Wire/WireCompress.h>
 #include <MarconiCore/Wire/WireMessages.h>
 #include <MarconiCore/Wire/WireStream.h>
 
@@ -193,6 +194,25 @@ namespace MarconiTest
             Wire::ClipboardData dback = RoundTrip(data, Wire::Type::ClipboardData);
             CHECK(dback.format == Wire::ClipboardRequest::Format::Text);
             CHECK(dback.data == data.data);
+        });
+
+        RunTest("still pictures compress and come back the same", []() {
+            // A repetitive run (like a flat screen) shrinks a lot; the round trip is exact.
+            Wire::Bytes original(8192);
+            for (size_t i = 0; i < original.size(); ++i)
+            {
+                original[i] = static_cast<uint8_t>((i / 64) & 0xFF);
+            }
+            Wire::Bytes squeezed = Wire::ZlibCompress(original);
+            CHECK(!squeezed.empty() && squeezed.size() < original.size());
+            Wire::Bytes back;
+            CHECK(Wire::ZlibDecompress(squeezed, back, original.size()));
+            CHECK(back == original);
+            // The wrong expected size is refused rather than trusted.
+            Wire::Bytes wrong;
+            CHECK(!Wire::ZlibDecompress(squeezed, wrong, original.size() + 1));
+            // Rubbish in is refused, not crashed on.
+            CHECK(!Wire::ZlibDecompress(HexBytes("deadbeef"), wrong, 64));
         });
 
         RunTest("random bytes are decoded or refused, never crash", []() {

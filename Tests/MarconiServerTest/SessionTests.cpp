@@ -4,6 +4,7 @@
 
 #include "TestSupport.h"
 
+#include <MarconiCore/Wire/WireCompress.h>
 #include <MarconiServerCore/Session.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
@@ -87,12 +88,22 @@ namespace MarconiServerTest
             CHECK(viewer.Next(bytes, body) == Wire::Type::Still);
             Wire::Still still = Wire::Still::Decode(body);
             CHECK(still.rect.x == 0 && still.rect.y == 0 && still.rect.width == 4 && still.rect.height == 3);
-            CHECK(still.compression == Wire::Still::Compression::None);
-            CHECK(still.data.size() == 4u * 3u * 4u); // four bytes a pixel, little-endian B,G,R,0
+            // The server may send the pixels raw or zlib-compressed, whichever is smaller; decode either to the
+            // 48 raw bytes (four a pixel, little-endian B,G,R,0) before checking them.
+            Wire::Bytes raw;
+            if (still.compression == Wire::Still::Compression::Zlib)
+            {
+                CHECK(Wire::ZlibDecompress(still.data, raw, 4u * 3u * 4u));
+            }
+            else
+            {
+                raw = still.data;
+            }
+            CHECK(raw.size() == 4u * 3u * 4u);
             // On frame 0 the bright bar sits in column 0, so the top-left pixel is white.
-            CHECK(still.data[0] == 0xFF && still.data[1] == 0xFF && still.data[2] == 0xFF && still.data[3] == 0x00);
+            CHECK(raw[0] == 0xFF && raw[1] == 0xFF && raw[2] == 0xFF && raw[3] == 0x00);
             // The top-right pixel (column 3) is off the bar: the gradient's red corner (red 255, green 0, blue 0).
-            CHECK(still.data[12] == 0x00 && still.data[13] == 0x00 && still.data[14] == 0xFF && still.data[15] == 0x00);
+            CHECK(raw[12] == 0x00 && raw[13] == 0x00 && raw[14] == 0xFF && raw[15] == 0x00);
             CHECK(viewer.Next(bytes, body) == Wire::Type::FrameEnd);
             CHECK(Wire::FrameEnd::Decode(body).frameId == frameId);
 

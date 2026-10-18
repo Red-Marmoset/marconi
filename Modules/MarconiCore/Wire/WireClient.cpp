@@ -3,9 +3,9 @@
 
 #include <MarconiCore/Wire/WireClient.h>
 
-#include <Log/Log.h>
+#include <MarconiCore/Wire/WireCompress.h>
 
-#include <zlib.h>
+#include <Log/Log.h>
 
 #include <algorithm>
 #include <cstring>
@@ -328,10 +328,8 @@ namespace Marconi
             }
             else // Zlib
             {
-                uLongf out = static_cast<uLongf>(byteCount);
-                std::vector<uint8_t> raw(byteCount);
-                int result = uncompress(raw.data(), &out, still.data.data(), static_cast<uLong>(still.data.size()));
-                if (result != Z_OK || out != byteCount)
+                Bytes raw;
+                if (!ZlibDecompress(still.data, raw, byteCount))
                 {
                     throw WireError("a still rectangle didn't decompress to its size");
                 }

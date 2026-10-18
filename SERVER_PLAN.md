@@ -75,11 +75,18 @@ Each point gives the recommendation this plan is written against. Answer in this
    (`Modules/MarconiCore/Wire/`), because `Marconi::Protocol` is already the enum in `Address.h`. Addresses use
    `marconi://host`. Port **1895**, TCP and UDP (the year of Marconi's first transmissions; unassigned and above
    1024). Magic bytes `MRCN`.
-4. **Login.** Recommended: an access password set when the server is installed (and changeable from its tray icon),
-   sent inside TLS to a server whose self-signed certificate the client pins with the existing "trust this
-   certificate?" dialog, checked against a salted PBKDF2 hash, with a lockout after repeated failures. Alternatives:
-   a one-time pairing PIN shown on the server's screen (strong, but you must see that screen once), or Windows
-   account passwords (needs LogonUser as a service, and ties access to local accounts).
+4. **Login. DECIDED (owner): an access password**, settable and changeable, checked inside TLS against a salted
+   PBKDF2 hash with a lockout after repeated failures, and the client pins the server's self-signed certificate
+   with the existing "trust this certificate?" dialog. Two owner refinements:
+   - **It defaults to the password already saved for that connection.** When you install the server from the
+     client (Phase 2), the client hands the installer the password it already keeps for that computer, so the
+     server works straight away with the password you already use, with nothing new to set. The tray icon can
+     change it afterwards.
+   - **Injecting it at install must be safe.** The password reaches the new server over the connection that is
+     already encrypted (the VNC or Marconi link the installer travelled over), not on a command line (where it
+     would show in process lists) and not baked into the installer file on disk. The server reads it once from a
+     file only it can read and hashes it immediately; the plaintext is never stored. The risk is low given the
+     encrypted channel, but this keeps it from leaking through the install step.
 5. **Video codecs from the operating system**, not a bundled ffmpeg: Media Foundation on Windows (hardware H.264
    encoders and decoders from NVIDIA, AMD and Intel are exposed through it, with Microsoft's software ones as
    fallback), VideoToolbox on macOS. H.264 first, HEVC and AV1 later where both ends have them. The open question is
@@ -108,6 +115,8 @@ Each point gives the recommendation this plan is written against. Answer in this
     hole-punching service is planned; that needs infrastructure Red Marmoset would have to run.
 11. **Order.** Installer and menu item (Phase 2) come before video (Phase 4), because the owner asked for them
     explicitly and because they let the server be tried on real machines early. Say so if speed should come first.
+    **The owner's first server is Windows** (point chosen), so the capture and input work targets Windows first
+    (Desktop Duplication and SendInput), then macOS (the owner also has a Mac) and Linux.
 12. **Lossless compression for still pictures.** zlib is already a dependency; zstd would be faster and smaller. Start
     with zlib, consider zstd when the measurements in Phase 4 say it matters.
 
