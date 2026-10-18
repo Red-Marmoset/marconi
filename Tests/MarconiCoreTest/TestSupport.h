@@ -32,6 +32,9 @@ namespace MarconiTest
     // Any other exception escapes, so RunTest reports it as a failure.
     bool ThrowsRfbError(const std::function<void()>& body, const std::string& messagePart);
 
+    // True if `body` throws a Wire::WireError (the Marconi protocol's parse error); prints what happened otherwise.
+    bool ThrowsWireError(const std::function<void()>& body);
+
     // A loopback server for one client. The test drives it synchronously while the client runs its own thread.
     class FakeServer : public Marconi::Rfb::ByteSink
     {
@@ -144,4 +147,5 @@ namespace MarconiTest
     void RunReconnectTests();
     void RunDesktopSizeTests();
     void RunSettingsTests();
+    void RunWireTests();
 } // namespace MarconiTest

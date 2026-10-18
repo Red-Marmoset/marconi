@@ -4,6 +4,7 @@
 #include "TestSupport.h"
 
 #include <MarconiCore/Rfb/Messages.h>
+#include <MarconiCore/Wire/WireStream.h>
 
 namespace MarconiTest
 {
@@ -55,6 +56,20 @@ namespace MarconiTest
             return false;
         }
         printf("  didn't throw, expected an error containing \"%s\"\n", messagePart.c_str());
+        return false;
+    }
+
+    bool ThrowsWireError(const std::function<void()>& body)
+    {
+        try
+        {
+            body();
+        }
+        catch (const Wire::WireError&)
+        {
+            return true;
+        }
+        printf("  didn't throw a WireError\n");
         return false;
     }
 
