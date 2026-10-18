@@ -25,6 +25,39 @@ How to use this document:
 - The first section lists what the owner needs to decide. Nothing that depends on an undecided point should be
   built before the owner has answered; everything else can start.
 
+## Progress so far
+
+Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Linux against the real engine:
+
+- **Phase 1.1** The viewer talks to a `RemoteSession` interface; `Rfb::Client` implements it. No behaviour change.
+- **Phase 1.2** The protocol's byte layer: `MarconiCore/Wire` (little-endian stream, varints, the Phase 1
+  messages), with round-trip and fuzz tests.
+- **Phase 1.3** The client recognises Marconi servers: `marconi://`, port 1895, the `MRCN` greeting, preference
+  over VNC, and `_marconi._tcp` discovery.
+- **Phase 1.4** `MarconiServerCore`: a `Session` that serves the screen and takes input over the protocol, a
+  `Listener`, the `ScreenSource`/`InputSink` interfaces with a `TestPatternScreen`, tested from an in-memory
+  viewer and over a loopback socket.
+- **Phase 1.8** `Wire::Client` (the client half, a `RemoteSession`), with an end-to-end test of the real client
+  against the real server over a socket, and the viewer wired to open Marconi connections.
+- **The `MarconiServer` program** (console) serving the test pattern, confirmed by connecting an independent
+  client to the running binary.
+
+Decisions taken as defaults under "get it done" (change any by editing section 1): port **1895**, `marconi://`,
+magic bytes `MRCN`, `Wire` namespace, one version for client and server. The server sends the four magic bytes
+the instant a viewer connects, before the handshake, so a probe can identify it.
+
+Resequencing from the original plan: 1.8 (client) was done before 1.5 (TLS), since the transport is abstracted
+and TLS slots in later; the access password moved from 1.4 into 1.5, because it is checked inside TLS.
+
+Still to do in Phase 1, and why each waits:
+
+- **1.5 TLS and the password** needs the login-method decision below (section 1, point 4) and additions to the
+  engine's `Crypto` module (a TLS server, SHA-256, HMAC, PBKDF2), which are committed to the engine repo.
+- **1.6 screen capture** and **1.7 input injection** are Windows-only (Desktop Duplication, `SendInput`); they
+  can't be built or tested in the Linux cloud container, so they need a Windows machine.
+- **1.9** the tray icon and the version/changelog bump wait until the server captures a real screen, so a
+  release means something to a user.
+
 ## 1. Decisions needed from the owner
 
 Each point gives the recommendation this plan is written against. Answer in this file (edit the line) or in chat.
