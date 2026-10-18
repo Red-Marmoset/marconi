@@ -53,12 +53,15 @@ Each point gives the recommendation this plan is written against. Answer in this
    the **Linux client**: Linux has no system codec API. Options are ffmpeg's libavcodec (LGPL, large) or a small
    software H.264 decoder only. Recommended: ffmpeg via the engine's external dependencies, decided when Phase 4
    starts.
-6. **Gamepads on a Windows host need a virtual controller driver.** There is no built-in way to create one; every
+6. **Gamepads on a Windows server need a virtual controller driver.** There is no built-in way to create one; every
    product in this space (Sunshine, Parsec, DS4Windows) uses **ViGEmBus**, a BSD-licensed, signed kernel driver that
    its author stopped maintaining in 2023 but which still works on Windows 11. Recommended: the server installer
    offers it as an optional component, running its own installer, with the risk stated in the README. Alternative:
-   tell users to install it themselves. On Linux hosts the kernel's uinput does it with no driver. On macOS hosts it
-   isn't practical (a DriverKit extension needs an Apple entitlement), so gamepads to a Mac are not planned.
+   tell users to install it themselves. On Linux servers the kernel's uinput does it with no driver. On Mac servers
+   it needs a small DriverKit extension of our own that creates a virtual controller (the mechanism Karabiner-Elements
+   uses for its virtual keyboard and mouse); Apple has to grant the DriverKit entitlement to Red Marmoset's developer
+   account first, and the extension is signed with the Developer ID and notarized like the app. Planned in Phase 8,
+   gated on that entitlement.
 7. **One version for client and server**, from the same commit, and one `Package.ps1` run producing both installers,
    with the server's installer embedded in the client's so the client can hand it out. The client installer grows by
    the server installer's size (a few MB).
@@ -259,7 +262,8 @@ captured and input can be injected into it. The design, the same as TightVNC's a
   the Other Computer** is ticked, as `GamepadState` datagrams on change, plus attach and detach on the control
   channel. Rumble comes back and is applied to the matching local pad.
 - Server: a `GamepadSink` interface. Windows: ViGEmClient (BSD, vendored) creating an Xbox 360 pad per attached
-  client pad through ViGEmBus; Linux: uinput; macOS: unsupported, with the reason shown in the client menu the way
+  client pad through ViGEmBus; Linux: uinput; macOS: our own DriverKit HID extension creating a virtual gamepad
+  (Phase 8, once Apple grants the entitlement). Until a server has a sink, the client menu says so, the way
   `SystemKeyCapture::GetUnsupportedReason` does.
 - The same phase adds the two things games need from the keyboard and mouse that RFB never had: **relative mouse**
   (the client captures the pointer and sends deltas, the server injects relative motion, Ctrl+Alt releases) and
@@ -428,7 +432,7 @@ tester needs them.
    server exists.
 6. Tests: state packing and sequence handling, rumble routing, the forwarding rules with a fake pad.
 
-Done when: a game on the host plays from the client with a pad, with rumble, at the Phase 4 and 5 latencies.
+Done when: a game on the server plays from the client with a pad, with rumble, at the Phase 4 and 5 latencies.
 
 ### Phase 8: macOS and Linux servers
 
@@ -439,7 +443,12 @@ Outline only; planned in detail when reached.
   as "Marconi Server.app" or a mode of Marconi.app (owner's choice).
 - Linux: PipeWire and the portal on Wayland, X11 with XDamage and XTest otherwise, a systemd user service, a
   package or tarball.
-- The client's install menu then offers the right installer per host, using SFTP for Macs.
+- Mac gamepads, tried on the owner's Mac in this order: first a virtual HID controller made from the server process
+  itself with IOKit's user-device call (`IOHIDUserDeviceCreate`, present in the framework but not public), which
+  needs nothing installed and no Apple approval if the owner's macOS allows it; only if macOS refuses, a
+  `HIDDriverKit` extension presenting the controller, which needs Apple's DriverKit entitlement, shipped inside the
+  server app bundle, signed and notarized. Either way the server feeds it `GamepadState`.
+- The client's install menu then offers the right installer per server, using SFTP for Macs.
 
 ## 5. Testing throughout
 
@@ -471,8 +480,8 @@ Outline only; planned in detail when reached.
 - An RFB listener on the server so other VNC viewers can connect.
 - Updating the server from the client ("Update Marconi Server on the Other Computer") by uploading the installer
   and having the server run it silently after checking its signature.
-- Blanking the host's screen while a viewer is connected.
-- A virtual display driver, so a headless host or a laptop with its lid closed can be resized to any window.
+- Blanking the server's screen while a viewer is connected.
+- A virtual display driver, so a server with no monitor or a laptop with its lid closed can be resized to any window.
 - HEVC, AV1 and 4:4:4 colour where both ends support them; Windows GameInput for more than four pads.
 - Touch and pen input.
 
