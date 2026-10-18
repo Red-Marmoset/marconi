@@ -41,6 +41,11 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
   against the real server over a socket, and the viewer wired to open Marconi connections.
 - **The `MarconiServer` program** (console) serving the test pattern, confirmed by connecting an independent
   client to the running binary.
+- **Lean picture:** Still rectangles are zlib-compressed when that is smaller, tested end to end.
+- **Windows capture and input** (1.6, 1.7) are written: a GDI screen grab and SendInput, with the server program
+  using them on Windows and the test pattern elsewhere. They compile only on Windows, so they are a first cut
+  that still needs a build and a run on a Windows machine; GDI stands in until Desktop Duplication (the video
+  phase) replaces it.
 
 Decisions taken as defaults under "get it done" (change any by editing section 1): port **1895**, `marconi://`,
 magic bytes `MRCN`, `Wire` namespace, one version for client and server. The server sends the four magic bytes
