@@ -142,7 +142,8 @@ namespace Marconi
             {
                 return {{address.port, Protocol::Auto}};
             }
-            return {{DefaultPort(Protocol::Vnc), Protocol::Vnc},
+            return {{DefaultPort(Protocol::Marconi), Protocol::Marconi},
+                    {DefaultPort(Protocol::Vnc), Protocol::Vnc},
                     {DefaultPort(Protocol::Rdp), Protocol::Rdp},
                     {DefaultPort(Protocol::Ssh), Protocol::Ssh}};
         }
@@ -187,6 +188,11 @@ namespace Marconi
 
         Protocol IdentifyGreeting(const std::string& greeting)
         {
+            // A Marconi server sends its four magic bytes before anything else (then waits for the TLS handshake).
+            if (greeting.compare(0, 4, "MRCN") == 0)
+            {
+                return Protocol::Marconi;
+            }
             if (greeting.compare(0, 4, "RFB ") == 0)
             {
                 return Protocol::Vnc;

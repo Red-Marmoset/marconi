@@ -10,7 +10,8 @@ namespace Marconi
 {
     enum class Protocol
     {
-        Auto, // not chosen: probe to find out
+        Auto,    // not chosen: probe to find out
+        Marconi, // Marconi's own server and protocol
         Vnc,
         Rdp,
         Ssh,
@@ -34,7 +35,7 @@ namespace Marconi
     //   host:N          -> VNC display N (port 5900 + N) when N < 100, otherwise Auto on port N
     //   host::port      -> Auto on that port
     //   [v6addr]:N      -> as above for IPv6 literals; a bare IPv6 literal (two or more colons) is a host
-    //   vnc:// rdp:// ssh://host[:port] -> that protocol; the number is a port
+    //   marconi:// vnc:// rdp:// ssh://host[:port] -> that protocol; the number is a port
     //   user@...        -> any of the above, logging in as `user`
     // Returns false (and sets `error`) if the text can't be understood.
     bool ParseAddress(const std::string& text, Address& outAddress, std::string& error);

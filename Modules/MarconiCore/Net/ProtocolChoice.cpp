@@ -16,17 +16,21 @@ namespace Marconi
             {
                 switch (protocol)
                 {
-                    case Protocol::Rdp: return 0;
-                    case Protocol::Vnc: return 1;
-                    case Protocol::Ssh: return 2;
+                    case Protocol::Marconi: return 0; // our own protocol wins when a server offers it
+                    case Protocol::Rdp: return 1;
+                    case Protocol::Vnc: return 2;
+                    case Protocol::Ssh: return 3;
                     case Protocol::Auto: break;
                 }
-                return 3;
+                return 4;
             }
         } // namespace
 
         bool IsSupported(Protocol protocol)
         {
+            // Marconi's own protocol is recognised here (so a probe identifies it and the network list shows it),
+            // but connecting to a Marconi server comes with the Wire client in a later step. Until then it ranks
+            // first but reports as not-yet-connectable, the way RDP and SSH do.
             return protocol == Protocol::Vnc;
         }
 
@@ -74,6 +78,10 @@ namespace Marconi
                 case Choice::Kind::Connect:
                     return "";
                 case Choice::Kind::Unsupported:
+                    if (choice.found.front().protocol == Protocol::Marconi)
+                    {
+                        return host + " is running a Marconi server, which this version can't connect to yet.";
+                    }
                     if (choice.found.front().protocol == Protocol::Ssh)
                     {
                         return host + " only offers SSH (a text terminal), which Marconi doesn't support yet.";
@@ -95,7 +103,7 @@ namespace Marconi
             if (address.protocol == Protocol::Auto && address.port == 0)
             {
                 return "Couldn't find a remote desktop on " + host +
-                       ". Tried VNC (5900), Remote Desktop (3389) and SSH (22).";
+                       ". Tried Marconi (1895), VNC (5900), Remote Desktop (3389) and SSH (22).";
             }
             uint16_t port = address.port != 0 ? address.port : DefaultPort(address.protocol);
             return "Couldn't find a remote desktop on " + host + " (port " + std::to_string(port) + ").";

@@ -16,7 +16,10 @@ namespace Marconi
             const char* prefix;
             Protocol protocol;
         };
-        constexpr Scheme kSchemes[] = {{"vnc://", Protocol::Vnc}, {"rdp://", Protocol::Rdp}, {"ssh://", Protocol::Ssh}};
+        constexpr Scheme kSchemes[] = {{"marconi://", Protocol::Marconi},
+                                       {"vnc://", Protocol::Vnc},
+                                       {"rdp://", Protocol::Rdp},
+                                       {"ssh://", Protocol::Ssh}};
 
         bool StartsWithNoCase(const std::string& text, const char* prefix)
         {
@@ -188,6 +191,7 @@ namespace Marconi
     {
         switch (protocol)
         {
+            case Protocol::Marconi: return 1895; // Wire::kDefaultPort
             case Protocol::Vnc: return 5900;
             case Protocol::Rdp: return 3389;
             case Protocol::Ssh: return 22;
@@ -209,6 +213,7 @@ namespace Marconi
     {
         switch (protocol)
         {
+            case Protocol::Marconi: return "Marconi";
             case Protocol::Vnc: return "VNC";
             case Protocol::Rdp: return "Remote Desktop (RDP)";
             case Protocol::Ssh: return "SSH";
@@ -231,9 +236,10 @@ namespace Marconi
         {
             return showPort ? host + "::" + std::to_string(address.port) : host;
         }
-        const char* scheme = address.protocol == Protocol::Vnc   ? "vnc://"
-                             : address.protocol == Protocol::Rdp ? "rdp://"
-                                                                 : "ssh://";
+        const char* scheme = address.protocol == Protocol::Marconi ? "marconi://"
+                             : address.protocol == Protocol::Vnc   ? "vnc://"
+                             : address.protocol == Protocol::Rdp   ? "rdp://"
+                                                                   : "ssh://";
         return scheme + host + (showPort ? ":" + std::to_string(address.port) : "");
     }
 } // namespace Marconi

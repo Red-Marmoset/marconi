@@ -83,6 +83,9 @@ namespace MarconiTest
             CHECK(Parses("[fe80::1]:3", "fe80::1", 5903, Protocol::Vnc));
             CHECK(Parses("[fe80::1]::6000", "fe80::1", 6000, Protocol::Auto));
             CHECK(Parses("fe80::1:2", "fe80::1:2", 0, Protocol::Auto));
+            CHECK(Parses("marconi://studio", "studio", 0, Protocol::Marconi));
+            CHECK(Parses("marconi://studio:1900", "studio", 1900, Protocol::Marconi));
+            CHECK(Parses("MARCONI://studio", "studio", 0, Protocol::Marconi));
             CHECK(Parses("vnc://mac.local", "mac.local", 0, Protocol::Vnc));
             CHECK(Parses("VNC://mac.local:5", "mac.local", 5, Protocol::Vnc));
             CHECK(Parses("vnc://mac.local:5901/", "mac.local", 5901, Protocol::Vnc));
@@ -108,6 +111,9 @@ namespace MarconiTest
             CHECK(FormatAddress({"host", 5900}) == "host::5900");
             CHECK(FormatAddress({"host", 2222}) == "host::2222");
             CHECK(FormatAddress({"host", 5901, "", Protocol::Vnc}) == "host:1");
+            CHECK(FormatAddress({"host", 0, "", Protocol::Marconi}) == "marconi://host");
+            CHECK(FormatAddress({"host", 1895, "", Protocol::Marconi}) == "marconi://host");
+            CHECK(FormatAddress({"host", 1900, "", Protocol::Marconi}) == "marconi://host:1900");
             CHECK(FormatAddress({"host", 0, "", Protocol::Vnc}) == "vnc://host");
             CHECK(FormatAddress({"host", 5900, "", Protocol::Vnc}) == "vnc://host");
             CHECK(FormatAddress({"host", 6000, "", Protocol::Vnc}) == "vnc://host:6000");

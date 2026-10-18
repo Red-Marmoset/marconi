@@ -108,6 +108,7 @@ namespace MarconiTest
     void RunProbeTests()
     {
         RunTest("IdentifyGreeting and IsRdpConnectionConfirm", []() {
+            CHECK(Net::IdentifyGreeting("MRCN") == Protocol::Marconi);
             CHECK(Net::IdentifyGreeting("RFB 003.008\n") == Protocol::Vnc);
             CHECK(Net::IdentifyGreeting("SSH-2.0-OpenSSH_9.6\r\n") == Protocol::Ssh);
             CHECK(Net::IdentifyGreeting("HTTP/1.1 400 Bad Request") == Protocol::Auto);
@@ -120,10 +121,11 @@ namespace MarconiTest
 
         RunTest("DefaultProbeTargets", []() {
             std::vector<Net::ProbeTarget> all = Net::DefaultProbeTargets({"h"});
-            CHECK(all.size() == 3);
-            CHECK(all[0].port == 5900 && all[0].expected == Protocol::Vnc);
-            CHECK(all[1].port == 3389 && all[1].expected == Protocol::Rdp);
-            CHECK(all[2].port == 22 && all[2].expected == Protocol::Ssh);
+            CHECK(all.size() == 4);
+            CHECK(all[0].port == 1895 && all[0].expected == Protocol::Marconi);
+            CHECK(all[1].port == 5900 && all[1].expected == Protocol::Vnc);
+            CHECK(all[2].port == 3389 && all[2].expected == Protocol::Rdp);
+            CHECK(all[3].port == 22 && all[3].expected == Protocol::Ssh);
             std::vector<Net::ProbeTarget> one = Net::DefaultProbeTargets({"h", 2222});
             CHECK(one.size() == 1 && one[0].port == 2222 && one[0].expected == Protocol::Auto);
             std::vector<Net::ProbeTarget> forced = Net::DefaultProbeTargets({"h", 0, "", Protocol::Rdp});

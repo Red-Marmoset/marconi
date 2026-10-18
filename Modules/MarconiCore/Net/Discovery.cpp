@@ -23,7 +23,8 @@ namespace Marconi
                 const char* name;
                 Protocol protocol;
             };
-            constexpr ServiceType kServiceTypes[] = {{"_rfb._tcp.local", Protocol::Vnc},
+            constexpr ServiceType kServiceTypes[] = {{"_marconi._tcp.local", Protocol::Marconi},
+                                                     {"_rfb._tcp.local", Protocol::Vnc},
                                                      {"_rdp._tcp.local", Protocol::Rdp},
                                                      {"_ssh._tcp.local", Protocol::Ssh}};
 
