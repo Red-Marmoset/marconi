@@ -278,6 +278,15 @@ namespace MarconiTest
         return trustCertificate;
     }
 
+    bool RecordingListener::OnUntrustedSshHostKey(const Net::SshHostKeyQuestion& question)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++sshHostKeyQuestions;
+        lastSshHostKey = question;
+        changed.notify_all();
+        return trustSshHostKey;
+    }
+
     bool RecordingListener::WaitFor(const std::function<bool()>& predicate, int timeoutMs)
     {
         std::unique_lock<std::mutex> lock(mutex);

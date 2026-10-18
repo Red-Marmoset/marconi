@@ -44,7 +44,12 @@ namespace MarconiUI
     {
         const Marconi::Address& address = m_options.address;
         long rememberedPort = 0;
-        if (address.protocol == Marconi::Protocol::Vnc || m_options.skipProbe)
+        if (m_options.sshTunnel)
+        {
+            // The VNC port may not be reachable from here at all; the SSH server connects to it on our behalf.
+            ConnectVnc(Marconi::EffectivePort(address));
+        }
+        else if (address.protocol == Marconi::Protocol::Vnc || m_options.skipProbe)
         {
             ConnectVnc(Marconi::EffectivePort(address));
         }
@@ -78,6 +83,8 @@ namespace MarconiUI
         connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
         connection.allowTight = m_allowTight;
         connection.allowEncryption = m_allowEncryption;
+        connection.sshTunnel = m_options.sshTunnel;
+        connection.trustedSshHostKey = m_options.sshHostKey.utf8_string();
         Marconi::QualitySettings quality = Marconi::SettingsFor(m_quality);
         connection.compressLevel = quality.compressLevel;
         connection.qualityLevel = quality.qualityLevel;
@@ -280,6 +287,72 @@ namespace MarconiUI
             }
         }
         SetStatusText("Connecting securely...");
+        return true;
+    }
+
+    bool ViewerFrame::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestion& question)
+    {
+        // Connection thread.
+        if (m_options.headless)
+        {
+            LOG_WARNING("Viewer", "Headless: the SSH host key (%s) isn't the trusted one; not connecting",
+                        question.fingerprint.c_str());
+            return false;
+        }
+        Marconi::Net::SshHostKeyQuestion copy = question; // the UI thread gets its own copy
+        return AskUser([this, copy]() { return ConfirmSshHostKey(copy); });
+    }
+
+    bool ViewerFrame::ConfirmSshHostKey(const Marconi::Net::SshHostKeyQuestion& question)
+    {
+        // The same questions the file panel asks before SFTP, since it's the same key.
+        SetStatusText("Waiting for you to check the computer's SSH key...");
+        wxString fingerprint = wxString::FromUTF8(question.fingerprint);
+        wxString name = GetServerDisplayName();
+        if (!question.previous.empty())
+        {
+            wxMessageDialog changed(this,
+                                    name + " identified itself differently from last time.\n\nThis happens when the "
+                                    "computer has been reinstalled, but it can also mean another computer is pretending "
+                                    "to be it. Only trust it if you know why it changed.\n\nWas: " +
+                                        wxString::FromUTF8(question.previous) + "\nNow: " + fingerprint,
+                                    "This computer has changed", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+            changed.SetYesNoLabels("Trust the New One", "Cancel");
+            if (changed.ShowModal() != wxID_YES)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            wxMessageDialog trust(this,
+                                  "Is this " + name + "?\n\nThis is the first time Marconi connects to it through SSH. "
+                                  "Its security fingerprint is:\n\n" + fingerprint +
+                                      "\n\nMarconi will remember it, and warn you if it ever changes.",
+                                  "Trust this computer?", wxYES_NO | wxICON_QUESTION);
+            trust.SetYesNoLabels("Trust", "Cancel");
+            if (trust.ShowModal() != wxID_YES)
+            {
+                return false;
+            }
+        }
+        // Reconnects in this window, the file panel and the saved connection all trust it from now on.
+        m_options.sshHostKey = fingerprint;
+        if (m_files != nullptr)
+        {
+            m_files->SetTrustedHostKey(fingerprint);
+        }
+        if (!m_options.savedId.empty())
+        {
+            ConnectionStore store;
+            SavedConnection saved;
+            if (store.Load(m_options.savedId, saved))
+            {
+                saved.sshHostKey = fingerprint;
+                store.Save(saved);
+            }
+        }
+        SetStatusText("Logging in over SSH...");
         return true;
     }
 

@@ -50,6 +50,7 @@ namespace MarconiUI
         long displayId = 0;     // which of the server's displays to show (its id), 0 for all of them
         Marconi::PictureQuality quality = Marconi::PictureQuality::Balanced;
         bool lockOnDisconnect = false; // send the lock shortcut to the other computer when the window closes
+        bool sshTunnel = false;        // connect through the computer's SSH server; no probe, VNC port from the address
         wxString macAddress;    // for waking the computer up when it doesn't answer
         wxRect windowRect;      // where the window was last time; empty = fit it to the desktop
         wxString savedId;       // the saved connection this window was opened from, if any
@@ -102,6 +103,7 @@ namespace MarconiUI
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
+        bool OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestion& question) override;
 
         // Connection thread: runs `question` on the UI thread (it shows a dialog and returns the answer) and waits
         // for the answer, or for the window to close. The question must keep its results in members, not in the
@@ -111,6 +113,7 @@ namespace MarconiUI
         // UI thread
         void RunPendingQuestion();
         bool ConfirmCertificate(const Marconi::Net::TlsCertificate& certificate);
+        bool ConfirmSshHostKey(const Marconi::Net::SshHostKeyQuestion& question);
         void Connect();
         void StartProbe();
         void StopProbe();

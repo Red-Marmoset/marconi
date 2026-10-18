@@ -30,6 +30,10 @@ namespace MarconiUI
                                       "to use the VNC password:",
                                       serverName);
             break;
+        case CredentialsKind::SshAccount:
+            prompt = wxString::Format("Log in to %s over SSH (Remote Login) with an account on that computer:",
+                                      serverName);
+            break;
         default:
             prompt = wxString::Format("Enter the VNC password for %s:", serverName);
             break;

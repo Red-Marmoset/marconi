@@ -14,7 +14,7 @@ namespace Marconi
             class EngineTlsStream : public TlsStream
             {
             public:
-                EngineTlsStream(Socket& socket, const TlsOptions& options)
+                EngineTlsStream(const ByteLink& link, const TlsOptions& options)
                 {
                     Crypto::TlsClientOptions engineOptions;
                     engineOptions.hostName = options.hostName;
@@ -32,12 +32,8 @@ namespace Marconi
                             return decision(certificate);
                         };
                     }
-                    engineOptions.receive = [&socket](void* buffer, size_t length) {
-                        return socket.Receive(buffer, length);
-                    };
-                    engineOptions.sendAll = [&socket](const void* data, size_t length) {
-                        return socket.SendAll(data, length);
-                    };
+                    engineOptions.receive = link.receive;
+                    engineOptions.sendAll = link.sendAll;
                     m_client = Crypto::TlsClient::Create(std::move(engineOptions));
                 }
 
@@ -81,11 +77,19 @@ namespace Marconi
 
         std::unique_ptr<TlsStream> CreateTlsStream(Socket& socket, const TlsOptions& options)
         {
+            ByteLink link;
+            link.receive = [&socket](void* buffer, size_t length) { return socket.Receive(buffer, length); };
+            link.sendAll = [&socket](const void* data, size_t length) { return socket.SendAll(data, length); };
+            return CreateTlsStream(link, options);
+        }
+
+        std::unique_ptr<TlsStream> CreateTlsStream(const ByteLink& link, const TlsOptions& options)
+        {
             if (!IsTlsAvailable())
             {
                 return nullptr;
             }
-            return std::make_unique<EngineTlsStream>(socket, options);
+            return std::make_unique<EngineTlsStream>(link, options);
         }
     } // namespace Net
 } // namespace Marconi

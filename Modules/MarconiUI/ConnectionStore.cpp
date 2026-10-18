@@ -158,6 +158,7 @@ namespace MarconiUI
         out.quality = config->Read(path + "/Quality", "balanced");
         out.lockOnDisconnect = config->ReadBool(path + "/LockOnDisconnect", false);
         out.favourite = config->ReadBool(path + "/Favourite", false);
+        out.sshTunnel = config->ReadBool(path + "/SshTunnel", false);
         out.notes = config->Read(path + "/Notes", wxEmptyString);
         out.group = config->Read(path + "/Group", wxEmptyString);
         out.macAddress = config->Read(path + "/MacAddress", wxEmptyString);
@@ -213,6 +214,7 @@ namespace MarconiUI
         config->Write(path + "/Quality", connection.quality);
         config->Write(path + "/LockOnDisconnect", connection.lockOnDisconnect);
         config->Write(path + "/Favourite", connection.favourite);
+        config->Write(path + "/SshTunnel", connection.sshTunnel);
         config->Write(path + "/Notes", connection.notes);
         config->Write(path + "/Group", connection.group);
         config->Write(path + "/MacAddress", connection.macAddress);

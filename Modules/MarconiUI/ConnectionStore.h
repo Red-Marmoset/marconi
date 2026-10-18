@@ -32,6 +32,7 @@ namespace MarconiUI
         bool systemKeys = false; // send system shortcuts (Alt+Tab, the Windows key, Cmd+Tab) to the other computer
         wxString quality = "balanced"; // picture quality: "best", "balanced" or "low" (Marconi::QualityName)
         bool lockOnDisconnect = false;  // lock the other computer's screen when the window closes
+        bool sshTunnel = false;         // connect through the computer's SSH server (Remote Login): all encrypted
         bool favourite = false;         // listed first
         wxString notes;                 // anything worth remembering about the computer
         wxString group;                 // optional, e.g. "Studio": the list keeps a group's connections together
