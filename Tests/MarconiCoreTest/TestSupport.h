@@ -151,4 +151,5 @@ namespace MarconiTest
     void RunDesktopSizeTests();
     void RunSettingsTests();
     void RunSshTunnelTests();
+    void RunRdpTests();
 } // namespace MarconiTest
