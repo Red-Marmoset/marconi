@@ -130,6 +130,13 @@ namespace MarconiUI
         m_lock = new wxCheckBox(view->GetStaticBox(), wxID_ANY, "Lock the other computer's screen when I disconnect");
         m_lock->SetValue(connection.lockOnDisconnect);
         view->Add(m_lock, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
+        m_sshTunnel = new wxCheckBox(view->GetStaticBox(), wxID_ANY,
+                                     "Connect through SSH (Remote Login), so the whole session is encrypted");
+        m_sshTunnel->SetValue(connection.sshTunnel);
+        m_sshTunnel->SetToolTip("Logs in to the computer's SSH server with the login name and password above, and "
+                                "reaches its VNC server from there. On a Mac, turn on Remote Login as well as Screen "
+                                "Sharing.");
+        view->Add(m_sshTunnel, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
         outer->Add(view, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(20));
 
         outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(20));
@@ -198,6 +205,7 @@ namespace MarconiUI
         int quality = m_quality->GetSelection();
         connection.quality = Marconi::QualityName(kQualities[quality >= 0 && quality < 3 ? quality : 1]);
         connection.lockOnDisconnect = m_lock->GetValue();
+        connection.sshTunnel = m_sshTunnel->GetValue();
         connection.favourite = m_favourite->GetValue();
         Marconi::Net::MacAddress mac;
         wxString macText = m_mac->GetValue().Strip(wxString::both);

@@ -11,6 +11,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
   searching for a group's name finds its connections.
 - Linux: a desktop file for opening vnc:// links in Marconi, with the steps in the README.
 - A zoomed-in picture scrolls with Ctrl+Shift and the mouse wheel, and can be dragged around when view only is on.
+- Saved connections can connect through SSH (Remote Login on a Mac): the SSH server connects to its own VNC server,
+  and the whole session is encrypted inside SSH, whatever the VNC server can do. Also `--ssh` on the command line.
 
 ## 0.5.0
 

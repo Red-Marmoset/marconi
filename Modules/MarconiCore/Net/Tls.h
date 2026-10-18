@@ -59,11 +59,19 @@ namespace Marconi
             virtual std::string GetProtocolName() const = 0;
         };
 
+        // The bytes under the encrypted stream: a socket's, or a tunnel's. As Socket::Receive and Socket::SendAll.
+        struct ByteLink
+        {
+            std::function<ptrdiff_t(void* buffer, size_t length)> receive;
+            std::function<bool(const void* data, size_t length)> sendAll;
+        };
+
         // False in a build without a TLS implementation; CreateTlsStream then returns nullptr and Marconi never
         // chooses an encrypted security type.
         bool IsTlsAvailable();
         // Whether `anonymous` connections (no certificate) can be made: some TLS libraries have no such suites.
         bool IsAnonymousTlsAvailable();
         std::unique_ptr<TlsStream> CreateTlsStream(Socket& socket, const TlsOptions& options);
+        std::unique_ptr<TlsStream> CreateTlsStream(const ByteLink& link, const TlsOptions& options);
     } // namespace Net
 } // namespace Marconi

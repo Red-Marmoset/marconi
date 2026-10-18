@@ -230,6 +230,7 @@ namespace MarconiUI
         options.displayId = connection.displayId;
         options.quality = Marconi::QualityFromName(connection.quality.utf8_string());
         options.lockOnDisconnect = connection.lockOnDisconnect;
+        options.sshTunnel = connection.sshTunnel;
         options.macAddress = connection.macAddress;
         options.windowRect = connection.windowRect;
         options.viewOnly = connection.viewOnly;

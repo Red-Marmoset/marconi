@@ -21,6 +21,7 @@ It works with:
   where each one's window was.
 - Open `vnc://` links from other programs (Windows and macOS do this once Marconi is installed; on Linux, see
   Building).
+- Connect through SSH, so the whole session is encrypted even with servers that don't encrypt.
 - Find computers on your home or office network by itself.
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
@@ -136,6 +137,15 @@ a server offers it with a certificate. The first time, it shows you the server's
 trust it; it remembers your answer with the saved connection, and warns you if the certificate ever changes. The
 bar at the bottom of the window then says **encrypted**.
 
+**Connecting through SSH.** Tick *Connect through SSH* when editing a saved connection (or use `--ssh`). Marconi then
+logs in to the other computer's SSH server with the connection's login name and password, has it connect to its own
+VNC server, and runs the whole session inside SSH: the status bar says "encrypted, SSH". This works with any VNC
+server, including ones that can't encrypt, and the VNC port needn't be reachable from your computer at all, only
+SSH. The first time, Marconi shows the computer's SSH fingerprint and asks whether to trust it, as it does for file
+transfer; the two share the answer. On a Mac, turn on *Remote Login* as well as Screen Sharing; on Linux, run an SSH
+server; on Windows, install the optional OpenSSH Server feature. No probe is made: the VNC port is the one in the
+address, or 5900.
+
 Some servers offer encryption without a certificate (TigerVNC calls it "TLSVnc"). Marconi can't make that kind of
 connection, so it connects without encryption instead, and says so.
 
@@ -210,7 +220,7 @@ On macOS and Linux these files can only be read by your own account.
 
 ## Command line
 
-    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
+    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--ssh] [--saved NAME] [address]
     marconi --remove-my-data
 
 `--saved NAME` opens a saved connection by its name, address or id, using its stored password. `--remove-my-data`

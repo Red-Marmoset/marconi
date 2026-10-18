@@ -82,6 +82,10 @@ namespace Marconi
             {
                 std::lock_guard<std::mutex> lock(m_socketMutex);
                 m_socket.Shutdown();
+                if (m_tunnel)
+                {
+                    m_tunnel->Shutdown();
+                }
             }
             if (m_thread.joinable())
             {
@@ -97,7 +101,36 @@ namespace Marconi
 
         bool Client::SendRaw(const Bytes& data)
         {
-            return m_tls ? m_tls->Write(data.data(), data.size()) : m_socket.SendAll(data.data(), data.size());
+            if (m_tls)
+            {
+                return m_tls->Write(data.data(), data.size());
+            }
+            std::shared_ptr<Net::SshTunnel> tunnel = GetTunnel();
+            return tunnel ? tunnel->Write(data.data(), data.size()) : m_socket.SendAll(data.data(), data.size());
+        }
+
+        std::shared_ptr<Net::SshTunnel> Client::GetTunnel() const
+        {
+            std::lock_guard<std::mutex> lock(m_socketMutex);
+            return m_tunnel;
+        }
+
+        void Client::SetReceiveTimeout(int timeoutMs)
+        {
+            // Connection thread. The tunnel's timeout covers its own socket too.
+            if (m_tunnel)
+            {
+                m_tunnel->SetReceiveTimeout(timeoutMs);
+            }
+            else
+            {
+                m_socket.SetReceiveTimeout(timeoutMs);
+            }
+        }
+
+        bool Client::ConnectionTimedOut() const
+        {
+            return m_tunnel ? m_tunnel->TimedOut() : m_socket.TimedOut();
         }
 
         void Client::Send(const Bytes& data)
@@ -138,9 +171,11 @@ namespace Marconi
 
         ptrdiff_t Client::ReadFromConnection(void* buffer, size_t length)
         {
-            // Connection thread only, which is also the thread that sets m_tls (in StartTls).
-            ptrdiff_t got = m_tls ? m_tls->Read(buffer, length) : m_socket.Receive(buffer, length);
-            if (got < 0 && m_socket.TimedOut())
+            // Connection thread only, which is also the thread that sets m_tls (in StartTls) and m_tunnel.
+            ptrdiff_t got = m_tls      ? m_tls->Read(buffer, length)
+                            : m_tunnel ? m_tunnel->Read(buffer, length)
+                                       : m_socket.Receive(buffer, length);
+            if (got < 0 && ConnectionTimedOut())
             {
                 throw RfbError("The server stopped responding");
             }
@@ -173,9 +208,24 @@ namespace Marconi
                 declined = !trusted;
                 return trusted;
             };
-            std::unique_ptr<Net::TlsStream> tls = options.createTlsStream
-                                                      ? options.createTlsStream(m_socket, tlsOptions)
-                                                      : Net::CreateTlsStream(m_socket, tlsOptions);
+            std::unique_ptr<Net::TlsStream> tls;
+            if (options.createTlsStream)
+            {
+                tls = options.createTlsStream(m_socket, tlsOptions);
+            }
+            else if (m_tunnel)
+            {
+                // TLS inside the SSH tunnel: double encryption, but it's what a server that insists on TLS gets.
+                std::shared_ptr<Net::SshTunnel> tunnel = m_tunnel;
+                Net::ByteLink link;
+                link.receive = [tunnel](void* buffer, size_t length) { return tunnel->Read(buffer, length); };
+                link.sendAll = [tunnel](const void* data, size_t length) { return tunnel->Write(data, length); };
+                tls = Net::CreateTlsStream(link, tlsOptions);
+            }
+            else
+            {
+                tls = Net::CreateTlsStream(m_socket, tlsOptions);
+            }
             if (!tls)
             {
                 throw RfbError("This build of Marconi can't make encrypted connections yet");
@@ -196,7 +246,7 @@ namespace Marconi
             }
             {
                 std::lock_guard<std::mutex> lock(m_infoMutex);
-                m_encryptionName = name;
+                m_encryptionName = m_encryptionName.empty() ? name : m_encryptionName + ", " + name; // "SSH, TLS 1.3"
             }
             m_encrypted = true;
         }
@@ -437,13 +487,19 @@ namespace Marconi
             }
             try
             {
-                LOG_INFO("Rfb", "Connecting to %s:%u", options.host.c_str(), options.port);
-                Net::Socket socket;
-                if (!socket.Connect(options.host, options.port, options.connectTimeoutMs, error, &m_stopping))
+                Credentials credentials = options.credentials;
+                if (options.sshTunnel)
                 {
-                    throw RfbError(error);
+                    OpenTunnel(options, credentials);
                 }
+                else
                 {
+                    LOG_INFO("Rfb", "Connecting to %s:%u", options.host.c_str(), options.port);
+                    Net::Socket socket;
+                    if (!socket.Connect(options.host, options.port, options.connectTimeoutMs, error, &m_stopping))
+                    {
+                        throw RfbError(error);
+                    }
                     std::lock_guard<std::mutex> lock(m_socketMutex);
                     m_socket = std::move(socket);
                     if (m_stopping)
@@ -456,7 +512,6 @@ namespace Marconi
                 InStream in(source);
                 handshaking = true;
 
-                Credentials credentials = options.credentials;
                 CredentialsProvider provider = [this, &credentials](CredentialsKind kind, Credentials& out) {
                     // Use what we were given first; ask the user when something is missing. For a Mac offering both
                     // logins, a saved password with no user name means the VNC password.
@@ -478,12 +533,12 @@ namespace Marconi
                     startTls = [this, &options, &in](bool anonymous) { StartTls(anonymous, options, in); };
                 }
                 // A server that accepts the connection but then says nothing mustn't leave us waiting for ever.
-                m_socket.SetReceiveTimeout(options.connectTimeoutMs);
+                SetReceiveTimeout(options.connectTimeoutMs);
                 HandshakeResult handshake =
                     PerformHandshake(in, *this, options.shared, provider, startTls, options.allowTight, &choseTight,
                                      anonymousTls);
                 m_fileTransfer = handshake.tightFileTransfer;
-                m_socket.SetReceiveTimeout(0);
+                SetReceiveTimeout(0);
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);
                 m_appleServer = handshake.serverMajor == 3 && handshake.serverMinor == 889;
                 {
@@ -530,6 +585,11 @@ namespace Marconi
                     m_tls->Shutdown();
                     m_tls.reset();
                 }
+                if (m_tunnel)
+                {
+                    m_tunnel->Shutdown(); // a writer still holding a copy gets a failure, not a dangling pointer
+                    m_tunnel.reset();
+                }
                 m_socket.Close();
             }
             if (m_stopping)
@@ -547,6 +607,63 @@ namespace Marconi
                 LOG_WARNING("Rfb", "Disconnected: %s", error.c_str());
             }
             m_listener.OnDisconnected(info);
+        }
+
+        void Client::OpenTunnel(const ConnectionOptions& options, Credentials& credentials)
+        {
+            LOG_INFO("Rfb", "Connecting to %s through SSH (port %u) for VNC port %u", options.host.c_str(),
+                     options.sshPort, options.port);
+            std::shared_ptr<Net::SshTunnel> tunnel = std::make_shared<Net::SshTunnel>();
+            {
+                std::lock_guard<std::mutex> lock(m_socketMutex);
+                m_tunnel = tunnel;
+                if (m_stopping)
+                {
+                    tunnel->Shutdown();
+                }
+            }
+            Net::SshTunnelOptions tunnelOptions;
+            tunnelOptions.host = options.host;
+            tunnelOptions.port = options.sshPort;
+            tunnelOptions.trustedFingerprint = options.trustedSshHostKey;
+            tunnelOptions.timeoutMs = options.connectTimeoutMs;
+            tunnelOptions.trustDecision = [this](const Net::SshHostKeyQuestion& question) {
+                LOG_INFO("Rfb", "The SSH host key for %s (%s %s) isn't the trusted one; asking", question.host.c_str(),
+                         question.algorithm.c_str(), question.fingerprint.c_str());
+                return m_listener.OnUntrustedSshHostKey(question);
+            };
+            std::string error;
+            bool refused = false;
+            if (!tunnel->Connect(tunnelOptions, error, refused, &m_stopping))
+            {
+                if (refused)
+                {
+                    throw AuthenticationCancelled(error);
+                }
+                throw RfbError(error);
+            }
+            // The SSH login: the connection's credentials, or ask. A rejection ends the attempt like a rejected VNC
+            // password does, so the viewer offers to try again with fresh credentials.
+            bool complete = !credentials.username.empty() && !credentials.password.empty();
+            if (!complete && !m_listener.OnCredentialsRequired(CredentialsKind::SshAccount, credentials))
+            {
+                throw AuthenticationCancelled("The SSH login was cancelled");
+            }
+            if (!tunnel->Login(credentials.username, credentials.password, error))
+            {
+                throw AuthenticationFailed("SSH login to " + options.host + " failed: " + error);
+            }
+            if (!tunnel->Open("127.0.0.1", options.port, error))
+            {
+                throw RfbError(error + " (is the VNC server running on that computer?)");
+            }
+            m_encrypted = true;
+            {
+                std::lock_guard<std::mutex> lock(m_infoMutex);
+                m_encryptionName = "SSH";
+            }
+            LOG_INFO("Rfb", "Connected through SSH to %s (host key %s)", options.host.c_str(),
+                     tunnel->GetFingerprint().c_str());
         }
 
         void Client::MessageLoop(InStream& in)

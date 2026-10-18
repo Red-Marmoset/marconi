@@ -142,6 +142,9 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "view-only", "don't send keyboard or mouse input", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "fullscreen", "start full screen", wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "no-clipboard", "don't share the clipboard", wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "ssh",
+             "connect through the computer's SSH server (Remote Login), logging in with the same account",
+             wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_OPTION, nullptr, "saved", "open a saved connection (by name, address or id)",
              wxCMD_LINE_VAL_STRING, 0},
             {wxCMD_LINE_SWITCH, nullptr, "remove-my-data",
@@ -288,6 +291,7 @@ namespace MarconiUI
                 options.fullScreen = parser.Found("fullscreen");
                 options.showFiles = parser.Found("files");
                 options.clipboard = options.clipboard && !parser.Found("no-clipboard");
+                options.sshTunnel = options.sshTunnel || parser.Found("ssh");
                 if (headless)
                 {
                     long seconds = 0;

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <MarconiCore/Net/Socket.h>
+#include <MarconiCore/Net/SshTunnel.h>
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Rfb/ClipboardChannel.h>
 #include <MarconiCore/Rfb/Decoders/Decoder.h>
@@ -55,6 +56,12 @@ namespace Marconi
             bool allowEncryption = true;
             // Offer the Extended Clipboard, which carries UTF-8 text and images with servers that support it.
             bool extendedClipboard = true;
+            // Connect through SSH: log in to the computer's SSH server on `sshPort` with the credentials (asking the
+            // listener with CredentialsKind::SshAccount when they're missing or rejected), then reach the VNC server
+            // at 127.0.0.1:`port` through it. The whole session is then encrypted by SSH, and no probe is needed.
+            bool sshTunnel = false;
+            uint16_t sshPort = 22;
+            std::string trustedSshHostKey; // the fingerprint accepted before; any other goes to OnUntrustedSshHostKey
         };
 
         // Cursor image for local rendering: ARGB pixels (alpha 0 or 255), hotspot in pixels. Empty = hidden.
@@ -107,6 +114,9 @@ namespace Marconi
             }
             // Blocking: the server's certificate isn't trusted by this computer. Return true to connect anyway.
             virtual bool OnUntrustedCertificate(const Net::TlsCertificate& /*certificate*/) { return false; }
+            // Blocking: connecting through SSH, and the SSH server's key isn't the one trusted before (or none was).
+            // Return true to trust it.
+            virtual bool OnUntrustedSshHostKey(const Net::SshHostKeyQuestion& /*question*/) { return false; }
         };
 
         // Counts since the last TakeTrafficStats().
@@ -222,6 +232,11 @@ namespace Marconi
             void SendIfConnected(const Bytes& data);
             bool SendRaw(const Bytes& data); // caller holds m_sendMutex
             ptrdiff_t ReadFromConnection(void* buffer, size_t length);
+            // Connection thread: connects through SSH (ConnectionOptions::sshTunnel) and sets m_tunnel.
+            void OpenTunnel(const ConnectionOptions& options, Credentials& credentials);
+            std::shared_ptr<Net::SshTunnel> GetTunnel() const; // any thread
+            void SetReceiveTimeout(int timeoutMs);              // on whatever carries the connection
+            bool ConnectionTimedOut() const;
             void StartTls(bool anonymous, const ConnectionOptions& options, const InStream& in);
             void Run(ConnectionOptions options);
             void SendPixelFormat();
@@ -262,7 +277,10 @@ namespace Marconi
             std::atomic<int> m_roundTripMs{-1};
 
             std::thread m_thread;
-            std::mutex m_socketMutex; // guards m_socket's handle against Shutdown() racing with assignment
+            mutable std::mutex m_socketMutex; // guards m_socket's handle and m_tunnel against Shutdown() racing
+                                              // with assignment
+            std::shared_ptr<Net::SshTunnel> m_tunnel; // the connection, when it goes through SSH; set and cleared
+                                                      // by the connection thread under m_socketMutex
             std::mutex m_sendMutex;   // serialises whole messages from the UI and connection threads; guards m_tls
             Net::Socket m_socket;
             std::unique_ptr<Net::TlsStream> m_tls; // the encrypted stream once the handshake switched to one

@@ -47,6 +47,8 @@ namespace MarconiUI
 
         // Connects to the remote computer the first time the panel is shown.
         void Activate();
+        // The viewer accepted this SSH host key (connecting through SSH), so the panel needn't ask again.
+        void SetTrustedHostKey(const wxString& fingerprint) { m_remote.trustedKey = fingerprint; }
         // The VNC connection offers TightVNC file transfer (or no longer does, with nullptr): use it instead of SFTP.
         void SetTightFiles(Marconi::Files::TightFiles* files, const wxString& displayName);
         // Files dropped on the remote screen: copy them to the remote Desktop (connecting first if needed).
