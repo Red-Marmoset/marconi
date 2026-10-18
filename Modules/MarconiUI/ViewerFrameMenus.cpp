@@ -4,6 +4,8 @@
 #include "ViewerFrame.h"
 
 #include "ClipboardFiles.h"
+#include "Controls.h"
+#include "ViewerToolbarArt.h"
 #include "FilePanel.h"
 #include "ViewerCommands.h"
 
@@ -27,6 +29,13 @@ namespace MarconiUI
         // Text-only buttons in a panel that docks to any edge of the window or floats (F9 shows and hides it).
         m_toolBar = new wxAuiToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                      wxAUI_TB_TEXT | wxAUI_TB_HORZ_LAYOUT | wxAUI_TB_GRIPPER | wxAUI_TB_OVERFLOW);
+        m_toolBar->SetArtProvider(new ViewerToolbarArt());
+        wxFont toolbarFont = GetFont();
+        toolbarFont.SetPointSize(10);
+        m_toolBar->SetFont(HeadingFont(toolbarFont));
+        m_toolBar->SetMargins(FromDIP(8), FromDIP(6));
+        m_toolBar->SetToolPacking(FromDIP(4));
+        m_toolBar->SetToolBorderPadding(0);
         m_toolBar->AddTool(ID_SCALE_FIT, "Scale to Fit", wxNullBitmap,
                            "Scale the remote desktop to fit the window (otherwise show it at the chosen zoom level)",
                            wxITEM_CHECK);
@@ -34,6 +43,9 @@ namespace MarconiUI
         m_toolBar->AddTool(ID_ZOOM_OUT, "Zoom Out", wxNullBitmap, "Zoom out (Ctrl and -, or Ctrl and the mouse wheel)");
         m_toolBar->AddTool(ID_FULL_SCREEN, "Full Screen", wxNullBitmap,
                            "Full screen (move the pointer to the top edge for the controls, or press F8)");
+        m_toolBar->AddTool(ID_FILES, "Files", wxNullBitmap, "Copy files to and from the remote computer (F10)",
+                           wxITEM_CHECK);
+        m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_VIEW_ONLY, "View Only", wxNullBitmap, "Watch without sending mouse or keyboard input",
                            wxITEM_CHECK);
         m_toolBar->AddTool(ID_CLIPBOARD, "Clipboard", wxNullBitmap, "Share copied text with the remote computer",
@@ -48,9 +60,6 @@ namespace MarconiUI
         m_toolBar->AddTool(ID_SEND_F9, "F9", wxNullBitmap, "Send F9 to the remote computer");
         m_toolBar->AddTool(ID_SEND_F10, "F10", wxNullBitmap, "Send F10 to the remote computer");
         m_toolBar->AddTool(ID_REFRESH, "Refresh", wxNullBitmap, "Ask the server for a full screen update");
-        m_toolBar->AddSeparator();
-        m_toolBar->AddTool(ID_FILES, "Files", wxNullBitmap, "Copy files to and from the remote computer (F10)",
-                           wxITEM_CHECK);
         m_toolBar->AddSeparator();
         m_toolBar->AddTool(ID_DISCONNECT, "Disconnect", wxNullBitmap, "Close this connection");
         m_toolBar->Realize();

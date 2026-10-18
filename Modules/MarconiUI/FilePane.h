@@ -15,7 +15,8 @@
 #include <string>
 #include <vector>
 
-class wxBitmapButton;
+class wxButton;
+class wxScrolledWindow;
 class wxImageList;
 class wxKeyEvent;
 class wxListEvent;
@@ -90,10 +91,10 @@ namespace MarconiUI
         Marconi::Files::SortColumn m_sortColumn = Marconi::Files::SortColumn::Name;
         bool m_sortAscending = true;
         wxStaticText* m_heading = nullptr;
-        wxBitmapButton* m_back = nullptr;
-        wxBitmapButton* m_forward = nullptr;
-        wxBitmapButton* m_up = nullptr;
-        wxPanel* m_crumbs = nullptr;
+        wxButton* m_back = nullptr;
+        wxButton* m_forward = nullptr;
+        wxButton* m_up = nullptr;
+        wxScrolledWindow* m_crumbs = nullptr;
         wxSplitterWindow* m_split = nullptr;
         wxTreeCtrl* m_tree = nullptr;
         wxListView* m_list = nullptr;

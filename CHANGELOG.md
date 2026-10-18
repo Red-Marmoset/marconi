@@ -3,6 +3,12 @@
 What changed in each version of Marconi, newest first. Versions are `MAJOR.MINOR.PATCH` from `Project.json`; the
 build adds the commit count as a fourth number (see [README.md](README.md#versions)).
 
+## Unreleased
+
+## 0.5.2
+
+- Clearer file browsing, smoother buttons and refreshed typography in light and dark mode.
+
 ## 0.5.1
 
 - Fixed a black square appearing instead of the mouse pointer on Windows when the other computer hides its pointer.

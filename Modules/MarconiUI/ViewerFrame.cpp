@@ -7,6 +7,8 @@
 #include "ViewerFrame.h"
 
 #include "AppIcon.h"
+#include "Appearance.h"
+#include "Controls.h"
 #include "ConnectionStore.h"
 #include "FilePanel.h"
 #include "ViewerCommands.h"
@@ -18,6 +20,9 @@
 #include <Log/Log.h>
 
 #include <wx/app.h>
+#include <wx/aui/dockart.h>
+#include <wx/aui/auibar.h>
+#include <wx/statusbr.h>
 #include <wx/display.h>
 #include <wx/msgdlg.h>
 #include <wx/utils.h>
@@ -45,7 +50,9 @@ namespace MarconiUI
         m_aui.AddPane(m_canvas, wxAuiPaneInfo().Name("Screen").CenterPane());
 
         CreateToolbar();
-        CreateStatusBar(2); // the connection on the left; the round trip to the server on the right
+        auto* statusBar = new ThemedStatusBar(this);
+        statusBar->SetFieldsCount(2); // the connection on the left; round trip on the right
+        SetStatusBar(statusBar);
         const int statusWidths[] = {-1, FromDIP(130)};
         SetStatusWidths(2, statusWidths);
         m_lostBar = new ConnectionLostBar(this, [this]() { RetryNow(); }, [this]() { Close(); });
@@ -83,12 +90,18 @@ namespace MarconiUI
                                    .Name("Files")
                                    .Caption("Files")
                                    .Bottom()
-                                   .BestSize(FromDIP(wxSize(1000, 480)))
-                                   .MinSize(FromDIP(wxSize(480, 420)))
+                                   .BestSize(FromDIP(wxSize(1000, 460)))
+                                   .MinSize(FromDIP(wxSize(640, 340)))
                                    .Floatable(true)
                                    .Dockable(true)
                                    .Hide());
         m_canvas->SetFileDropHandler([this](const std::vector<std::string>& paths) { UploadToRemoteDesktop(paths); });
+        ApplyAppearance();
+        Bind(wxEVT_SYS_COLOUR_CHANGED, [this](wxSysColourChangedEvent& event) {
+            event.Skip();
+            // wxAUI restores system colours in its own handler; apply our palette after it finishes.
+            CallAfter([this]() { ApplyAppearance(); });
+        });
         m_aui.Update();
         m_defaultLayout = m_aui.SavePerspective();
         if (!m_options.layout.empty())
@@ -257,6 +270,38 @@ namespace MarconiUI
         m_clipboardTimer.Stop();
         m_healthTimer.Stop();
         SetStatusText(wxEmptyString, 1); // no connection, no round trip
+    }
+
+    void ViewerFrame::ApplyAppearance()
+    {
+        const ThemePalette palette = GetThemePalette();
+        SetBackgroundColour(palette.background);
+        StyleWindow(m_files);
+        StyleWindow(m_toolBar);
+        m_toolBar->SendSizeEvent(); // Rebuild its cached background even when the toolbar is floating.
+        StyleWindow(m_fullScreenBar);
+        wxFont statusFont = GetFont();
+        statusFont.SetPointSize(10);
+        GetStatusBar()->SetFont(statusFont);
+        GetStatusBar()->SetMinHeight(FromDIP(28));
+        GetStatusBar()->SetBackgroundColour(palette.background);
+        GetStatusBar()->SetForegroundColour(palette.muted);
+        auto* art = m_aui.GetArtProvider();
+        art->SetMetric(wxAUI_DOCKART_GRADIENT_TYPE, wxAUI_GRADIENT_NONE);
+        art->SetMetric(wxAUI_DOCKART_CAPTION_SIZE, 30);
+        art->SetMetric(wxAUI_DOCKART_PANE_BORDER_SIZE, 0);
+        art->SetMetric(wxAUI_DOCKART_SASH_SIZE, 6);
+        art->SetFont(wxAUI_DOCKART_CAPTION_FONT, HeadingFont(statusFont));
+        for (int colour : {wxAUI_DOCKART_BACKGROUND_COLOUR, wxAUI_DOCKART_SASH_COLOUR,
+                           wxAUI_DOCKART_INACTIVE_CAPTION_COLOUR, wxAUI_DOCKART_ACTIVE_CAPTION_COLOUR})
+        {
+            art->SetColour(colour, palette.background);
+        }
+        art->SetColour(wxAUI_DOCKART_BORDER_COLOUR, palette.border);
+        art->SetColour(wxAUI_DOCKART_INACTIVE_CAPTION_TEXT_COLOUR, palette.text);
+        art->SetColour(wxAUI_DOCKART_ACTIVE_CAPTION_TEXT_COLOUR, palette.text);
+        m_aui.Update();
+        Refresh();
     }
 
     ViewerFrame::~ViewerFrame()

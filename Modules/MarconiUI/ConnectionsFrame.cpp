@@ -5,6 +5,7 @@
 
 #include "AppIcon.h"
 #include "Appearance.h"
+#include "Controls.h"
 #include "ConnectionDialog.h"
 #include "UserData.h"
 #include "ViewerFrame.h"
@@ -22,7 +23,8 @@
 #include <wx/dcbuffer.h>
 #include <wx/dialog.h>
 #include <wx/display.h>
-#include <wx/fontenum.h>
+#include <wx/graphics.h>
+#include <memory>
 #include <wx/imaglist.h>
 #include <wx/listctrl.h>
 #include <wx/msgdlg.h>
@@ -72,10 +74,14 @@ namespace MarconiUI
                 wxAutoBufferedPaintDC dc(field);
                 dc.SetBackground(wxBrush(palette.background));
                 dc.Clear();
-                dc.SetPen(wxPen(text->HasFocus() ? palette.accent : palette.border));
-                dc.SetBrush(wxBrush(palette.surface));
                 const wxSize bounds = field->GetClientSize();
-                dc.DrawRoundedRectangle(0, 0, bounds.x, bounds.y, field->FromDIP(4));
+                std::unique_ptr<wxGraphicsContext> gc(wxGraphicsContext::Create(dc));
+                if (gc)
+                {
+                    gc->SetPen(wxPen(text->HasFocus() ? palette.accent : palette.border));
+                    gc->SetBrush(wxBrush(palette.surface));
+                    gc->DrawRoundedRectangle(0.5, 0.5, bounds.x - 1, bounds.y - 1, field->FromDIP(8));
+                }
             });
             text->Bind(wxEVT_SET_FOCUS, [field, updateHint](wxFocusEvent& event) {
                 updateHint(); field->Refresh(); event.Skip();
@@ -120,7 +126,7 @@ namespace MarconiUI
             wxStaticText* control = new wxStaticText(panel, wxID_ANY, text);
             if (heading)
             {
-                control->SetFont(control->GetFont().Bold().Scaled(1.12f));
+                control->SetFont(HeadingFont(control->GetFont(), 1.12f));
             }
             if (muted)
             {
@@ -129,12 +135,11 @@ namespace MarconiUI
             return control;
         };
         auto button = [&](const wxString& text, bool primary = false) {
-            wxButton* control = new wxButton(panel, wxID_ANY, text, wxDefaultPosition,
-                                             FromDIP(wxSize(-1, 38)));
+            wxButton* control = new ActionButton(panel, wxID_ANY, text, primary);
             if (primary)
             {
-                control->SetFont(control->GetFont().Bold());
-                control->SetMinSize(FromDIP(wxSize(112, 38)));
+                control->SetFont(HeadingFont(control->GetFont()));
+                control->SetMinSize(FromDIP(wxSize(112, 40)));
                 m_primaryButtons.push_back(control);
             }
             return control;
@@ -153,33 +158,10 @@ namespace MarconiUI
         brand->Add(new wxStaticBitmap(panel, wxID_ANY, logo), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(16));
         wxBoxSizer* wordmark = new wxBoxSizer(wxVERTICAL);
         wxStaticText* title = label("Marconi");
-        wxFont brandFont = title->GetFont().Scaled(2.1f).Bold();
-        // Windows registers Nebula's individual weights as separate font families.
-        if (wxFontEnumerator::IsValidFacename("Nebula Sans Black"))
-        {
-            brandFont.SetFaceName("Nebula Sans Black");
-            brandFont.SetWeight(wxFONTWEIGHT_NORMAL); // The selected face already contains the bold outlines.
-        }
-        else if (wxFontEnumerator::IsValidFacename("Nebula Sans"))
-        {
-            brandFont.SetFaceName("Nebula Sans");
-            brandFont.SetWeight(wxFONTWEIGHT_HEAVY);
-        }
-        title->SetFont(brandFont);
+        title->SetFont(HeadingFont(title->GetFont(), 2.1f, true));
         wordmark->Add(title);
         wxStaticText* subtitle = label("Multi-protocol Access and Remote Control Interface", false, true);
-        wxFont subtitleFont = subtitle->GetFont();
-        subtitleFont.SetWeight(wxFONTWEIGHT_SEMIBOLD);
-        if (wxFontEnumerator::IsValidFacename("Nebula Sans Semibold"))
-        {
-            subtitleFont.SetFaceName("Nebula Sans Semibold");
-            subtitleFont.SetWeight(wxFONTWEIGHT_NORMAL); // This face already contains the semibold outlines.
-        }
-        else if (wxFontEnumerator::IsValidFacename("Nebula Sans"))
-        {
-            subtitleFont.SetFaceName("Nebula Sans");
-        }
-        subtitle->SetFont(subtitleFont);
+        subtitle->SetFont(HeadingFont(subtitle->GetFont()));
         subtitle->Wrap(FromDIP(450));
         wordmark->Add(subtitle, 0, wxTOP, FromDIP(4));
         brand->Add(wordmark, 1, wxALIGN_CENTER_VERTICAL);
@@ -225,7 +207,7 @@ namespace MarconiUI
             {
                 wxStaticText* heading = new wxStaticText(strip, wxID_ANY, name);
                 heading->SetName("MarconiHeaderLabel");
-                heading->SetFont(heading->GetFont().Bold());
+                heading->SetFont(HeadingFont(heading->GetFont()));
                 headings.push_back(heading);
             }
             strip->Bind(wxEVT_SIZE, [strip, headings](wxSizeEvent& event) {
@@ -317,9 +299,8 @@ namespace MarconiUI
         const wxString modes[] = {"System", "Light", "Dark"};
         for (int i = 0; i < 3; ++i)
         {
-            m_themeButtons[i] = new wxToggleButton(panel, wxID_ANY, modes[i], wxDefaultPosition,
-                                                    FromDIP(wxSize(70, 34)));
-            footer->Add(m_themeButtons[i], 0);
+            m_themeButtons[i] = new AppearanceButton(panel, modes[i]);
+            footer->Add(m_themeButtons[i], 0, wxLEFT, FromDIP(4));
             m_themeButtons[i]->Bind(wxEVT_TOGGLEBUTTON, [this, i](wxCommandEvent&) { ChooseAppearance(i); });
         }
         outer->Add(footer, 0, wxEXPAND | wxALL, border);
@@ -575,6 +556,15 @@ namespace MarconiUI
                          wxOK | wxICON_WARNING, this);
         }
         ApplyAppearance();
+        // Open viewers must follow the same saved choice immediately.
+        for (wxWindow* window : wxTopLevelWindows)
+        {
+            if (window != this)
+            {
+                wxSysColourChangedEvent event;
+                window->GetEventHandler()->ProcessEvent(event);
+            }
+        }
     }
 
     void ConnectionsFrame::ShowSettings()
@@ -584,7 +574,7 @@ namespace MarconiUI
         const int space = dialog.FromDIP(20);
         wxBoxSizer* layout = new wxBoxSizer(wxVERTICAL);
         wxStaticText* heading = new wxStaticText(&dialog, wxID_ANY, "Make Marconi yours");
-        heading->SetFont(heading->GetFont().Bold().Scaled(1.3f));
+        heading->SetFont(HeadingFont(heading->GetFont(), 1.3f));
         layout->Add(heading, 0, wxALL, space);
         wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
         row->Add(new wxStaticText(&dialog, wxID_ANY, "Appearance"), 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, space);
