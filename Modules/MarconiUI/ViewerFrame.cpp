@@ -542,7 +542,10 @@ namespace MarconiUI
     {
         if (m_rfb == nullptr)
         {
-            std::unique_ptr<Marconi::Rfb::Client> client = std::make_unique<Marconi::Rfb::Client>(*this);
+            // The upcast to the (private) listener base happens here, in a member, where it is accessible;
+            // make_unique couldn't do it from outside the class.
+            Marconi::SessionListener& listener = *this;
+            std::unique_ptr<Marconi::Rfb::Client> client = std::make_unique<Marconi::Rfb::Client>(listener);
             m_rfb = client.get();
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
