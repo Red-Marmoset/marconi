@@ -6,7 +6,11 @@
 
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/Listener.h>
+#include <MarconiServerCore/SystemInput.h>
+#include <MarconiServerCore/SystemScreen.h>
 #include <MarconiServerCore/TestPatternScreen.h>
+
+#include <memory>
 
 #include <Log/Log.h>
 
@@ -48,6 +52,7 @@ int main(int argc, char** argv)
     settings.serverVersion = Marconi::GetVersionString();
     int width = 1280;
     int height = 720;
+    bool forceTestPattern = false;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -59,7 +64,7 @@ int main(int argc, char** argv)
         }
         else if (arg == "--test-pattern")
         {
-            // The only screen source for now; accepted so the command line already reads the way it will later.
+            forceTestPattern = true;
         }
         else if (arg == "--port")
         {
@@ -98,18 +103,51 @@ int main(int argc, char** argv)
         }
     }
 
-    Marconi::Server::TestPatternScreen screen(width, height);
-    Marconi::Server::LoggingInputSink input;
-    Marconi::Server::Listener listener(screen, input, settings);
+    // The real screen and input where this platform has them (Windows for now), unless --test-pattern was asked.
+    // Elsewhere, and when there is no capture yet, serve the moving test pattern and log the input.
+    std::unique_ptr<Marconi::Server::ScreenSource> systemScreen;
+    std::unique_ptr<Marconi::Server::InputSink> systemInput;
+    std::unique_ptr<Marconi::Server::TestPatternScreen> pattern;
+    Marconi::Server::LoggingInputSink logging;
+    const char* what = nullptr;
 
+    if (!forceTestPattern)
+    {
+        std::string screenError;
+        systemScreen = Marconi::Server::CreateSystemScreen(screenError);
+        if (!systemScreen)
+        {
+            printf("No screen capture on this computer yet (%s); serving the test pattern instead.\n",
+                   screenError.c_str());
+        }
+        else
+        {
+            systemInput = Marconi::Server::CreateSystemInput();
+        }
+    }
+
+    Marconi::Server::ScreenSource* screen = systemScreen.get();
+    Marconi::Server::InputSink* input = systemInput ? systemInput.get() : static_cast<Marconi::Server::InputSink*>(&logging);
+    if (screen == nullptr)
+    {
+        pattern = std::make_unique<Marconi::Server::TestPatternScreen>(width, height);
+        screen = pattern.get();
+        what = "a test pattern";
+    }
+    else
+    {
+        what = "this computer's screen";
+    }
+
+    Marconi::Server::Listener listener(*screen, *input, settings);
     std::string error;
     if (!listener.Start(error))
     {
         printf("Could not start the server: %s\n", error.c_str());
         return 1;
     }
-    printf("Marconi Server %s serving a %dx%d test pattern on port %u. Connect with marconi://this-computer\n",
-           Marconi::GetVersionString(), width, height, static_cast<unsigned>(listener.GetPort()));
+    printf("Marconi Server %s serving %s on port %u. Connect with marconi://this-computer\n",
+           Marconi::GetVersionString(), what, static_cast<unsigned>(listener.GetPort()));
     printf("Press Ctrl+C to stop.\n");
     listener.Run(); // until the process is stopped
     return 0;
