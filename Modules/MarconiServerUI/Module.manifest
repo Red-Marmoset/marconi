@@ -1,0 +1,9 @@
+{
+    "name": "MarconiServerUI",
+    "version": "0.1.0",
+    "type": "Engine",
+    "description": "wxWidgets tray app for the Marconi server: runs the server core on a background thread and offers status, set password, change port and quit from a system tray icon.",
+    "dependencies": ["MarconiServerCore", "MarconiCore", "Platform", "Log"],
+    "externalDependencies": ["wxwidgets"],
+    "platforms": ["Windows", "Linux", "macOS"]
+}

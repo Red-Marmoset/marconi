@@ -2,16 +2,14 @@
 // The Marconi server program. For now it serves a moving test pattern over the Marconi protocol, so the client
 // can connect to a real server; capturing the actual screen (and injecting input) comes with the platform work.
 
-#include "LoggingInputSink.h"
-
 #include <MarconiCore/Version.h>
+#include <MarconiServerCore/IdentityStore.h>
+#include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/SystemInput.h>
 #include <MarconiServerCore/SystemScreen.h>
 #include <MarconiServerCore/TestPatternScreen.h>
-
-#include <Crypto/TlsServer.h>
 
 #include <memory>
 
@@ -20,13 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 #include <string>
-
-#ifndef _WIN32
-#include <sys/stat.h>
-#endif
 
 namespace
 {
@@ -47,85 +39,6 @@ namespace
         printf("  --help                show this\n");
         printf("\nWithout --cert-file/--key-file the server makes a fresh certificate each run, so viewers are\n");
         printf("asked to trust it again every time. Point both at files to keep one identity across restarts.\n");
-    }
-
-    // Reads a whole file into `out`. False if it can't be opened (for a cert/key pair, that means "make a new one").
-    bool ReadWholeFile(const std::string& path, std::string& out)
-    {
-        std::ifstream file(path, std::ios::binary);
-        if (!file)
-        {
-            return false;
-        }
-        std::ostringstream contents;
-        contents << file.rdbuf();
-        out = contents.str();
-        return true;
-    }
-
-    // Writes `contents` to `path`. On POSIX a private key is written owner-only, so it isn't left world-readable.
-    bool WriteFile(const std::string& path, const std::string& contents, bool privateKey)
-    {
-        std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        if (!file)
-        {
-            return false;
-        }
-        file << contents;
-        file.close();
-        if (!file)
-        {
-            return false;
-        }
-#ifndef _WIN32
-        if (privateKey)
-        {
-            chmod(path.c_str(), S_IRUSR | S_IWUSR); // 0600
-        }
-#else
-        (void)privateKey;
-#endif
-        return true;
-    }
-
-    // Puts a certificate and key into `settings`. If both files already exist, loads them; if neither does, makes a
-    // fresh self-signed identity and saves it so the next run reuses it. False (with a message) on a real problem,
-    // like one file present without the other, or a key that can't be written.
-    bool LoadOrCreateIdentity(const std::string& certPath, const std::string& keyPath, const std::string& name,
-                              Marconi::Server::Settings& settings)
-    {
-        std::string cert;
-        std::string key;
-        bool haveCert = ReadWholeFile(certPath, cert);
-        bool haveKey = ReadWholeFile(keyPath, key);
-        if (haveCert && haveKey)
-        {
-            settings.certificatePem = cert;
-            settings.privateKeyPem = key;
-            return true;
-        }
-        if (haveCert != haveKey)
-        {
-            printf("Only one of the certificate and key files exists; move or delete it so a matching pair can be "
-                   "made.\n");
-            return false;
-        }
-
-        Crypto::TlsIdentity identity;
-        std::string error;
-        if (!Crypto::MakeSelfSignedIdentity(name.empty() ? "Marconi Server" : name, 3650, identity, error))
-        {
-            printf("Could not make the server's certificate: %s\n", error.c_str());
-            return false;
-        }
-        if (!WriteFile(certPath, identity.certificatePem, false) || !WriteFile(keyPath, identity.privateKeyPem, true))
-        {
-            printf("Could not save the certificate or key.\n");
-            return false;
-        }
-        settings.certificatePem = identity.certificatePem;
-        settings.privateKeyPem = identity.privateKeyPem;
-        return true;
     }
 
     // Reads the value after a flag, or prints an error and returns false.
@@ -291,8 +204,10 @@ int main(int argc, char** argv)
     }
     if (!certFile.empty())
     {
-        if (!LoadOrCreateIdentity(certFile, keyFile, settings.serverName, settings))
+        std::string identityError;
+        if (!Marconi::Server::LoadOrCreateIdentity(certFile, keyFile, settings.serverName, settings, identityError))
         {
+            printf("%s\n", identityError.c_str());
             return 1;
         }
     }

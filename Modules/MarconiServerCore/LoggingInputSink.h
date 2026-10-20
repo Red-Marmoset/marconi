@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <MarconiServerCore/InputSink.h>
+#include "InputSink.h"
 
 #include <Log/Log.h>
 

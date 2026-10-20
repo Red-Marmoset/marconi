@@ -1,0 +1,11 @@
+{
+    "name": "MarconiServerTray",
+    "type": "windowed",
+    "version": "0.6.0",
+    "description": "Marconi Server - system tray app that shares this computer over the Marconi protocol",
+    "modules": [
+        "MarconiCore",
+        "MarconiServerUI"
+    ],
+    "compiler": "msvc"
+}

@@ -60,7 +60,21 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
   not asked to trust it again each time, and it prints the fingerprint on start. Tested in `CryptoTest` (server and
   client talk, pinning matches, a broken identity fails) and `MarconiServerTest` (the real client connects
   encrypted; a pinned fingerprint skips the question; a wrong pin that is declined is turned away).
-- **Everything so far is merged into `main`.** `main` now needs the engine at e0cc258 or newer (for `Crypto::TlsServer`).
+- **The tray app (1.9) is written.** `MarconiServerUI` (wxWidgets) runs the server core on a background thread and
+  puts an icon in the system tray with: a status line (what's being shared, the port, whether a password is set, a
+  short piece of the fingerprint), set/change password, change port, copy the full fingerprint, and quit. On first
+  run it asks for an access password (empty allowed). It keeps its settings, the TLS certificate and key, and its
+  logs under a per-user "marconi-server" folder, so the fingerprint stays the same across restarts. The shared
+  pieces moved into the core: `IdentityStore` (load-or-create the certificate and key, tested) and
+  `LoggingInputSink`. The console `MarconiServer` program stays as a headless way to run and test the same core.
+  Built and run on Linux under a virtual display (test-pattern mode): it makes its identity, starts listening, and
+  answers a client with the `MRCN` greeting. The Windows screen path still needs a run on a real Windows machine,
+  as 1.6/1.7 note.
+- **Version** is bumped to **0.6.0** with changelog and README entries for the server.
+- **Naming:** the tray project is `MarconiServerTray` (output `Build/MarconiServerTray`) so it doesn't clash with
+  the console `MarconiServer`. The installer phase decides the shipped program's name.
+- **Everything through 1.5 is merged into `main`; 1.9 is on the branch pending the owner's look.** `main` needs the
+  engine at e0cc258 or newer (for `Crypto::TlsServer`).
 
 Decisions taken as defaults under "get it done" (change any by editing section 1): port **1895**, `marconi://`,
 magic bytes `MRCN`, `Wire` namespace, one version for client and server. The server sends the four magic bytes
@@ -72,9 +86,8 @@ and TLS slots in later; the access password moved from 1.4 into 1.5, because it 
 Still to do in Phase 1, and why each waits:
 
 - **1.6 screen capture** and **1.7 input injection** are Windows-only (Desktop Duplication, `SendInput`); they
-  can't be built or tested in the Linux cloud container, so they need a Windows machine.
-- **1.9** the tray icon and the version/changelog bump wait until the server captures a real screen, so a
-  release means something to a user.
+  can't be built or tested in the Linux cloud container, so they need a Windows machine. Until that run confirms the
+  real screen works, 0.6.0 is a version in the code, not yet a release the owner has cut.
 
 ## 1. Decisions needed from the owner
 
