@@ -155,4 +155,5 @@ namespace MarconiTest
     void RunRdpBitmapTests();
     void RunRdpNtlmTests();
     void RunRdpCredSspTests();
+    void RunRdpCredSspExchangeTests();
 } // namespace MarconiTest
