@@ -15,7 +15,7 @@ namespace Marconi
     namespace Server
     {
         Listener::Listener(ScreenSource& screen, InputSink& input, const Settings& settings)
-            : m_screen(screen), m_input(input), m_settings(settings)
+            : m_screen(screen), m_input(input), m_settings(settings), m_auth(settings.passwordHash)
         {
         }
 
@@ -45,7 +45,7 @@ namespace Marconi
             }
 
             Wire::SocketTransport transport(client);
-            Session session(transport, m_screen, m_input, m_settings);
+            Session session(transport, m_screen, m_input, m_settings, &m_auth);
             session.SetFrameIntervalMs(m_frameIntervalMs);
             m_current = &session;
             session.Run();

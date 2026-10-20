@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "type": "Engine",
     "description": "Headless Marconi server core: the protocol session, screen-capture and input interfaces, settings. Serves the Marconi protocol (MarconiCore/Wire) to one viewer. No wx headers; platform capture and input live behind interfaces.",
-    "dependencies": ["MarconiCore", "Platform", "Log"],
+    "dependencies": ["MarconiCore", "Platform", "Log", "Crypto"],
     "platformLibraries": {
         "Windows": ["gdi32.lib", "user32.lib"]
     },

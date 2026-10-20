@@ -47,8 +47,9 @@ namespace Marconi
             }
         } // namespace
 
-        Session::Session(Wire::Transport& transport, ScreenSource& screen, InputSink& input, const Settings& settings)
-            : m_transport(transport), m_screen(screen), m_input(input), m_settings(settings)
+        Session::Session(Wire::Transport& transport, ScreenSource& screen, InputSink& input, const Settings& settings,
+                         Auth* auth)
+            : m_transport(transport), m_screen(screen), m_input(input), m_settings(settings), m_auth(auth)
         {
         }
 
@@ -95,11 +96,31 @@ namespace Marconi
                 LOG_INFO("Server", "Viewer skipped the login; dropping it");
                 return false;
             }
-            Wire::Login::Decode(loginReader); // the password is checked once it travels inside TLS (a later step)
+            Wire::Login login = Wire::Login::Decode(loginReader);
 
             Wire::LoginResult result;
             result.status = Wire::LoginResult::Status::Ok;
-            return Send(result.Encode());
+            if (m_auth != nullptr)
+            {
+                int retryAfterSeconds = 0;
+                Auth::Result check = m_auth->Check(login.password, retryAfterSeconds);
+                if (check == Auth::Result::WrongPassword)
+                {
+                    result.status = Wire::LoginResult::Status::WrongPassword;
+                    LOG_INFO("Server", "Viewer '%s' gave the wrong password", hello.clientName.c_str());
+                }
+                else if (check == Auth::Result::LockedOut)
+                {
+                    result.status = Wire::LoginResult::Status::LockedOut;
+                    result.retryAfterSeconds = static_cast<uint32_t>(retryAfterSeconds);
+                    LOG_INFO("Server", "Login locked out for %d seconds", retryAfterSeconds);
+                }
+            }
+            if (!Send(result.Encode()) || result.status != Wire::LoginResult::Status::Ok)
+            {
+                return false; // the viewer isn't allowed in (or the connection failed)
+            }
+            return true;
         }
 
         void Session::RunInputLoop(Wire::MessageReader& reader)

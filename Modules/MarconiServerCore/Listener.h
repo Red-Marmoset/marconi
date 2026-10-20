@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "Auth.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Session.h"
@@ -49,6 +50,7 @@ namespace Marconi
             ScreenSource& m_screen;
             InputSink& m_input;
             Settings m_settings;
+            Auth m_auth; // checks the password; shared across viewers so the lockout covers the whole server
             Net::Socket m_listenSocket;
             uint16_t m_port = 0;
             int m_frameIntervalMs = 16;

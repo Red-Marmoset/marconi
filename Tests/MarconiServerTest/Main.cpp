@@ -11,6 +11,7 @@ namespace Test
 {
     int TestMain(const CommandLine::Parser&)
     {
+        MarconiServerTest::RunPasswordTests();
         MarconiServerTest::RunSessionTests();
         MarconiServerTest::RunListenerTests();
         MarconiServerTest::RunEndToEndTests();

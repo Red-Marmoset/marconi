@@ -6,6 +6,7 @@
 
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/Listener.h>
+#include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/SystemInput.h>
 #include <MarconiServerCore/SystemScreen.h>
 #include <MarconiServerCore/TestPatternScreen.h>
@@ -30,6 +31,9 @@ namespace
                static_cast<unsigned>(Marconi::Wire::kDefaultPort));
         printf("  --size WxH            the test pattern's size (default 1280x720)\n");
         printf("  --name NAME           the name shown to viewers (default: this computer)\n");
+        printf("  --password TEXT       require this access password (for testing; it shows in process lists)\n");
+        printf("  --password-hash HASH  require the password behind this hash (from --make-hash)\n");
+        printf("  --make-hash TEXT      print the hash of a password and exit (store it, not the password)\n");
         printf("  --help                show this\n");
     }
 
@@ -81,6 +85,38 @@ int main(int argc, char** argv)
             {
                 return 2;
             }
+        }
+        else if (arg == "--password")
+        {
+            std::string text;
+            if (!TakeValue(argc, argv, i, "--password", text))
+            {
+                return 2;
+            }
+            settings.passwordHash = Marconi::Server::HashPassword(text);
+        }
+        else if (arg == "--password-hash")
+        {
+            if (!TakeValue(argc, argv, i, "--password-hash", settings.passwordHash))
+            {
+                return 2;
+            }
+        }
+        else if (arg == "--make-hash")
+        {
+            std::string text;
+            if (!TakeValue(argc, argv, i, "--make-hash", text))
+            {
+                return 2;
+            }
+            std::string hash = Marconi::Server::HashPassword(text);
+            if (hash.empty())
+            {
+                printf("Could not get secure random numbers to make the hash.\n");
+                return 1;
+            }
+            printf("%s\n", hash.c_str());
+            return 0;
         }
         else if (arg == "--size")
         {
@@ -148,6 +184,14 @@ int main(int argc, char** argv)
     }
     printf("Marconi Server %s serving %s on port %u. Connect with marconi://this-computer\n",
            Marconi::GetVersionString(), what, static_cast<unsigned>(listener.GetPort()));
+    if (settings.passwordHash.empty())
+    {
+        printf("No password set: any viewer that reaches this port can connect. Use --password to require one.\n");
+    }
+    else
+    {
+        printf("A password is required to connect.\n");
+    }
     printf("Press Ctrl+C to stop.\n");
     listener.Run(); // until the process is stopped
     return 0;

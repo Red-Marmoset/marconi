@@ -5,6 +5,8 @@
 #include "TestSupport.h"
 
 #include <MarconiCore/Wire/WireCompress.h>
+#include <MarconiServerCore/Auth.h>
+#include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/Session.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
@@ -150,6 +152,43 @@ namespace MarconiServerTest
             serverToClient.Close();
             serverThread.join();
             CHECK(screen.FrameCount() >= 1);
+        });
+
+        RunTest("A server with a password accepts the right one and rejects the wrong one", []() {
+            Server::TestPatternScreen screen(4, 3);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.passwordHash = Server::HashPassword("letmein", 10000);
+            Server::Auth auth(settings.passwordHash);
+
+            auto attempt = [&](const std::string& password) {
+                Pipe clientToServer;
+                Pipe serverToClient;
+                PipeTransport serverTransport(clientToServer, serverToClient);
+                PipeTransport clientTransport(serverToClient, clientToServer);
+                Server::Session session(serverTransport, screen, input, settings, &auth);
+                session.SetFrameIntervalMs(1);
+                std::thread serverThread([&]() { session.Run(); });
+
+                Viewer viewer(clientTransport);
+                Wire::Bytes bytes;
+                Wire::Reader body(nullptr, 0);
+                viewer.Send(Wire::Hello{}.Encode());
+                CHECK(viewer.Next(bytes, body) == Wire::Type::Welcome);
+                Wire::Welcome::Decode(body);
+                viewer.Send(Wire::Login{password}.Encode());
+                CHECK(viewer.Next(bytes, body) == Wire::Type::LoginResult);
+                Wire::LoginResult::Status status = Wire::LoginResult::Decode(body).status;
+
+                session.Stop();
+                clientToServer.Close();
+                serverToClient.Close();
+                serverThread.join();
+                return status;
+            };
+
+            CHECK(attempt("letmein") == Wire::LoginResult::Status::Ok);
+            CHECK(attempt("wrong") == Wire::LoginResult::Status::WrongPassword);
         });
 
         RunTest("A client that doesn't start with Hello is dropped", []() {

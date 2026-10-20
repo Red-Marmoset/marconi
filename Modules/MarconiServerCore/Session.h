@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "Auth.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Settings.h"
@@ -27,7 +28,10 @@ namespace Marconi
         class Session
         {
         public:
-            Session(Wire::Transport& transport, ScreenSource& screen, InputSink& input, const Settings& settings);
+            // `auth` checks the viewer's password; null lets any viewer in (the loopback skeleton and tests that
+            // don't exercise the password). It is shared across connections so the lockout covers the whole server.
+            Session(Wire::Transport& transport, ScreenSource& screen, InputSink& input, const Settings& settings,
+                    Auth* auth = nullptr);
 
             Session(const Session&) = delete;
             Session& operator=(const Session&) = delete;
@@ -50,6 +54,7 @@ namespace Marconi
             ScreenSource& m_screen;
             InputSink& m_input;
             Settings m_settings;
+            Auth* m_auth = nullptr;
             uint64_t m_clientCapabilities = 0; // what the viewer offered in Hello
             uint64_t m_frameId = 0;
             int m_frameIntervalMs = 16;
