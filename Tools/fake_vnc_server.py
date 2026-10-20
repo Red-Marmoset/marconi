@@ -31,6 +31,7 @@ class Session:
         self.lock = threading.Lock()
         self.update_requested = threading.Event()
         self.full_update = True
+        self.requested_rects = []         # areas asked for outright (not incrementally), answered on their own
         self.encodings = []
         self.screens = screens            # advertise this many side-by-side displays (ExtendedDesktopSize)
         self.layout_sent = False
@@ -144,6 +145,11 @@ class Session:
             if self.full_update:
                 rects.append(self.rect(0, 0, self.width, self.height))
                 self.full_update = False
+                self.requested_rects = []
+            elif self.requested_rects:
+                for (x, y, w, h) in self.requested_rects:
+                    rects.append(self.rect(x, y, w, h))
+                self.requested_rects = []
             else:
                 # Only the band the square moves in.
                 y = self.height // 2
@@ -168,7 +174,11 @@ class Session:
             elif message_type == 3:
                 incremental, x, y, w, h = struct.unpack(">BHHHH", self.recv_exact(9))
                 if not incremental:
-                    self.full_update = True
+                    if w >= self.width and h >= self.height:
+                        self.full_update = True
+                    else:
+                        # A real server answers with just that area (Marconi times a 1x1 request as a ping).
+                        self.requested_rects.append((x, y, min(w, self.width - x), min(h, self.height - y)))
                 self.update_requested.set()
             elif message_type == 4:
                 down, keysym = struct.unpack(">Bxxi", self.recv_exact(7))

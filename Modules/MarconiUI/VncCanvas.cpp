@@ -537,6 +537,7 @@ namespace MarconiUI
         }
         if (m_viewOnly || m_stale)
         {
+            PanByDrag(event);
             return;
         }
 
@@ -591,6 +592,62 @@ namespace MarconiUI
         }
     }
 
+    bool VncCanvas::IsScrollable() const
+    {
+        wxSize client = GetClientSize();
+        wxSize shown = GetShownSize();
+        return m_scaleMode == ScaleMode::Fixed && (shown.x > client.x || shown.y > client.y);
+    }
+
+    void VncCanvas::ScrollByPixels(const wxPoint& delta)
+    {
+        int unitX = 1;
+        int unitY = 1;
+        GetScrollPixelsPerUnit(&unitX, &unitY);
+        unitX = std::max(unitX, 1);
+        unitY = std::max(unitY, 1);
+        m_panRemainder += delta;
+        wxPoint units(m_panRemainder.x / unitX, m_panRemainder.y / unitY);
+        m_panRemainder -= wxPoint(units.x * unitX, units.y * unitY);
+        if (units == wxPoint())
+        {
+            return;
+        }
+        wxPoint before = GetViewStart();
+        Scroll(std::max(0, before.x + units.x), std::max(0, before.y + units.y));
+        if (GetViewStart() != before)
+        {
+            Refresh(false);
+        }
+    }
+
+    void VncCanvas::PanByDrag(const wxMouseEvent& event)
+    {
+        if (event.LeftDown() && IsScrollable())
+        {
+            m_panning = true;
+            m_panFrom = event.GetPosition();
+            m_panRemainder = wxPoint();
+            if (!HasCapture())
+            {
+                CaptureMouse();
+            }
+        }
+        else if (m_panning && event.Dragging() && event.LeftIsDown())
+        {
+            ScrollByPixels(m_panFrom - event.GetPosition()); // the picture follows the pointer
+            m_panFrom = event.GetPosition();
+        }
+        else if (m_panning && !event.LeftIsDown())
+        {
+            m_panning = false;
+            if (HasCapture())
+            {
+                ReleaseMouse();
+            }
+        }
+    }
+
     void VncCanvas::OnEdgeScroll()
     {
         wxSize client = GetClientSize();
@@ -634,7 +691,15 @@ namespace MarconiUI
     {
         if (event.CmdDown())
         {
-            // Ctrl (Cmd on a Mac) and the wheel zoom the view; this never reaches the remote computer.
+            // Ctrl (Cmd on a Mac) and the wheel zoom the view, and with Shift as well they scroll a zoomed-in
+            // picture; neither reaches the remote computer.
+            if (event.ShiftDown())
+            {
+                int pixels = event.GetWheelRotation() * FromDIP(48) / std::max(event.GetWheelDelta(), 1);
+                bool horizontal = event.GetWheelAxis() == wxMOUSE_WHEEL_HORIZONTAL;
+                ScrollByPixels(horizontal ? wxPoint(pixels, 0) : wxPoint(0, -pixels)); // wheel up shows what's above
+                return;
+            }
             if (event.AltDown() || event.GetWheelAxis() == wxMOUSE_WHEEL_HORIZONTAL)
             {
                 return;
@@ -673,6 +738,7 @@ namespace MarconiUI
 
     void VncCanvas::OnCaptureLost(wxMouseCaptureLostEvent&)
     {
+        m_panning = false;
         if (m_buttons != 0 && m_lastPointer.x >= 0 && m_session != nullptr)
         {
             m_session->SendPointerEvent(m_lastPointer.x, m_lastPointer.y, 0);

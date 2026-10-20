@@ -85,6 +85,7 @@ namespace MarconiTest
         void OnDisconnected(const Marconi::Rfb::DisconnectInfo& info) override;
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
+        bool OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestion& question) override;
 
         // Waits until `predicate` (evaluated under the lock) holds. Returns false on timeout.
         bool WaitFor(const std::function<bool()>& predicate, int timeoutMs = 5000);
@@ -121,6 +122,11 @@ namespace MarconiTest
         bool trustCertificate = false;
         int certificateQuestions = 0;
         Marconi::Net::TlsCertificate lastCertificate;
+
+        // The same for an SSH server's host key, when connecting through SSH.
+        bool trustSshHostKey = false;
+        int sshHostKeyQuestions = 0;
+        Marconi::Net::SshHostKeyQuestion lastSshHostKey;
     };
 
     Marconi::Rfb::Bytes HexBytes(const std::string& hex);
@@ -148,4 +154,7 @@ namespace MarconiTest
     void RunDesktopSizeTests();
     void RunSettingsTests();
     void RunWireTests();
+    void RunSshTunnelTests();
+    void RunRdpTests();
+    void RunRdpBitmapTests();
 } // namespace MarconiTest

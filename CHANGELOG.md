@@ -5,9 +5,20 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.5.2
+
+- Clearer file browsing, smoother buttons and refreshed typography in light and dark mode.
+
 ## 0.5.1
 
 - Fixed a black square appearing instead of the mouse pointer on Windows when the other computer hides its pointer.
+- The status bar shows the round trip time to the other computer, and says when it has stopped answering.
+- Saved connections can be put in groups (a name typed when editing one); the list keeps each group together, and
+  searching for a group's name finds its connections.
+- Linux: a desktop file for opening vnc:// links in Marconi, with the steps in the README.
+- A zoomed-in picture scrolls with Ctrl+Shift and the mouse wheel, and can be dragged around when view only is on.
+- Saved connections can connect through SSH (Remote Login on a Mac): the SSH server connects to its own VNC server,
+  and the whole session is encrypted inside SSH, whatever the VNC server can do. Also `--ssh` on the command line.
 
 ## 0.5.0
 
@@ -22,6 +33,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - In full screen, resting the pointer at the top edge shows a small bar with the controls; it can be pinned.
 - A lost connection keeps the window open and reconnects by itself, with the old picture dimmed until it's back.
 - A dead network link is noticed within about a minute instead of only when something is sent.
+
 ## 0.4.2
 
 - Files copied in Explorer or Finder can be pasted onto the other computer's screen or into the file panel.

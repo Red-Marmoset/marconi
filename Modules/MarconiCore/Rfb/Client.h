@@ -4,6 +4,7 @@
 #pragma once
 
 #include <MarconiCore/Net/Socket.h>
+#include <MarconiCore/Net/SshTunnel.h>
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Rfb/ClipboardChannel.h>
@@ -56,10 +57,17 @@ namespace Marconi
             bool allowEncryption = true;
             // Offer the Extended Clipboard, which carries UTF-8 text and images with servers that support it.
             bool extendedClipboard = true;
+            // Connect through SSH: log in to the computer's SSH server on `sshPort` with the credentials (asking the
+            // listener with CredentialsKind::SshAccount when they're missing or rejected), then reach the VNC server
+            // at 127.0.0.1:`port` through it. The whole session is then encrypted by SSH, and no probe is needed.
+            bool sshTunnel = false;
+            uint16_t sshPort = 22;
+            std::string trustedSshHostKey; // the fingerprint accepted before; any other goes to OnUntrustedSshHostKey
         };
 
-        // CursorShape, DisconnectInfo, TrafficStats and ClientListener live in <MarconiCore/RemoteSession.h>: they are
-        // shared with every other kind of connection.
+        // CursorShape, DisconnectInfo, TrafficStats and the listener (SessionListener, aliased here as
+        // ClientListener) live in <MarconiCore/RemoteSession.h>, shared with every other kind of connection,
+        // including the SSH host-key callback the tunnel uses.
 
         class Client : public RemoteSession, private ByteSink
         {
@@ -129,6 +137,19 @@ namespace Marconi
             // Returns the counts so far and starts again from zero. Any thread.
             TrafficStats TakeTrafficStats() override;
 
+            // How the connection is doing, for a status readout. Any thread.
+            struct Health
+            {
+                int roundTripMs = -1;   // the last measured round trip to the server; -1 before the first
+                int waitingMs = -1;     // how long the current ping has gone unanswered; -1 when none is outstanding
+                int sinceUpdateMs = -1; // how long since the last FramebufferUpdate arrived; -1 before the first
+            };
+            // Asks for a single pixel (a non-incremental update request for 1x1 at the origin): servers answer
+            // those straight away, so the reply times the round trip. Does nothing while one is unanswered or
+            // before the connection is up.
+            void SendPing();
+            Health GetHealth() const;
+
             // The encodings advertised by default, most preferred first (only those with decoders).
             static std::vector<int32_t> GetDefaultEncodings();
 
@@ -151,6 +172,11 @@ namespace Marconi
             void SendIfConnected(const Bytes& data);
             bool SendRaw(const Bytes& data); // caller holds m_sendMutex
             ptrdiff_t ReadFromConnection(void* buffer, size_t length);
+            // Connection thread: connects through SSH (ConnectionOptions::sshTunnel) and sets m_tunnel.
+            void OpenTunnel(const ConnectionOptions& options, Credentials& credentials);
+            std::shared_ptr<Net::SshTunnel> GetTunnel() const; // any thread
+            void SetReceiveTimeout(int timeoutMs);              // on whatever carries the connection
+            bool ConnectionTimedOut() const;
             void StartTls(bool anonymous, const ConnectionOptions& options, const InStream& in);
             void Run(ConnectionOptions options);
             void SendPixelFormat();
@@ -186,9 +212,15 @@ namespace Marconi
             std::atomic<int> m_statPointerEvents{0};
             std::atomic<int> m_statKeyEvents{0};
             std::atomic<std::chrono::steady_clock::rep> m_lastInputTime{0}; // steady_clock ticks
+            std::atomic<std::chrono::steady_clock::rep> m_pingSentAt{0};    // 0 when no ping is outstanding
+            std::atomic<std::chrono::steady_clock::rep> m_lastUpdateAt{0};  // 0 before the first update
+            std::atomic<int> m_roundTripMs{-1};
 
             std::thread m_thread;
-            std::mutex m_socketMutex; // guards m_socket's handle against Shutdown() racing with assignment
+            mutable std::mutex m_socketMutex; // guards m_socket's handle and m_tunnel against Shutdown() racing
+                                              // with assignment
+            std::shared_ptr<Net::SshTunnel> m_tunnel; // the connection, when it goes through SSH; set and cleared
+                                                      // by the connection thread under m_socketMutex
             std::mutex m_sendMutex;   // serialises whole messages from the UI and connection threads; guards m_tls
             Net::Socket m_socket;
             std::unique_ptr<Net::TlsStream> m_tls; // the encrypted stream once the handshake switched to one

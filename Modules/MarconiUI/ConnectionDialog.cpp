@@ -13,6 +13,7 @@
 
 #include <wx/checkbox.h>
 #include <wx/choice.h>
+#include <wx/combobox.h>
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
 #include <wx/statbox.h>
@@ -38,6 +39,19 @@ namespace MarconiUI
         m_name = new wxTextCtrl(this, wxID_ANY, connection.name, wxDefaultPosition, fieldSize);
         m_name->SetHint("optional, e.g. Studio Mac");
         addRow("Shown in list as:", m_name);
+        // Any name typed here is a group; the drop-down offers the ones already in use.
+        wxArrayString groups;
+        for (const SavedConnection& other : ConnectionStore().LoadAll())
+        {
+            if (!other.group.empty() && groups.Index(other.group, false) == wxNOT_FOUND)
+            {
+                groups.Add(other.group);
+            }
+        }
+        groups.Sort();
+        m_group = new wxComboBox(this, wxID_ANY, connection.group, wxDefaultPosition, fieldSize, groups);
+        m_group->SetHint("optional, e.g. Studio or Home, to keep these together in the list");
+        addRow("Group:", m_group);
         m_address = new wxTextCtrl(this, wxID_ANY, connection.address, wxDefaultPosition, fieldSize);
         m_address->SetHint("host, host:display or host::port");
         addRow("Address:", m_address);
@@ -116,6 +130,13 @@ namespace MarconiUI
         m_lock = new wxCheckBox(view->GetStaticBox(), wxID_ANY, "Lock the other computer's screen when I disconnect");
         m_lock->SetValue(connection.lockOnDisconnect);
         view->Add(m_lock, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
+        m_sshTunnel = new wxCheckBox(view->GetStaticBox(), wxID_ANY,
+                                     "Connect through SSH (Remote Login), so the whole session is encrypted");
+        m_sshTunnel->SetValue(connection.sshTunnel);
+        m_sshTunnel->SetToolTip("Logs in to the computer's SSH server with the login name and password above, and "
+                                "reaches its VNC server from there. On a Mac, turn on Remote Login as well as Screen "
+                                "Sharing.");
+        view->Add(m_sshTunnel, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
         outer->Add(view, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(20));
 
         outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(20));
@@ -184,6 +205,7 @@ namespace MarconiUI
         int quality = m_quality->GetSelection();
         connection.quality = Marconi::QualityName(kQualities[quality >= 0 && quality < 3 ? quality : 1]);
         connection.lockOnDisconnect = m_lock->GetValue();
+        connection.sshTunnel = m_sshTunnel->GetValue();
         connection.favourite = m_favourite->GetValue();
         Marconi::Net::MacAddress mac;
         wxString macText = m_mac->GetValue().Strip(wxString::both);
@@ -191,6 +213,7 @@ namespace MarconiUI
                                     ? wxString(Marconi::Net::FormatMacAddress(mac))
                                     : wxString();
         connection.notes = m_notes->GetValue().Strip(wxString::both);
+        connection.group = m_group->GetValue().Strip(wxString::both);
         return connection;
     }
 

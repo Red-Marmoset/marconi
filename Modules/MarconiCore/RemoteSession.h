@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <MarconiCore/Net/SshTunnel.h>
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Rfb/ClipboardChannel.h>
 #include <MarconiCore/Rfb/Framebuffer.h>
@@ -77,6 +78,9 @@ namespace Marconi
         }
         // Blocking: the server's certificate isn't trusted by this computer. Return true to connect anyway.
         virtual bool OnUntrustedCertificate(const Net::TlsCertificate& /*certificate*/) { return false; }
+        // Blocking: connecting through SSH, and the SSH server's key isn't the one trusted before (or none was).
+        // Return true to trust it. Only VNC-over-SSH asks this; other connections never call it.
+        virtual bool OnUntrustedSshHostKey(const Net::SshHostKeyQuestion& /*question*/) { return false; }
     };
 
     // A connection the viewer drives. Connecting is protocol-specific and lives on the implementation; everything

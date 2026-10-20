@@ -25,6 +25,7 @@ namespace Marconi
             Password,          // a VNC password
             Account,           // a user name and password (Apple Remote Desktop, VeNCrypt Plain)
             PasswordOrAccount, // a Mac offering both: a user name selects the account login, none the VNC password
+            SshAccount,        // the account on the computer's SSH server (Remote Login), for a connection through SSH
         };
 
         // Asked for credentials when the server requires them. Returns false if the user cancelled.

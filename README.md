@@ -17,9 +17,11 @@ It works with:
 - Use its keyboard and mouse. Keys match your keyboard layout, and a Mac's Command key works as expected.
 - Copy and paste text between the two computers, in either direction, and pictures with servers that allow it.
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
-  Credential Manager, the macOS Keychain, or your Linux desktop's keyring), plus notes, favourites, and where each
-  one's window was.
-- Open `vnc://` links from other programs (Windows and macOS).
+  Credential Manager, the macOS Keychain, or your Linux desktop's keyring), plus notes, favourites, groups, and
+  where each one's window was.
+- Open `vnc://` links from other programs (Windows and macOS do this once Marconi is installed; on Linux, see
+  Building).
+- Connect through SSH, so the whole session is encrypted even with servers that don't encrypt.
 - Find computers on your home or office network by itself.
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
 - Just watch, without sending any keyboard or mouse input ("view only").
@@ -72,8 +74,9 @@ Press **F8** to open Marconi's menu, even in full screen. In full screen, restin
 screen also shows a small bar with the computer's name and the main controls; its **Pin** button keeps it there.
 From the menu you can:
 
-- zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same; in full screen,
-  a zoomed-in picture scrolls when the pointer rests at the edge of the screen);
+- zoom: fit the window, or 50% to 200% (Ctrl and the mouse wheel, or Ctrl and + or -, do the same). A zoomed-in
+  picture has scrollbars, scrolls with Ctrl+Shift and the wheel, and in full screen scrolls when the pointer rests
+  at the edge of the screen; with view only on, you can also drag it around;
 - go full screen or back;
 - turn view-only and clipboard sharing on or off, or send your clipboard to the other computer and get its
   clipboard by hand;
@@ -88,6 +91,10 @@ From the menu you can:
   the screen for anyone sitting at it too);
 - save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
 - refresh the picture, or disconnect.
+
+The right-hand end of the status bar shows how long a message takes to reach the other computer and come back,
+measured every few seconds. If the other computer stops answering, it says so and for how long, so you can tell a
+frozen connection from a slow one.
 
 ## Copying files
 
@@ -129,6 +136,15 @@ connection (a method called VeNCrypt, using TLS, the same encryption as secure w
 a server offers it with a certificate. The first time, it shows you the server's certificate and asks whether to
 trust it; it remembers your answer with the saved connection, and warns you if the certificate ever changes. The
 bar at the bottom of the window then says **encrypted**.
+
+**Connecting through SSH.** Tick *Connect through SSH* when editing a saved connection (or use `--ssh`). Marconi then
+logs in to the other computer's SSH server with the connection's login name and password, has it connect to its own
+VNC server, and runs the whole session inside SSH: the status bar says "encrypted, SSH". This works with any VNC
+server, including ones that can't encrypt, and the VNC port needn't be reachable from your computer at all, only
+SSH. The first time, Marconi shows the computer's SSH fingerprint and asks whether to trust it, as it does for file
+transfer; the two share the answer. On a Mac, turn on *Remote Login* as well as Screen Sharing; on Linux, run an SSH
+server; on Windows, install the optional OpenSSH Server feature. No probe is made: the VNC port is the one in the
+address, or 5900.
 
 Some servers offer encryption without a certificate (TigerVNC calls it "TLSVnc"). Marconi can't make that kind of
 connection, so it connects without encryption instead, and says so.
@@ -204,7 +220,7 @@ On macOS and Linux these files can only be read by your own account.
 
 ## Command line
 
-    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--saved NAME] [address]
+    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--ssh] [--saved NAME] [address]
     marconi --remove-my-data
 
 `--saved NAME` opens a saved connection by its name, address or id, using its stored password. `--remove-my-data`
@@ -237,6 +253,10 @@ You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildT
     sudo apt install build-essential pkg-config libgtk-3-dev libsecret-1-dev libgl1-mesa-dev \
                      libxxf86vm-dev libxtst-dev libsm-dev
     ./Build.sh
+
+To open `vnc://` links in Marconi on Linux, copy `Installer/Linux/marconi.desktop` to
+`~/.local/share/applications/`, change its `Exec` line to the path of the `Marconi` you built (keeping the `%u`),
+then run `xdg-mime default marconi.desktop x-scheme-handler/vnc`.
 
 Incremental builds rely on BuildTool's header dependency tracking (engine commit 3d0ce07 or later). With an older
 BuildTool, build with `-Clean` after editing a header.
