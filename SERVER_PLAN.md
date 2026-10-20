@@ -46,6 +46,12 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
   using them on Windows and the test pattern elsewhere. They compile only on Windows, so they are a first cut
   that still needs a build and a run on a Windows machine; GDI stands in until Desktop Duplication (the video
   phase) replaces it.
+- **The access password** (the owner's login choice, part of 1.5): the server stores it hashed (PBKDF2-HMAC-SHA256
+  with a random salt, on the engine's HMAC-SHA256), checks the viewer's login against it, and locks login out after
+  repeated wrong tries; the server program takes `--password`, `--password-hash` and `--make-hash`. Tested, and run
+  against the live binary. What's left of 1.5 is the encryption (a TLS server in the engine) that wraps this so the
+  password and picture are private on the wire; the password travels in the clear until then.
+- **Everything so far is merged into `main`.** `main` now needs the engine at d997dde or newer.
 
 Decisions taken as defaults under "get it done" (change any by editing section 1): port **1895**, `marconi://`,
 magic bytes `MRCN`, `Wire` namespace, one version for client and server. The server sends the four magic bytes
