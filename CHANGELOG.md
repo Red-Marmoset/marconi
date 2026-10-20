@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.5.4
+
+- Taller toolbar and full screen bar buttons.
+
 ## 0.5.3
 
 - Clearer, easier to read buttons on the window's toolbar and the full screen bar.

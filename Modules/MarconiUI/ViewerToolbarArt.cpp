@@ -108,6 +108,6 @@ namespace MarconiUI
     {
         dc.SetFont(GetFont());
         const wxSize text = dc.GetTextExtent(item.GetLabel());
-        return wxSize(text.x + window->FromDIP(28), std::max(text.y + window->FromDIP(18), window->FromDIP(38)));
+        return wxSize(text.x + window->FromDIP(28), std::max(text.y + window->FromDIP(24), window->FromDIP(44)));
     }
 } // namespace MarconiUI
