@@ -57,9 +57,12 @@ milestone 1.
   Diffie-Hellman, secure random, a big-integer modpow, and a TLS client (`Crypto::TlsClient`) on mbedTLS.
   `Net::TlsStream` wraps it over any byte link (a socket or an SSH tunnel), which RDP reuses. That is every hash
   and cipher NTLMv2 and CredSSP need.
-- Milestone 1's negotiation: `Rdp/Negotiation` builds the X.224 Connection Request and parses the Confirm, and
-  `Rdp/Security` runs the exchange over a byte link. Tested, and verified against xrdp (it chose TLS, then a TLS
-  1.3 handshake succeeded); not yet wired into the viewer.
+- Milestones 1 and 2 connect end to end: `Rdp/Negotiation` and `Rdp/Security` (the X.224 negotiation),
+  `Rdp/Ntlm`, `Rdp/NtlmSeal`, `Rdp/CredSsp` and `Rdp/CredSspExchange` (the NLA login), and `Rdp/Connect` which
+  ties them together over a real socket: negotiate, TLS, then CredSSP. The `--rdp-check` command runs this against
+  a real server. Verified against xrdp through the TLS path (it chose TLS 1.3, no NLA); the NLA login is pinned by
+  the NTLMv2 vectors and a mirror-server test, and needs a Windows server to confirm end to end. Not yet wired into
+  the viewer, which still says RDP is recognised but not supported.
 - Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
   (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
   specification; it has nothing to decode until milestones 2 and 3 bring a session up.

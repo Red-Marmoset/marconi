@@ -88,6 +88,7 @@ namespace MarconiTest
             }
 
             void Shutdown() override {}
+            std::vector<uint8_t> GetPeerPublicKey() const override { return {}; }
             std::string GetProtocolName() const override { return "Fake TLS"; }
 
         private:
