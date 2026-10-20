@@ -232,6 +232,12 @@ and saves what the viewer would show as PNG files in the log folder, then exits:
 
     marconi --saved "Studio Mac" --headless --view-only --snapshot-every 5 --quit-after 60
 
+Remote Desktop (RDP) support is being built in stages (see `Documentation/RDP.md`); the viewer can't open an RDP
+connection yet. To try the part that is done, `--rdp-check` connects to an RDP server, negotiates, does the TLS
+handshake and, if the server asks for Network Level Authentication, logs in, then logs the result and exits:
+
+    marconi rdp://user:password@host --rdp-check
+
 ## Building
 
 You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildTool bootstrapped.

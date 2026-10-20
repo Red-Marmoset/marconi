@@ -57,6 +57,10 @@ namespace Marconi
 
             // What the connection is encrypted with, for the status bar: e.g. "TLS 1.3".
             virtual std::string GetProtocolName() const = 0;
+
+            // The server certificate's public key (DER SubjectPublicKeyInfo); empty before the handshake. RDP's
+            // CredSSP binds its login to this.
+            virtual std::vector<uint8_t> GetPeerPublicKey() const = 0;
         };
 
         // The bytes under the encrypted stream: a socket's, or a tunnel's. As Socket::Receive and Socket::SendAll.

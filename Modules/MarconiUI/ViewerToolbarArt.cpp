@@ -44,12 +44,23 @@ namespace MarconiUI
             wxAuiGenericToolBarArt::DrawButton(dc, window, item, rect);
             return;
         }
-        if (!disabled && (checked || hovered))
+        // Every button gets a visible body, so the bar reads as a row of buttons rather than loose words.
+        wxColour fill = checked ? palette.accent : hovered ? palette.selection : palette.surface;
+        wxColour border = checked || hovered ? palette.accent : palette.border;
+        if (disabled)
         {
-            gc->SetPen(*wxTRANSPARENT_PEN);
-            gc->SetBrush(wxBrush(checked ? palette.accent : palette.selection));
-            gc->DrawRoundedRectangle(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2, window->FromDIP(8));
+            fill = palette.background;
+            border = palette.border;
         }
+        else if (checked && hovered)
+        {
+            fill = palette.accent.ChangeLightness(110);
+        }
+        const double inset = window->FromDIP(2);
+        gc->SetPen(wxPen(border));
+        gc->SetBrush(wxBrush(fill));
+        gc->DrawRoundedRectangle(rect.x + inset, rect.y + inset, rect.width - 2 * inset, rect.height - 2 * inset,
+                                 window->FromDIP(7));
         gc->SetFont(GetFont(), disabled ? palette.muted : checked ? *wxWHITE : palette.text);
         double width = 0, height = 0;
         gc->GetTextExtent(item.GetLabel(), &width, &height);
@@ -97,6 +108,6 @@ namespace MarconiUI
     {
         dc.SetFont(GetFont());
         const wxSize text = dc.GetTextExtent(item.GetLabel());
-        return wxSize(text.x + window->FromDIP(24), std::max(text.y + window->FromDIP(14), window->FromDIP(36)));
+        return wxSize(text.x + window->FromDIP(28), std::max(text.y + window->FromDIP(18), window->FromDIP(38)));
     }
 } // namespace MarconiUI

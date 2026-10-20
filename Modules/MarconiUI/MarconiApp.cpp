@@ -11,6 +11,8 @@
 
 #include <MarconiCore/Zoom.h>
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Rdp/Connect.h>
+#include <MarconiCore/Text.h>
 #include <MarconiCore/Files/SftpFiles.h>
 #include <MarconiCore/Net/Discovery.h>
 #include <MarconiCore/Version.h>
@@ -39,6 +41,50 @@ namespace MarconiUI
     namespace
     {
         // Proves file transfer end to end without a window: everything it creates on the remote computer is removed.
+        void RunRdpCheck(const ViewerOptions& options)
+        {
+            // Milestones 1-2 against a real RDP server: negotiate, TLS, and the NLA login. Trusts whatever
+            // certificate the server presents (a diagnostic), logging its fingerprint.
+            Marconi::Rdp::Connection connection;
+            Marconi::Rdp::CredSspCredentials credentials;
+            credentials.user = options.credentials.username;
+            credentials.password = options.credentials.password;
+            uint16_t port = options.address.port != 0 ? options.address.port : 3389;
+            std::string error;
+            auto trust = [](const Marconi::Net::TlsCertificate& certificate) {
+                LOG_INFO("App", "RDP check: server certificate %s (issued to %s)",
+                         Marconi::BytesToHex(certificate.sha256).c_str(), certificate.subject.c_str());
+                return true;
+            };
+            bool ok = connection.Open(options.address.host, port, credentials, trust, 10000, error);
+            if (ok)
+            {
+                Marconi::Rdp::LogonInfo logon;
+                logon.domain = credentials.domain;
+                logon.user = credentials.user;
+                logon.password = credentials.password;
+                ok = connection.Activate(1024, 768, "Marconi", logon, error);
+            }
+            const Marconi::Rdp::ConnectOutcome& outcome = connection.Outcome();
+            LOG_INFO("App", "RDP check: reached=%d protocol=0x%x encrypted=%d (%s) nla=%d authenticated=%d active=%d",
+                     outcome.reachedServer, outcome.selectedProtocol, outcome.encrypted, outcome.tlsName.c_str(),
+                     outcome.usedNla, outcome.authenticated, outcome.reachedActive);
+            if (ok)
+            {
+                LOG_INFO("App", "RDP check: passed (negotiation, TLS, %s, and the connection sequence is active)",
+                         outcome.usedNla ? "the NLA login" : "no NLA");
+            }
+            else if (outcome.ntStatus != 0)
+            {
+                LOG_WARNING("App", "RDP check: the server rejected the login (status 0x%08x): %s", outcome.ntStatus,
+                            error.c_str());
+            }
+            else
+            {
+                LOG_WARNING("App", "RDP check: %s", error.c_str());
+            }
+        }
+
         void RunSftpCheck(const ViewerOptions& options)
         {
             Marconi::Files::SftpFiles remote;
@@ -172,6 +218,9 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "files-check",
              "headless diagnostics: copy a small file to a TightVNC server and back over the VNC connection, tidy up",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "rdp-check",
+             "diagnostics: connect to a Remote Desktop server, negotiate, do TLS and the NLA login, then exit",
+             wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_SWITCH, nullptr, "sftp-check",
              "diagnostics: log in over SFTP with the connection's account, copy a small file there and back, tidy up",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
@@ -233,7 +282,7 @@ namespace MarconiUI
             return false;
         }
         const bool headless = parser.Found("headless");
-        if (headless || parser.Found("sftp-check") || parser.Found("files"))
+        if (headless || parser.Found("sftp-check") || parser.Found("rdp-check") || parser.Found("files"))
         {
             // No window and nobody watching: a failed wxWidgets check goes to the log instead of an alert.
             wxSetAssertHandler([](const wxString& file, int line, const wxString& function, const wxString& condition,
@@ -321,6 +370,11 @@ namespace MarconiUI
                     options.resendPixelFormatOnResize = !parser.Found("no-pixel-format-resend");
                     options.recovery = !parser.Found("no-recovery");
                     options.filesCheck = parser.Found("files-check");
+                }
+                if (parser.Found("rdp-check"))
+                {
+                    RunRdpCheck(options);
+                    return false;
                 }
                 if (parser.Found("sftp-check"))
                 {

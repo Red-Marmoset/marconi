@@ -30,11 +30,12 @@ namespace MarconiUI
         m_toolBar = new wxAuiToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                      wxAUI_TB_TEXT | wxAUI_TB_HORZ_LAYOUT | wxAUI_TB_GRIPPER | wxAUI_TB_OVERFLOW);
         m_toolBar->SetArtProvider(new ViewerToolbarArt());
+        // The system font at its regular weight: Nebula's semibold is too heavy for a row of small labels.
         wxFont toolbarFont = GetFont();
         toolbarFont.SetPointSize(10);
-        m_toolBar->SetFont(HeadingFont(toolbarFont));
+        m_toolBar->SetFont(toolbarFont);
         m_toolBar->SetMargins(FromDIP(8), FromDIP(6));
-        m_toolBar->SetToolPacking(FromDIP(4));
+        m_toolBar->SetToolPacking(FromDIP(6));
         m_toolBar->SetToolBorderPadding(0);
         m_toolBar->AddTool(ID_SCALE_FIT, "Scale to Fit", wxNullBitmap,
                            "Scale the remote desktop to fit the window (otherwise show it at the chosen zoom level)",

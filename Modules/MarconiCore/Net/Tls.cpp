@@ -60,6 +60,11 @@ namespace Marconi
 
                 std::string GetProtocolName() const override { return m_client ? m_client->GetProtocolName() : ""; }
 
+                std::vector<uint8_t> GetPeerPublicKey() const override
+                {
+                    return m_client ? m_client->GetPeerPublicKey() : std::vector<uint8_t>();
+                }
+
             private:
                 std::unique_ptr<Crypto::TlsClient> m_client;
             };

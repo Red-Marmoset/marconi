@@ -8,8 +8,8 @@
 
 #include <vector>
 
+class wxAuiToolBar;
 class wxStaticText;
-class wxToggleButton;
 
 namespace MarconiUI
 {
@@ -40,7 +40,8 @@ namespace MarconiUI
         void PlaceAtTop();
 
         wxStaticText* m_title = nullptr;
-        wxToggleButton* m_pin = nullptr;
+        wxAuiToolBar* m_buttons = nullptr;
+        int m_pinId = wxID_NONE;
         wxTimer m_timer;
         int m_ticksAway = 0;   // how long the pointer has been away from the bar
         int m_ticksAtTop = 0;  // how long the pointer has rested at the top edge
