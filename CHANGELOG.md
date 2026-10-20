@@ -10,6 +10,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Added Marconi Server: a tray program that shares this computer so another can connect to it and control it, with the screen and your typing kept private by encryption.
 - The client checks a Marconi server's identity the first time you connect and remembers it, so you are warned if it ever changes.
 
+## 0.5.4
+
+- Taller toolbar and full screen bar buttons.
+
 ## 0.5.3
 
 - Clearer, easier to read buttons on the window's toolbar and the full screen bar.
