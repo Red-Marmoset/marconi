@@ -57,14 +57,22 @@ namespace MarconiUI
                 return true;
             };
             bool ok = connection.Open(options.address.host, port, credentials, trust, 10000, error);
-            const Marconi::Rdp::ConnectOutcome& outcome = connection.Outcome();
-            LOG_INFO("App", "RDP check: reached=%d protocol=0x%x encrypted=%d (%s) nla=%d authenticated=%d",
-                     outcome.reachedServer, outcome.selectedProtocol, outcome.encrypted, outcome.tlsName.c_str(),
-                     outcome.usedNla, outcome.authenticated);
             if (ok)
             {
-                LOG_INFO("App", "RDP check: passed (negotiation, TLS and %s)",
-                         outcome.usedNla ? "the NLA login" : "no NLA was required");
+                Marconi::Rdp::LogonInfo logon;
+                logon.domain = credentials.domain;
+                logon.user = credentials.user;
+                logon.password = credentials.password;
+                ok = connection.Activate(1024, 768, "Marconi", logon, error);
+            }
+            const Marconi::Rdp::ConnectOutcome& outcome = connection.Outcome();
+            LOG_INFO("App", "RDP check: reached=%d protocol=0x%x encrypted=%d (%s) nla=%d authenticated=%d active=%d",
+                     outcome.reachedServer, outcome.selectedProtocol, outcome.encrypted, outcome.tlsName.c_str(),
+                     outcome.usedNla, outcome.authenticated, outcome.reachedActive);
+            if (ok)
+            {
+                LOG_INFO("App", "RDP check: passed (negotiation, TLS, %s, and the connection sequence is active)",
+                         outcome.usedNla ? "the NLA login" : "no NLA");
             }
             else if (outcome.ntStatus != 0)
             {

@@ -14,8 +14,16 @@ namespace Marconi
 {
     namespace Rdp
     {
+        // Wraps `payload` in a TPKT header and an X.224 Data header: the transport every MCS PDU travels in once
+        // the connection is confirmed. Reading one is FrameX224Data's inverse, done by the connection code which
+        // owns the stream.
+        Bytes FrameX224Data(const Bytes& payload);
+        // Strips the 4-byte TPKT header and the 3-byte X.224 Data header from a complete TPKT frame. False if the
+        // frame isn't well formed; `payload` is the MCS PDU inside.
+        bool UnframeX224Data(const Bytes& frame, Bytes& payload);
+
         // The whole MCS Connect-Initial (BER) wrapping a GCC Conference Create Request (PER) whose user data is
-        // `clientData` (BuildClientData's output). This is one TPKT/X.224 payload.
+        // `clientData` (BuildClientData's output). This is one X.224 Data payload.
         Bytes BuildMcsConnectInitial(const Bytes& clientData);
 
         // Pulls the GCC Conference Create Response's user data (the server data blocks) out of a Connect-Response.

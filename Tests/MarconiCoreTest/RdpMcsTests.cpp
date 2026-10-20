@@ -103,9 +103,9 @@ namespace MarconiTest
             Rdp::Bytes clientData = Rdp::BuildClientData(Rdp::ClientCoreSettings(), {});
             Rdp::Bytes initial = Rdp::BuildMcsConnectInitial(clientData);
             CHECK(initial[0] == 0x7f && initial[1] == 0x65); // Connect-Initial, application 101
-            // The GCC "McDn" key and the client data both appear in the frame.
+            // The GCC "Duca" key and the client data both appear in the frame.
             std::string text(initial.begin(), initial.end());
-            CHECK(text.find("McDn") != std::string::npos);
+            CHECK(text.find("Duca") != std::string::npos); // the client-to-server GCC key
             // The core block's version marker is somewhere inside.
             bool foundCore = false;
             for (size_t i = 0; i + 1 < initial.size(); ++i)

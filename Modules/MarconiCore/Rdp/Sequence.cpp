@@ -216,6 +216,21 @@ namespace Marconi
             append(shell);
             append(workingDir);
 
+            // TS_EXTENDED_INFO_PACKET (MS-RDPBCGR 2.2.1.11.1.1.1), required for RDP 5 and later. A minimal one: an
+            // IPv4 client address and an empty client directory, both UTF-16 with a length that counts the NUL.
+            Bytes clientAddress = Utf16("0.0.0.0");
+            clientAddress.push_back(0);
+            clientAddress.push_back(0);
+            Bytes clientDir = {0, 0}; // just the NUL
+            PutU16(info, 0x0002); // clientAddressFamily: AF_INET
+            PutU16(info, static_cast<uint16_t>(clientAddress.size()));
+            info.insert(info.end(), clientAddress.begin(), clientAddress.end());
+            PutU16(info, static_cast<uint16_t>(clientDir.size()));
+            info.insert(info.end(), clientDir.begin(), clientDir.end());
+            // clientTimeZone (TS_TIME_ZONE_INFORMATION, 172 bytes), clientSessionId (4) and performanceFlags (4)
+            // are all optional and read as zero; a block of zeros satisfies servers that expect them.
+            info.insert(info.end(), 172 + 4 + 4, 0);
+
             Bytes out = BuildSecurityHeader(kSecInfoPkt);
             out.insert(out.end(), info.begin(), info.end());
             return out;

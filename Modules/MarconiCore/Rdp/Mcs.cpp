@@ -115,7 +115,9 @@ namespace Marconi
         {
             // The body is the ConnectGCCPDU: a fixed PER-encoded ConferenceCreateRequest header, the H.221
             // client-to-server key "McDn", then the user data behind a PER length determinant.
-            Bytes body = {0x2a, 0x14, 0x76, 0x0a, 0x01, 0x01, 0x00, 0x01, 0xc0, 0x00, 0x4d, 0x63, 0x44, 0x6e};
+            // The PER-encoded ConferenceCreateRequest header, then the H.221 client-to-server key "Duca", then the
+            // user data behind a PER length (MS-RDPBCGR 4.1.1 shows this exact framing).
+            Bytes body = {0x00, 0x08, 0x00, 0x10, 0x00, 0x01, 0xc0, 0x00, 0x44, 0x75, 0x63, 0x61};
             PutPerLength(body, userData.size());
             body.insert(body.end(), userData.begin(), userData.end());
 
@@ -129,6 +131,30 @@ namespace Marconi
 
         constexpr uint16_t kIoChannelBase = 1001; // MCS channel ids RDP uses start here
         } // namespace
+
+        Bytes FrameX224Data(const Bytes& payload)
+        {
+            size_t total = payload.size() + 7;
+            Bytes out = {0x03, 0x00, static_cast<uint8_t>((total >> 8) & 0xFF), static_cast<uint8_t>(total & 0xFF),
+                         0x02, 0xF0, 0x80}; // TPKT header, then X.224 Data (LI 2, code 0xF0, EOT 0x80)
+            out.insert(out.end(), payload.begin(), payload.end());
+            return out;
+        }
+
+        bool UnframeX224Data(const Bytes& frame, Bytes& payload)
+        {
+            if (frame.size() < 7 || frame[0] != 0x03 || frame[5] != 0xF0)
+            {
+                return false;
+            }
+            size_t total = (static_cast<size_t>(frame[2]) << 8) | frame[3];
+            if (total != frame.size() || total < 7)
+            {
+                return false;
+            }
+            payload.assign(frame.begin() + 7, frame.end());
+            return true;
+        }
 
         Bytes BuildMcsConnectInitial(const Bytes& clientData)
         {
