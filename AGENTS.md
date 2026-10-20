@@ -8,6 +8,10 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 The server component (Marconi Server) is planned in `SERVER_PLAN.md`: read it before working on the server, follow
 its phases in order, and keep it current (decisions, measurements, finished steps).
 
+Speed (measuring, capture, video codecs, the datagram channel, input for games, sound) is planned in
+`PERFORMANCE_PLAN.md`, which carries out `SERVER_PLAN.md`'s Phases 4 and 5. Read it before that work, follow its
+steps in order, and keep it current the same way.
+
 ## Working with the owner
 
 - **Don't fill gaps with assumptions** (the owner's rule). When you notice you're assuming something about what the
@@ -72,9 +76,9 @@ its phases in order, and keep it current (decisions, measurements, finished step
   - Input senders are thread-safe.
 - `OnCredentialsRequired` and `OnUntrustedCertificate` block the worker until the UI answers (`ViewerFrame::AskUser`).
   `ViewerFrame` releases it if the window closes.
-- Encryption: `Net/Tls.h` is the TLS stream interface; `Net/Tls.cpp` returns nothing until a platform implementation
-  exists (see README, "Encryption: what's done and what's left"). The handshake only chooses VeNCrypt when
-  `IsTlsAvailable()` is true, so nothing changes for users until then except the "not encrypted" status.
+- Encryption: `Net/Tls.h` is the TLS stream interface; `Net/Tls.cpp` adapts the engine's `Crypto::TlsClient`
+  (mbedTLS) to it (see README, "Encryption: how it works and what's left"). The handshake only chooses VeNCrypt
+  when `IsTlsAvailable()` is true.
 - The client always requests 32bpp little-endian 0x00RRGGBB pixels. ZRLE's CPIXEL is B,G,R; Tight's TPIXEL is
   R,G,B.
 

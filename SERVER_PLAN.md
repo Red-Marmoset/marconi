@@ -24,6 +24,8 @@ How to use this document:
   steps inside a phase that fix or improve something visible take a PATCH bump. Nothing here proposes 1.0.
 - The first section lists what the owner needs to decide. Nothing that depends on an undecided point should be
   built before the owner has answered; everything else can start.
+- **Speed is planned in `PERFORMANCE_PLAN.md`**: measuring, capture, video, the datagram channel, input for games
+  and sound. Phases 4 and 5 below, and the game input in Phase 7, are carried out from there.
 
 ## Progress so far
 
@@ -97,7 +99,8 @@ Each point gives the recommendation this plan is written against. Answer in this
    fallback), VideoToolbox on macOS. H.264 first, HEVC and AV1 later where both ends have them. The open question is
    the **Linux client**: Linux has no system codec API. Options are ffmpeg's libavcodec (LGPL, large) or a small
    software H.264 decoder only. Recommended: ffmpeg via the engine's external dependencies, decided when Phase 4
-   starts.
+   starts. **Owner (later):** the codecs live in a new engine module; the Linux choice is revisited when that work
+   reaches Linux, with the licence steps for an LGPL ffmpeg set out in `PERFORMANCE_PLAN.md`.
 6. **Gamepads on a Windows server need a virtual controller driver.** There is no built-in way to create one; every
    product in this space (Sunshine, Parsec, DS4Windows) uses **ViGEmBus**, a BSD-licensed, signed kernel driver that
    its author stopped maintaining in 2023 but which still works on Windows 11. Recommended: the server installer
@@ -121,7 +124,8 @@ Each point gives the recommendation this plan is written against. Answer in this
 11. **Order.** Installer and menu item (Phase 2) come before video (Phase 4), because the owner asked for them
     explicitly and because they let the server be tried on real machines early. Say so if speed should come first.
     **The owner's first server is Windows** (point chosen), so the capture and input work targets Windows first
-    (Desktop Duplication and SendInput), then macOS (the owner also has a Mac) and Linux.
+    (Desktop Duplication and SendInput), then macOS (the owner also has a Mac) and Linux. **The local network
+    comes first** for speed (owner): the pipeline is made fast on a LAN before the internet transport work.
 12. **Lossless compression for still pictures.** zlib is already a dependency; zstd would be faster and smaller. Start
     with zlib, consider zstd when the measurements in Phase 4 say it matters.
 
@@ -189,7 +193,8 @@ Client changes, by area:
   client unchanged, `WireSession` wraps `Wire::Client`.
 - F8 menu: **Install Marconi Server on the Other Computer...**; connections window Settings: **Share this
   computer...**; later **Send Gamepads to the Other Computer** (check item).
-- `VncCanvas`: a GPU presentation path for decoded video (Phase 4), keeping today's software path for RFB.
+- `VncCanvas`: a GPU presentation path, first for the exact picture and then for decoded video
+  (`PERFORMANCE_PLAN.md` steps 2 and 3).
 - `Files/MarconiFiles.*`: `FileSource` over the protocol.
 - `Gamepads.h` with `_Windows`, `_Mac`, `_Linux` implementations (Phase 7).
 
@@ -246,16 +251,17 @@ Messages (first cut; the exact fields are set in Phase 1 and extended per phase;
 | control | GamepadAttached / GamepadDetached / Rumble | both | pad index and kind; rumble strengths back to the client |
 | control | RequestKeyframe / Lock / Ping / Pong / Bye | both | what they say |
 | datagram | FramePacket | server | frame id, packet index and count, FEC group, slice of the encoded frame |
-| datagram | Pointer / PointerRelative | client | absolute position and buttons and high-resolution wheel; or deltas when the client has captured the mouse |
+| datagram | Pointer / PointerRelative | client | absolute position and buttons; or deltas when the client has captured the mouse (the wheel stays on the control channel, since a lost turn isn't corrected) |
 | datagram | GamepadState | client | pad index, buttons, triggers, sticks, sequence |
 | datagram | CursorPosition | server | where the pointer is, for view-only viewers |
 | datagram | Report | client | frames received and lost, decode and present times, estimated RTT |
 
 ### Speed: where the time goes
 
-The target is the experience of Moonlight or Parsec on the same hardware: on a LAN, glass to glass under about
-40 ms at 60 frames a second; over the internet, the network's own one-way delay plus roughly a frame. The budget
-per stage, and the technique that buys it:
+Superseded by `PERFORMANCE_PLAN.md`, which sets measurable targets and the steps to reach them; kept here as the
+original sketch. The target is the experience of Moonlight or Parsec on the same hardware: on a LAN, glass to glass
+under about 40 ms at 60 frames a second; over the internet, the network's own one-way delay plus roughly a frame.
+The budget per stage, and the technique that buys it:
 
 | Stage | Budget | How |
 |---|---|---|
@@ -266,7 +272,7 @@ per stage, and the technique that buys it:
 | Network | the link's delay | UDP so one lost packet doesn't stall the ones behind it; FEC instead of retransmits; bitrate adapts to loss and delay |
 | Decode | 2 to 5 ms | the OS hardware decoder, straight to a GPU texture |
 | Present | next vsync at most | draw the texture into a swap chain on the canvas; an option to present immediately without vsync |
-| Input | under 1 ms plus the network | sent as it happens; mouse coalesced only above 250 Hz; applied with `SendInput` the moment it arrives |
+| Input | under 1 ms plus the network | sent as it happens, at the mouse's own rate up to 1000 a second; applied with `SendInput` the moment it arrives |
 
 Measurement is part of the work, not an afterthought: `--bench` on the server, timestamps in every frame, and a
 `--stats` log on the client that reports capture-to-present time per frame, so every phase can show its numbers.
@@ -417,39 +423,21 @@ can be used through Marconi.
 
 ### Phase 4: video
 
-1. **Decide the Linux decoder** (section 1 point 5) and add the external dependency if needed.
-2. `VideoEncoder` interface; `Encoder_Windows.cpp` on Media Foundation: hardware H.264 when available, software
-   fallback, low-latency settings, GPU colour conversion from the captured texture. `--bench` prints encode times
-   and bitrates for 1080p and 4K.
-3. `Frame` messages over the control channel; `StreamConfig` from the picture-quality menu: Best (video plus a
-   fast still refresh), Balanced, Low Bandwidth (lower bitrate, frame rate and, if needed, resolution).
-4. **Still refresh**: areas unchanged for about 300 ms are resent losslessly; the client composites stills over
-   the video until the next frame touches them. Measured on a text-heavy desktop.
-5. `VideoDecoder` interface; `_Windows.cpp` on Media Foundation with D3D11, presented through a swap chain on the
-   canvas; `_Mac.mm` on VideoToolbox presented with a sample-buffer display layer; Linux per step 1. Screenshots
-   read back the composed picture on demand.
-6. Frame pacing and the `--stats` log: capture-to-present per frame, frames a second, bitrate; the status bar shows
-   frames a second and bitrate for Marconi servers.
-7. Tests: encoder and decoder round trips where the platform has them, the still-refresh scheduler with a fake
-   clock, `StreamConfig` mapping.
+Planned in detail in `PERFORMANCE_PLAN.md`, step 3 (with steps 1 and 2 first: measuring, and the fast exact
+picture). In short: a new engine module for video codecs, hardware H.264 through Media Foundation on Windows and
+VideoToolbox on macOS, the picture sent as video while it moves and resent exactly once it stops, decoding straight
+to a GPU presenter, a Game picture-quality mode, and keys by position and a captured mouse so games can be played on
+a LAN as soon as video works. Sound starts alongside (`PERFORMANCE_PLAN.md` step 6).
 
-Done when: full-screen video plays smoothly at the display's rate on a LAN with glass-to-glass under about 40 ms
-in the `--stats` log, and text is pixel-exact within half a second of stopping.
+Done when: `PERFORMANCE_PLAN.md` step 3's check passes.
 
 ### Phase 5: UDP
 
-1. `UdpSocket` for IPv6 and connected use; `Keys` over TLS; the UDP `Hello` that opens the client's path; session
-   ids; AES-GCM on every datagram.
-2. Packetization and forward error correction (XOR parity first, Reed-Solomon if measurements call for it);
-   `Report` from the client; `RequestKeyframe` on unrecoverable loss.
-3. Pointer, gamepad-ready input and cursor position over UDP; keys stay on TCP.
-4. Bitrate adaptation from loss and delay, with a resolution and frame-rate ladder for Low Bandwidth; the
-   status bar shows loss and "over TCP" when UDP is blocked and the Phase 4 path is in use.
-5. Tests: packetize and recover with simulated loss, key schedule, out-of-order and replayed datagrams rejected,
-   the adaptation controller against scripted loss.
+Planned in detail in `PERFORMANCE_PLAN.md`, step 4: the datagram channel and its encryption, packets sized for the
+network, repairing loss by asking again on a LAN and by extra repair packets over the internet, bitrate control from
+delay and loss, and the fallback to TCP.
 
-Done when: over a real internet link with a few percent loss, the picture keeps moving without stalls and the
-mouse stays responsive; pulling UDP falls back to TCP and says so.
+Done when: `PERFORMANCE_PLAN.md` step 4's check passes.
 
 ### Phase 6: everything the client already does, on our server
 
@@ -474,7 +462,7 @@ tester needs them.
 2. Protocol: `GamepadAttached`, `GamepadDetached`, `GamepadState`, `Rumble`.
 3. Server `GamepadSink`; `VirtualGamepad_Windows.cpp` on ViGEmClient; the installer's optional component for
    ViGEmBus (section 1 point 6); plain-words README section on what it installs and why.
-4. Relative mouse mode and scancodes; a menu item to release the mouse; the server honours both.
+4. Relative mouse mode and scancodes: done earlier, in `PERFORMANCE_PLAN.md` step 3; gamepad details there in step 5.
 5. `Gamepads_Mac.mm` and `Gamepads_Linux.cpp` on the client; `VirtualGamepad_Linux.cpp` on uinput when the Linux
    server exists.
 6. Tests: state packing and sequence handling, rumble routing, the forwarding rules with a fake pad.
@@ -522,7 +510,6 @@ Outline only; planned in detail when reached.
 
 ## 7. Not in this plan unless the owner asks
 
-- Sound from the other computer (Opus over the datagram channel; WASAPI loopback on Windows).
 - A relay or hole-punching service for computers behind NAT with no port forwarding.
 - An RFB listener on the server so other VNC viewers can connect.
 - Updating the server from the client ("Update Marconi Server on the Other Computer") by uploading the installer
@@ -534,8 +521,8 @@ Outline only; planned in detail when reached.
 
 ## 8. Record of measurements
 
-Filled in as phases complete: machine, resolution, capture, encode, decode and present times, bitrate, glass to
-glass.
+Speed measurements are recorded in `PERFORMANCE_PLAN.md`, section 6. This table is for anything else measured as
+phases complete: machine, resolution, capture, encode, decode and present times, bitrate, glass to glass.
 
 | Date | Phase | Machines | Resolution | Capture | Encode | Decode | Present | Glass to glass | Bitrate |
 |---|---|---|---|---|---|---|---|---|---|
