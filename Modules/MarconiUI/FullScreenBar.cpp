@@ -4,12 +4,11 @@
 #include "FullScreenBar.h"
 
 #include "Appearance.h"
+#include "ViewerToolbarArt.h"
 
-#include <wx/button.h>
-#include <wx/display.h>
+#include <wx/aui/auibar.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
-#include <wx/tglbtn.h>
 #include <wx/utils.h>
 
 namespace MarconiUI
@@ -25,32 +24,42 @@ namespace MarconiUI
         : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_SIMPLE)
     {
         Hide();
-        StyleWindow(this);
         int gap = FromDIP(6);
+        wxFont font = GetFont();
+        font.SetPointSize(10);
         wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
         m_title = new wxStaticText(this, wxID_ANY, title);
-        wxFont bold = m_title->GetFont();
-        bold.MakeBold();
-        m_title->SetFont(bold);
+        m_title->SetFont(font);
         row->Add(m_title, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, gap * 2);
+        // Drawn like the window's toolbar
+        m_buttons = new wxAuiToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                                     wxAUI_TB_TEXT | wxAUI_TB_HORZ_LAYOUT);
+        m_buttons->SetArtProvider(new ViewerToolbarArt());
+        m_buttons->SetFont(font);
+        m_buttons->SetMargins(0, FromDIP(4));
+        m_buttons->SetToolPacking(FromDIP(6));
+        m_buttons->SetToolBorderPadding(0);
         for (const Item& item : items)
         {
-            wxButton* button = new wxButton(this, wxID_ANY, item.label, wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-            button->SetToolTip(item.tooltip);
-            int commandId = item.commandId;
-            button->Bind(wxEVT_BUTTON, [this, commandId](wxCommandEvent&) {
-                wxCommandEvent command(wxEVT_MENU, commandId);
-                command.SetEventObject(this);
-                GetParent()->GetEventHandler()->ProcessEvent(command);
-            });
-            row->Add(button, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
+            m_buttons->AddTool(item.commandId, item.label, wxNullBitmap, item.tooltip);
         }
-        m_pin = new wxToggleButton(this, wxID_ANY, "Pin", wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
-        m_pin->SetToolTip("Keep this bar on screen");
-        row->Add(m_pin, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap * 2);
-        wxBoxSizer* outer = new wxBoxSizer(wxVERTICAL);
-        outer->Add(row, 0, wxEXPAND | wxTOP | wxBOTTOM, gap / 2);
-        SetSizerAndFit(outer);
+        m_buttons->AddSeparator();
+        m_pinId = NewControlId();
+        m_buttons->AddTool(m_pinId, "Pin", wxNullBitmap, "Keep this bar on screen", wxITEM_CHECK);
+        m_buttons->Realize();
+        m_buttons->Bind(wxEVT_TOOL, [this](wxCommandEvent& event) {
+            if (event.GetId() == m_pinId)
+            {
+                return;
+            }
+            // Sent from this bar, so the viewer can open its menus here rather than under the hidden toolbar.
+            wxCommandEvent command(wxEVT_MENU, event.GetId());
+            command.SetEventObject(this);
+            GetParent()->GetEventHandler()->ProcessEvent(command);
+        });
+        row->Add(m_buttons, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
+        SetSizerAndFit(row);
+        StyleWindow(this);
 
         m_timer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnTick(); }, m_timer.GetId());
@@ -58,7 +67,7 @@ namespace MarconiUI
 
     bool FullScreenBar::IsPinned() const
     {
-        return m_pin->GetValue();
+        return m_buttons->GetToolToggled(m_pinId);
     }
 
     void FullScreenBar::Begin()
