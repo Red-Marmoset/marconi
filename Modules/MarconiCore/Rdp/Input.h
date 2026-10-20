@@ -34,6 +34,12 @@ namespace Marconi
         // A mouse event: pointerFlags (PTRFLAGS_*), and the pointer position in desktop pixels.
         Bytes MouseEvent(uint16_t pointerFlags, uint16_t x, uint16_t y);
 
+        // Translates a VNC-style button mask (bit 0 left, 1 middle, 2 right, 3 wheel up, 4 wheel down) and the
+        // pointer position into the RDP mouse events that take the pointer from `previousMask` to `mask`: always a
+        // move, then a down or up for each of the three buttons that changed, then one wheel notch for each wheel
+        // bit newly set (the wheel bits are momentary, acted on only when they go from clear to set).
+        std::vector<Bytes> PointerEvents(uint8_t mask, uint8_t previousMask, uint16_t x, uint16_t y);
+
         // Pointer flags (MS-RDPBCGR 2.2.8.1.1.3.1.1.3).
         enum : uint16_t
         {

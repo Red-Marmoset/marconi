@@ -95,6 +95,126 @@ namespace Marconi
             return true;
         }
 
+        void Connection::UseBlockingReads()
+        {
+            m_socket->SetReceiveTimeout(0);
+        }
+
+        void Connection::Shutdown()
+        {
+            m_socket->Shutdown();
+        }
+
+        bool Connection::SendOnIoChannel(const Bytes& sharePdu, std::string& error)
+        {
+            return SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId, sharePdu), error);
+        }
+
+        bool Connection::ReadOutput(Bytes& payload, bool& fastPath, std::string& error)
+        {
+            payload.clear();
+            auto readExact = [&](uint8_t* buffer, size_t count) {
+                size_t got = 0;
+                while (got < count)
+                {
+                    ptrdiff_t n = m_tls->Read(buffer + got, count - got);
+                    if (n <= 0)
+                    {
+                        return false;
+                    }
+                    got += static_cast<size_t>(n);
+                }
+                return true;
+            };
+
+            uint8_t first = 0;
+            if (!readExact(&first, 1))
+            {
+                error = "the connection closed";
+                return false;
+            }
+
+            if (first == 0x03) // a TPKT header: slow path
+            {
+                fastPath = false;
+                uint8_t rest[3];
+                if (!readExact(rest, 3))
+                {
+                    error = "the connection dropped mid-frame";
+                    return false;
+                }
+                size_t total = (static_cast<size_t>(rest[1]) << 8) | rest[2];
+                if (total < 7 || total > 16 * 1024 * 1024)
+                {
+                    error = "the server sent an RDP frame with an implausible length";
+                    return false;
+                }
+                Bytes frame(total);
+                frame[0] = first;
+                frame[1] = rest[0];
+                frame[2] = rest[1];
+                frame[3] = rest[2];
+                if (!readExact(frame.data() + 4, total - 4))
+                {
+                    error = "the connection dropped while reading a frame";
+                    return false;
+                }
+                Bytes mcsPdu;
+                if (!UnframeX224Data(frame, mcsPdu))
+                {
+                    error = "the server's RDP frame didn't parse";
+                    return false;
+                }
+                uint16_t channel = 0;
+                if (!StripSendData(mcsPdu, channel, payload))
+                {
+                    payload.clear(); // not a Send Data Indication (e.g. a disconnect ultimatum): caller loops on
+                }
+                return true;
+            }
+
+            // Otherwise it is a fast-path output header (MS-RDPBCGR 2.2.9.1.2): the first byte's low two bits are
+            // the action (0 for fast path), then a 1- or 2-byte total length. TLS carries no FIPS or signature
+            // fields, so the payload follows the length directly.
+            fastPath = true;
+            uint8_t len1 = 0;
+            if (!readExact(&len1, 1))
+            {
+                error = "the connection dropped mid-frame";
+                return false;
+            }
+            size_t total = 0;
+            size_t headerLength = 2;
+            if (len1 & 0x80)
+            {
+                uint8_t len2 = 0;
+                if (!readExact(&len2, 1))
+                {
+                    error = "the connection dropped mid-frame";
+                    return false;
+                }
+                total = (static_cast<size_t>(len1 & 0x7f) << 8) | len2;
+                headerLength = 3;
+            }
+            else
+            {
+                total = len1;
+            }
+            if (total < headerLength || total > 16 * 1024 * 1024)
+            {
+                error = "the server sent a fast-path frame with an implausible length";
+                return false;
+            }
+            size_t bodyLength = total - headerLength;
+            payload.resize(bodyLength);
+            if (bodyLength > 0 && !readExact(payload.data(), bodyLength))
+            {
+                error = "the connection dropped while reading a fast-path frame";
+                return false;
+            }
+            return true;
+        }
+
         bool Connection::SendFramed(const Bytes& mcsPdu, std::string& error)
         {
             Bytes frame = FrameX224Data(mcsPdu);

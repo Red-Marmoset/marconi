@@ -10,6 +10,7 @@
 
 #include <MarconiCore/Net/ProtocolChoice.h>
 #include <MarconiCore/Net/WakeOnLan.h>
+#include <MarconiCore/Rdp/Client.h>
 #include <MarconiCore/Text.h>
 #include <MarconiCore/Wire/WireClient.h>
 
@@ -48,6 +49,10 @@ namespace MarconiUI
         if (address.protocol == Marconi::Protocol::Marconi)
         {
             ConnectMarconi(Marconi::EffectivePort(address));
+        }
+        else if (address.protocol == Marconi::Protocol::Rdp)
+        {
+            ConnectRdp(Marconi::EffectivePort(address));
         }
         else if (m_options.sshTunnel)
         {
@@ -132,6 +137,20 @@ namespace MarconiUI
         return *m_wire;
     }
 
+    Marconi::Rdp::Client& ViewerFrame::EnsureRdpClient()
+    {
+        if (m_rdp == nullptr)
+        {
+            Marconi::SessionListener& listener = *this;
+            std::unique_ptr<Marconi::Rdp::Client> client = std::make_unique<Marconi::Rdp::Client>(listener);
+            m_rdp = client.get();
+            m_session = std::move(client);
+            m_canvas->SetSession(m_session.get());
+            m_clipboard.SetSession(m_session.get());
+        }
+        return *m_rdp;
+    }
+
     void ViewerFrame::ConnectMarconi(uint16_t port)
     {
         m_port = port;
@@ -148,6 +167,31 @@ namespace MarconiUI
         options.clientName = "Marconi";
         options.trustedCertificateSha256 = m_options.trustedCertificateSha256;
         EnsureWireClient().Connect(options);
+    }
+
+    void ViewerFrame::ConnectRdp(uint16_t port)
+    {
+        m_port = port;
+        m_reconnect = [this]() { ConnectRdp(m_port); };
+        m_clipboard.Reset();
+        Marconi::Address shown = m_options.address;
+        shown.port = port;
+        shown.protocol = Marconi::Protocol::Rdp;
+        SetStatusText("Connecting to " + wxString::FromUTF8(Marconi::FormatAddress(shown)) + "...");
+        Marconi::Rdp::ClientOptions options;
+        options.host = m_options.address.host;
+        options.port = port;
+        options.user = m_options.credentials.username;
+        options.password = m_options.credentials.password;
+        options.clientName = "Marconi";
+        options.trustedCertificateSha256 = m_options.trustedCertificateSha256;
+        // Ask the server for a desktop the size of our window (clamped to something sensible), since RDP sessions
+        // are created at the size the client requests.
+        wxSize size = GetClientSize();
+        auto clamp = [](int value, int low, int high) { return value < low ? low : value > high ? high : value; };
+        options.width = static_cast<uint16_t>(clamp(size.GetWidth() > 0 ? size.GetWidth() : 1280, 640, 4096));
+        options.height = static_cast<uint16_t>(clamp(size.GetHeight() > 0 ? size.GetHeight() : 800, 480, 2048));
+        EnsureRdpClient().Connect(options);
     }
 
     void ViewerFrame::StartProbe()

@@ -155,6 +155,43 @@ namespace Marconi
             return out;
         }
 
+        std::vector<Bytes> PointerEvents(uint8_t mask, uint8_t previousMask, uint16_t x, uint16_t y)
+        {
+            // VNC-style button mask bits, and RDP's one wheel notch as a signed 8-bit rotation.
+            constexpr uint8_t kMaskLeft = 0x01;
+            constexpr uint8_t kMaskMiddle = 0x02;
+            constexpr uint8_t kMaskRight = 0x04;
+            constexpr uint8_t kMaskWheelUp = 0x08;
+            constexpr uint8_t kMaskWheelDown = 0x10;
+            constexpr uint16_t kWheelNotch = 0x0078;         // +120, scroll up
+            constexpr uint16_t kWheelNotchNegative = 0x0088; // -120 in two's complement, scroll down
+
+            std::vector<Bytes> events;
+            events.push_back(MouseEvent(kPtrMove, x, y));
+
+            const uint8_t changed = static_cast<uint8_t>(mask ^ previousMask);
+            auto button = [&](uint8_t maskBit, uint16_t ptrFlag) {
+                if (changed & maskBit)
+                {
+                    uint16_t flags = static_cast<uint16_t>(ptrFlag | ((mask & maskBit) ? kPtrDown : 0));
+                    events.push_back(MouseEvent(flags, x, y));
+                }
+            };
+            button(kMaskLeft, kPtrButton1);
+            button(kMaskMiddle, kPtrButton3);
+            button(kMaskRight, kPtrButton2);
+
+            if ((changed & kMaskWheelUp) && (mask & kMaskWheelUp))
+            {
+                events.push_back(MouseEvent(kPtrWheel | kWheelNotch, x, y));
+            }
+            if ((changed & kMaskWheelDown) && (mask & kMaskWheelDown))
+            {
+                events.push_back(MouseEvent(kPtrWheel | kPtrWheelNegative | kWheelNotchNegative, x, y));
+            }
+            return events;
+        }
+
         Bytes BuildInputPdu(uint32_t shareId, uint16_t source, const std::vector<Bytes>& events)
         {
             Bytes body;

@@ -42,6 +42,10 @@ namespace Marconi
     {
         class Client;
     }
+    namespace Rdp
+    {
+        class Client;
+    }
 } // namespace Marconi
 
 namespace MarconiUI
@@ -129,10 +133,12 @@ namespace MarconiUI
         void HandleProbe(const std::vector<Marconi::Net::ProbeResult>& results);
         void ConnectVnc(uint16_t port);
         void ConnectMarconi(uint16_t port);
+        void ConnectRdp(uint16_t port);
         // The VNC connection object, made on the first VNC connect and kept for the window's life (reconnects reuse
         // it); m_session points at it afterwards.
         Marconi::Rfb::Client& EnsureRfbClient();
         Marconi::Wire::Client& EnsureWireClient();
+        Marconi::Rdp::Client& EnsureRdpClient();
         void RememberDetected(const wxString& detected);
         void HandleConnected(const Marconi::Rfb::ServerInit& serverInit);
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
@@ -193,6 +199,7 @@ namespace MarconiUI
         std::unique_ptr<Marconi::RemoteSession> m_session;
         Marconi::Rfb::Client* m_rfb = nullptr;
         Marconi::Wire::Client* m_wire = nullptr;
+        Marconi::Rdp::Client* m_rdp = nullptr;
         std::function<void()> m_reconnect; // reconnects with the protocol this window is using (VNC or Marconi)
         ClipboardSync m_clipboard;
         VncCanvas* m_canvas = nullptr;

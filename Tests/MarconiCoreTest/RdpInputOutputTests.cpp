@@ -58,6 +58,36 @@ namespace MarconiTest
             CHECK(U16(leftDown, 6) == (0x8000 | 0x1000));
         });
 
+        RunTest("Pointer events translate a VNC button mask into moves, clicks and wheel notches", []() {
+            // No buttons: just a move carrying the position.
+            std::vector<Rdp::Bytes> move = Rdp::PointerEvents(0, 0, 50, 60);
+            CHECK(move.size() == 1);
+            CHECK(U16(move[0], 6) == Rdp::kPtrMove && U16(move[0], 8) == 50 && U16(move[0], 10) == 60);
+
+            // Pressing the left button: a move, then a left-button-down.
+            std::vector<Rdp::Bytes> leftDown = Rdp::PointerEvents(0x01, 0x00, 1, 2);
+            CHECK(leftDown.size() == 2);
+            CHECK(U16(leftDown[1], 6) == (Rdp::kPtrDown | Rdp::kPtrButton1));
+
+            // Releasing it (mask goes back to 0): a move, then a left-button-up (no down flag).
+            std::vector<Rdp::Bytes> leftUp = Rdp::PointerEvents(0x00, 0x01, 1, 2);
+            CHECK(leftUp.size() == 2 && U16(leftUp[1], 6) == Rdp::kPtrButton1);
+
+            // Right is RDP button 2, middle is button 3 (VNC orders them left, middle, right).
+            CHECK(U16(Rdp::PointerEvents(0x04, 0x00, 0, 0)[1], 6) == (Rdp::kPtrDown | Rdp::kPtrButton2));
+            CHECK(U16(Rdp::PointerEvents(0x02, 0x00, 0, 0)[1], 6) == (Rdp::kPtrDown | Rdp::kPtrButton3));
+
+            // A wheel-up bit newly set gives one positive notch; nothing when it clears again.
+            std::vector<Rdp::Bytes> wheelUp = Rdp::PointerEvents(0x08, 0x00, 0, 0);
+            CHECK(wheelUp.size() == 2 && U16(wheelUp[1], 6) == (Rdp::kPtrWheel | 0x0078));
+            CHECK(Rdp::PointerEvents(0x00, 0x08, 0, 0).size() == 1); // wheel bit clearing is not an event
+            std::vector<Rdp::Bytes> wheelDown = Rdp::PointerEvents(0x10, 0x00, 0, 0);
+            CHECK(U16(wheelDown[1], 6) == (Rdp::kPtrWheel | Rdp::kPtrWheelNegative | 0x0088));
+
+            // An unchanged mask with a new position is just a move.
+            CHECK(Rdp::PointerEvents(0x01, 0x01, 9, 9).size() == 1);
+        });
+
         RunTest("The input PDU wraps events in a Share Data PDU of type Input", []() {
             std::vector<Rdp::Bytes> events = {Rdp::MouseEvent(Rdp::kPtrMove, 1, 2),
                                               Rdp::ScancodeEvent(Rdp::KeysymToScancode('x'), true)};

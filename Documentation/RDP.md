@@ -51,8 +51,9 @@ milestone 1.
 ## Already here
 
 - The probe recognises an RDP server (sends an X.224 Connection Request, looks for a Connection Confirm) and the
-  protocol chooser reports it; `rdp://host` parses; `Protocol::Rdp` and port 3389 exist. Today the viewer then says
-  "recognised, not supported yet". These stay and become the entry point.
+  protocol chooser reports it; `rdp://host` parses; `Protocol::Rdp` and port 3389 exist. `rdp://host` now connects
+  through `Rdp/Client` (below); automatic protocol detection still prefers VNC and Marconi, so an RDP server is
+  reached by an explicit `rdp://` address.
 - The engine Crypto module has AES-128, DES, MD4, MD5, RC4, SHA-1, SHA-256, HMAC-MD5, HMAC-SHA256,
   Diffie-Hellman, secure random, a big-integer modpow, and a TLS client (`Crypto::TlsClient`) on mbedTLS.
   `Net::TlsStream` wraps it over any byte link (a socket or an SSH tunnel), which RDP reuses. That is every hash
@@ -61,11 +62,21 @@ milestone 1.
   `Rdp/Ntlm`, `Rdp/NtlmSeal`, `Rdp/CredSsp` and `Rdp/CredSspExchange` (the NLA login), and `Rdp/Connect` which
   ties them together over a real socket: negotiate, TLS, then CredSSP. The `--rdp-check` command runs this against
   a real server. Verified against xrdp through the TLS path (it chose TLS 1.3, no NLA); the NLA login is pinned by
-  the NTLMv2 vectors and a mirror-server test, and needs a Windows server to confirm end to end. Not yet wired into
-  the viewer, which still says RDP is recognised but not supported.
+  the NTLMv2 vectors and a mirror-server test, and needs a Windows server to confirm end to end.
+- Milestone 3: `Rdp/ClientData`, `Rdp/Mcs`, `Rdp/Pdu` and `Rdp/Sequence` carry the MCS connection sequence from
+  Connect-Initial through the capability exchange to the finalisation PDUs; `Connection::Activate` drives it to the
+  point where the server starts sending output.
 - Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
-  (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
-  specification; it has nothing to decode until milestones 2 and 3 bring a session up.
+  (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels; `Rdp/Output` parses both slow-path and
+  fast-path bitmap update PDUs into rectangles.
+- Milestone 5's input: `Rdp/Input` maps X11 keysyms to set-1 scancodes and builds the scancode, Unicode and mouse
+  input PDUs.
+- Milestones 4 and 5 are wired together and into the viewer: `Rdp/Client` is a `RemoteSession` that runs the
+  connection sequence on a worker thread, then a live loop that decodes the server's bitmap updates into the
+  `Framebuffer` and sends keyboard and mouse input back. The viewer connects to `rdp://host` through it, exactly as
+  it does for VNC and the Marconi protocol. The server's own pointer image (milestone 4's cursor) and the clipboard
+  (milestone 6) are not drawn or carried yet. Needs a real Windows server to confirm drawing and input end to end,
+  since no RDP server in the dev container produces output.
 
 ## What RDP needs that VNC didn't
 

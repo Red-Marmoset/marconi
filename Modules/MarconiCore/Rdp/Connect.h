@@ -64,6 +64,29 @@ namespace Marconi
             bool Activate(uint16_t width, uint16_t height, const std::string& clientName, const LogonInfo& logon,
                           std::string& error);
 
+            // The channels and share id settled during Activate(), for the live operation that follows.
+            uint16_t UserChannel() const { return m_userChannelId; }
+            uint16_t IoChannel() const { return m_ioChannelId; }
+            uint32_t ShareId() const { return m_outcome.shareId; }
+
+            // Switches the socket to blocking reads for the live output loop. Activate() uses a timeout while the
+            // sequence is in flight; once output starts the loop blocks until something arrives (or Shutdown()).
+            void UseBlockingReads();
+
+            // Sends a Share PDU (already wrapped by BuildInputPdu / WrapShareData / the finalisation builders) on
+            // the I/O channel, inside a Send Data Request. False with `error` if the write failed.
+            bool SendOnIoChannel(const Bytes& sharePdu, std::string& error);
+
+            // Reads the next unit of server output. `fastPath` tells the caller how to read `payload`:
+            //   true  -> a fast-path update payload (everything after the fast-path header): ParseFastPathUpdates.
+            //   false -> a slow-path Send Data payload (a Share PDU) for the I/O channel, or empty when the frame
+            //            wasn't a Send Data Indication for us (the caller loops again).
+            // False with `error` when the stream ends or a frame is malformed.
+            bool ReadOutput(Bytes& payload, bool& fastPath, std::string& error);
+
+            // Unblocks a blocking ReadOutput by shutting the socket down; the connection is finished afterwards.
+            void Shutdown();
+
         private:
             bool SendFramed(const Bytes& mcsPdu, std::string& error);
             bool ReadFramed(Bytes& mcsPdu, std::string& error);
