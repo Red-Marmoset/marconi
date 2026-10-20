@@ -37,6 +37,7 @@ namespace Test
         MarconiTest::RunRdpBitmapTests();
         MarconiTest::RunRdpNtlmTests();
         MarconiTest::RunRdpCredSspTests();
+        MarconiTest::RunRdpCredSspExchangeTests();
 
         printf("\nMarconiCoreTest: %d passed, %d failed\n", MarconiTest::g_passed, MarconiTest::g_failed);
         return MarconiTest::g_failed;
