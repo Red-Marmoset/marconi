@@ -19,9 +19,16 @@ namespace Marconi
             std::string serverVersion; // Marconi Server's version string, for the Welcome message
 
             // The access password, hashed by HashPassword (empty = no password set, so any viewer is let in). The
-            // viewer sends the plain password at login and the server checks it against this. It travels inside the
-            // encrypted connection once that exists; until then it is not yet protected on the wire.
+            // viewer sends the plain password at login and the server checks it against this, inside the encrypted
+            // connection.
             std::string passwordHash;
+
+            // The server's TLS identity, as PEM text: the certificate it presents and its private key. Every
+            // connection is encrypted with it, and the client pins its fingerprint on first use. Empty means the
+            // listener makes a fresh self-signed identity when it starts (its fingerprint then changes each run, so
+            // a lasting server saves and reloads one).
+            std::string certificatePem;
+            std::string privateKeyPem;
         };
     } // namespace Server
 } // namespace Marconi

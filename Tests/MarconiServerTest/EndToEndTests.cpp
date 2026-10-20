@@ -61,6 +61,13 @@ namespace MarconiServerTest
             CHECK(clientListener.serverInit.width == 8 && clientListener.serverInit.height == 8);
             CHECK(client.IsConnected());
 
+            // The connection is encrypted: the client ran the TLS handshake against the server's self-signed
+            // identity, and since nothing was pinned it asked the listener about the certificate exactly once and
+            // trusted it (RecordingClientListener's default). The fingerprint it saw is the one the listener holds.
+            CHECK(client.IsEncrypted());
+            CHECK(clientListener.certificateQuestions == 1);
+            CHECK(!clientListener.lastCertificateSha256.empty());
+
             // Wait for at least one picture update, then check the framebuffer holds the test pattern. The top-right
             // pixel (column 7, row 0) is off the moving bar: the gradient's red corner, whatever frame it is.
             CHECK(clientListener.WaitFor([&]() { return clientListener.updates >= 1; }));

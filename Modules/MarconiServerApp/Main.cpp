@@ -11,6 +11,8 @@
 #include <MarconiServerCore/SystemScreen.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
+#include <Crypto/TlsServer.h>
+
 #include <memory>
 
 #include <Log/Log.h>
@@ -18,7 +20,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 #include <string>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 namespace
 {
@@ -34,7 +42,90 @@ namespace
         printf("  --password TEXT       require this access password (for testing; it shows in process lists)\n");
         printf("  --password-hash HASH  require the password behind this hash (from --make-hash)\n");
         printf("  --make-hash TEXT      print the hash of a password and exit (store it, not the password)\n");
+        printf("  --cert-file PATH      load the server's certificate from PATH (made on first run with --key-file)\n");
+        printf("  --key-file PATH       load the server's private key from PATH (made on first run with --cert-file)\n");
         printf("  --help                show this\n");
+        printf("\nWithout --cert-file/--key-file the server makes a fresh certificate each run, so viewers are\n");
+        printf("asked to trust it again every time. Point both at files to keep one identity across restarts.\n");
+    }
+
+    // Reads a whole file into `out`. False if it can't be opened (for a cert/key pair, that means "make a new one").
+    bool ReadWholeFile(const std::string& path, std::string& out)
+    {
+        std::ifstream file(path, std::ios::binary);
+        if (!file)
+        {
+            return false;
+        }
+        std::ostringstream contents;
+        contents << file.rdbuf();
+        out = contents.str();
+        return true;
+    }
+
+    // Writes `contents` to `path`. On POSIX a private key is written owner-only, so it isn't left world-readable.
+    bool WriteFile(const std::string& path, const std::string& contents, bool privateKey)
+    {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        if (!file)
+        {
+            return false;
+        }
+        file << contents;
+        file.close();
+        if (!file)
+        {
+            return false;
+        }
+#ifndef _WIN32
+        if (privateKey)
+        {
+            chmod(path.c_str(), S_IRUSR | S_IWUSR); // 0600
+        }
+#else
+        (void)privateKey;
+#endif
+        return true;
+    }
+
+    // Puts a certificate and key into `settings`. If both files already exist, loads them; if neither does, makes a
+    // fresh self-signed identity and saves it so the next run reuses it. False (with a message) on a real problem,
+    // like one file present without the other, or a key that can't be written.
+    bool LoadOrCreateIdentity(const std::string& certPath, const std::string& keyPath, const std::string& name,
+                              Marconi::Server::Settings& settings)
+    {
+        std::string cert;
+        std::string key;
+        bool haveCert = ReadWholeFile(certPath, cert);
+        bool haveKey = ReadWholeFile(keyPath, key);
+        if (haveCert && haveKey)
+        {
+            settings.certificatePem = cert;
+            settings.privateKeyPem = key;
+            return true;
+        }
+        if (haveCert != haveKey)
+        {
+            printf("Only one of the certificate and key files exists; move or delete it so a matching pair can be "
+                   "made.\n");
+            return false;
+        }
+
+        Crypto::TlsIdentity identity;
+        std::string error;
+        if (!Crypto::MakeSelfSignedIdentity(name.empty() ? "Marconi Server" : name, 3650, identity, error))
+        {
+            printf("Could not make the server's certificate: %s\n", error.c_str());
+            return false;
+        }
+        if (!WriteFile(certPath, identity.certificatePem, false) || !WriteFile(keyPath, identity.privateKeyPem, true))
+        {
+            printf("Could not save the certificate or key.\n");
+            return false;
+        }
+        settings.certificatePem = identity.certificatePem;
+        settings.privateKeyPem = identity.privateKeyPem;
+        return true;
     }
 
     // Reads the value after a flag, or prints an error and returns false.
@@ -57,6 +148,8 @@ int main(int argc, char** argv)
     int width = 1280;
     int height = 720;
     bool forceTestPattern = false;
+    std::string certFile;
+    std::string keyFile;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -118,6 +211,20 @@ int main(int argc, char** argv)
             printf("%s\n", hash.c_str());
             return 0;
         }
+        else if (arg == "--cert-file")
+        {
+            if (!TakeValue(argc, argv, i, "--cert-file", certFile))
+            {
+                return 2;
+            }
+        }
+        else if (arg == "--key-file")
+        {
+            if (!TakeValue(argc, argv, i, "--key-file", keyFile))
+            {
+                return 2;
+            }
+        }
         else if (arg == "--size")
         {
             std::string value;
@@ -175,6 +282,21 @@ int main(int argc, char** argv)
         what = "this computer's screen";
     }
 
+    // A kept identity needs both files named; a fresh-each-run identity needs neither. One without the other is a
+    // mistake worth catching before the server starts.
+    if (certFile.empty() != keyFile.empty())
+    {
+        printf("Give both --cert-file and --key-file, or neither.\n");
+        return 2;
+    }
+    if (!certFile.empty())
+    {
+        if (!LoadOrCreateIdentity(certFile, keyFile, settings.serverName, settings))
+        {
+            return 1;
+        }
+    }
+
     Marconi::Server::Listener listener(*screen, *input, settings);
     std::string error;
     if (!listener.Start(error))
@@ -184,6 +306,7 @@ int main(int argc, char** argv)
     }
     printf("Marconi Server %s serving %s on port %u. Connect with marconi://this-computer\n",
            Marconi::GetVersionString(), what, static_cast<unsigned>(listener.GetPort()));
+    printf("Certificate fingerprint: %s\n", listener.GetCertificateFingerprint().c_str());
     if (settings.passwordHash.empty())
     {
         printf("No password set: any viewer that reaches this port can connect. Use --password to require one.\n");

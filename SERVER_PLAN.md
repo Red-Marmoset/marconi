@@ -49,9 +49,18 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
 - **The access password** (the owner's login choice, part of 1.5): the server stores it hashed (PBKDF2-HMAC-SHA256
   with a random salt, on the engine's HMAC-SHA256), checks the viewer's login against it, and locks login out after
   repeated wrong tries; the server program takes `--password`, `--password-hash` and `--make-hash`. Tested, and run
-  against the live binary. What's left of 1.5 is the encryption (a TLS server in the engine) that wraps this so the
-  password and picture are private on the wire; the password travels in the clear until then.
-- **Everything so far is merged into `main`.** `main` now needs the engine at d997dde or newer.
+  against the live binary.
+- **Encryption (1.5) is done.** The engine's `Crypto` module gained a TLS server (`Crypto::TlsServer`) and
+  self-signed identities (`MakeSelfSignedIdentity`, `CertificateFingerprint`), on the same mbedTLS the client's
+  `TlsClient` already used. The server sends the four `MRCN` bytes in the clear (so a probe can still spot it), then
+  upgrades the connection to TLS before any protocol message; the password check and the whole picture now ride
+  inside TLS. The client pins the server's certificate: a fingerprint it already knows connects silently, an unknown
+  one goes through the existing "trust this certificate?" dialog. The server makes a self-signed certificate; with
+  `--cert-file`/`--key-file` it keeps one identity across restarts (the key is written owner-only), so viewers are
+  not asked to trust it again each time, and it prints the fingerprint on start. Tested in `CryptoTest` (server and
+  client talk, pinning matches, a broken identity fails) and `MarconiServerTest` (the real client connects
+  encrypted; a pinned fingerprint skips the question; a wrong pin that is declined is turned away).
+- **Everything so far is merged into `main`.** `main` now needs the engine at e0cc258 or newer (for `Crypto::TlsServer`).
 
 Decisions taken as defaults under "get it done" (change any by editing section 1): port **1895**, `marconi://`,
 magic bytes `MRCN`, `Wire` namespace, one version for client and server. The server sends the four magic bytes
@@ -62,8 +71,6 @@ and TLS slots in later; the access password moved from 1.4 into 1.5, because it 
 
 Still to do in Phase 1, and why each waits:
 
-- **1.5 TLS and the password** needs the login-method decision below (section 1, point 4) and additions to the
-  engine's `Crypto` module (a TLS server, SHA-256, HMAC, PBKDF2), which are committed to the engine repo.
 - **1.6 screen capture** and **1.7 input injection** are Windows-only (Desktop Duplication, `SendInput`); they
   can't be built or tested in the Linux cloud container, so they need a Windows machine.
 - **1.9** the tray icon and the version/changelog bump wait until the server captures a real screen, so a

@@ -252,12 +252,9 @@ namespace Marconi
 
         void Session::Run()
         {
-            // The server speaks first: the four magic bytes, so a probe can tell a Marconi server from anything
-            // else on the port before the handshake (and the TLS handshake, once that exists) begins.
-            if (!m_transport.Write(Wire::kMagic, sizeof(Wire::kMagic)))
-            {
-                return;
-            }
+            // The transport is already encrypted and past the four-byte marker (the listener writes that marker on
+            // the raw socket and runs the TLS handshake before handing the session the TLS stream). The session is
+            // pure protocol from here.
             Wire::MessageReader reader(m_transport);
             try
             {

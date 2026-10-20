@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// The server over a real loopback socket: a client connects, handshakes and gets a frame through the Listener and
-// the shared socket transport
+// The server over a real loopback socket: certificate pinning. A viewer that already knows the server's fingerprint
+// connects without being asked about it; a viewer that pins the wrong one, and declines the question it falls back
+// to, never gets in.
 
 #include "TestSupport.h"
 
-#include <MarconiCore/Net/Socket.h>
+#include <MarconiCore/Wire/WireClient.h>
 #include <MarconiServerCore/Listener.h>
-#include <MarconiCore/Wire/WireChannel.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
 #include <thread>
@@ -15,9 +15,29 @@ namespace MarconiServerTest
 {
     using namespace Marconi;
 
+    namespace
+    {
+        // Turns a lowercase-hex fingerprint (what the listener shows) back into the raw bytes the client pins.
+        std::vector<uint8_t> FromHex(const std::string& hex)
+        {
+            auto nibble = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return 0;
+            };
+            std::vector<uint8_t> bytes;
+            for (size_t i = 0; i + 1 < hex.size(); i += 2)
+            {
+                bytes.push_back(static_cast<uint8_t>((nibble(hex[i]) << 4) | nibble(hex[i + 1])));
+            }
+            return bytes;
+        }
+    } // namespace
+
     void RunListenerTests()
     {
-        RunTest("A viewer connects over a loopback socket and completes the handshake", []() {
+        RunTest("A viewer that pins the server's fingerprint connects without being asked about it", []() {
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
@@ -32,44 +52,72 @@ namespace MarconiServerTest
             uint16_t port = listener.GetPort();
             CHECK(port != 0);
 
+            // Start() generated the self-signed identity, so the fingerprint is known before anyone connects.
+            std::string fingerprint = listener.GetCertificateFingerprint();
+            CHECK(!fingerprint.empty());
+
             std::thread serverThread([&]() { listener.ServeOne(5000); });
 
-            Net::Socket clientSocket;
-            CHECK(clientSocket.Connect("127.0.0.1", port, 5000, error));
-            Wire::SocketTransport clientTransport(clientSocket);
-            ReadMagic(clientTransport); // the server's four-byte preamble
-            Wire::MessageReader reader(clientTransport);
+            RecordingClientListener clientListener;
+            Wire::Client client(clientListener);
+            Wire::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = port;
+            options.clientName = "socket viewer";
+            options.trustedCertificateSha256 = FromHex(fingerprint); // pin what the listener presents
+            client.Connect(options);
 
-            Wire::Hello hello;
-            hello.clientName = "socket viewer";
-            Wire::Bytes helloBytes = hello.Encode();
-            CHECK(clientTransport.Write(helloBytes.data(), helloBytes.size()));
+            CHECK(clientListener.WaitFor([&]() { return clientListener.connected; }));
+            CHECK(client.IsConnected());
+            CHECK(client.IsEncrypted());
+            // The pin matched, so the client trusted the certificate itself and never asked the listener.
+            CHECK(clientListener.certificateQuestions == 0);
 
-            Wire::Bytes welcomeBytes = reader.Next();
-            Wire::Reader welcomeReader(welcomeBytes);
-            CHECK(Wire::ReadType(welcomeReader) == Wire::Type::Welcome);
-            Wire::Welcome welcome = Wire::Welcome::Decode(welcomeReader);
-            CHECK(welcome.serverName == "Socket PC");
-            CHECK(welcome.displays.size() == 1 && welcome.displays[0].width == 8);
+            // A full frame still follows, proving the handshake completed end to end.
+            CHECK(clientListener.WaitFor([&]() { return clientListener.updates >= 1; }));
 
-            Wire::Bytes loginBytes = Wire::Login{""}.Encode();
-            CHECK(clientTransport.Write(loginBytes.data(), loginBytes.size()));
-            Wire::Bytes resultBytes = reader.Next();
-            Wire::Reader resultReader(resultBytes);
-            CHECK(Wire::ReadType(resultReader) == Wire::Type::LoginResult);
-            CHECK(Wire::LoginResult::Decode(resultReader).status == Wire::LoginResult::Status::Ok);
-
-            // At least one full frame follows.
-            Wire::Bytes frameBytes = reader.Next();
-            Wire::Reader frameReader(frameBytes);
-            CHECK(Wire::ReadType(frameReader) == Wire::Type::FrameBegin);
-
-            // Close the client; the server's session ends and ServeOne returns.
-            clientSocket.Shutdown();
-            clientSocket.Close();
+            client.Disconnect();
+            CHECK(clientListener.WaitFor([&]() { return clientListener.disconnected; }));
             listener.Stop();
             serverThread.join();
-            CHECK(true);
+        });
+
+        RunTest("A viewer that pins the wrong fingerprint and declines the question is turned away", []() {
+            Server::TestPatternScreen screen(8, 8);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.port = 0;
+            settings.serverName = "Socket PC";
+            settings.serverVersion = "0.6.0.0";
+            Server::Listener listener(screen, input, settings);
+            listener.SetFrameIntervalMs(1);
+
+            std::string error;
+            CHECK(listener.Start(error, "127.0.0.1"));
+            uint16_t port = listener.GetPort();
+
+            std::thread serverThread([&]() { listener.ServeOne(5000); });
+
+            RecordingClientListener clientListener;
+            clientListener.trustCertificate = false; // refuse when asked about an unknown certificate
+            Wire::Client client(clientListener);
+            Wire::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = port;
+            options.clientName = "socket viewer";
+            options.trustedCertificateSha256 = std::vector<uint8_t>(32, 0x00); // a fingerprint the server won't match
+            client.Connect(options);
+
+            // The pin didn't match, so the client asked; the answer was no, so the handshake fails and the client
+            // never reports a connection.
+            CHECK(clientListener.WaitFor([&]() { return clientListener.disconnected; }));
+            CHECK(clientListener.certificateQuestions == 1);
+            CHECK(!clientListener.connected);
+            CHECK(!client.IsConnected());
+
+            client.Disconnect();
+            listener.Stop();
+            serverThread.join();
         });
     }
 } // namespace MarconiServerTest

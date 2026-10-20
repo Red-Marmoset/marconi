@@ -3,6 +3,6 @@
     "version": "0.1.0",
     "type": "console",
     "description": "The Marconi server program: parses the command line and runs the server core. A console build for now; the tray icon and the Windows service come later.",
-    "dependencies": ["MarconiServerCore", "MarconiCore", "Platform", "Log"],
+    "dependencies": ["MarconiServerCore", "MarconiCore", "Crypto", "Platform", "Log"],
     "platforms": ["Windows", "Linux", "macOS"]
 }

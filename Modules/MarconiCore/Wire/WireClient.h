@@ -29,6 +29,9 @@ namespace Marconi
             std::string clientName; // shown in the server's log and its "someone connected" notice
             int connectTimeoutMs = 10000;
             uint64_t capabilities = Capability::MultipleDisplays; // what this client offers; grows with each phase
+            // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
+            // before). Any other goes to the listener's OnUntrustedCertificate.
+            std::vector<uint8_t> trustedCertificateSha256;
         };
 
         // Runs the protocol on a background thread. The listener's callbacks arrive on that thread; a UI listener
@@ -82,9 +85,12 @@ namespace Marconi
             std::thread m_thread;
             Net::Socket m_socket;
             std::mutex m_writeMutex;       // serialises whole messages from the UI and worker threads
-            std::unique_ptr<Transport> m_transport; // valid while connected; guarded by m_writeMutex for Send
+            std::unique_ptr<Net::TlsStream> m_tls;   // the encrypted stream once the handshake succeeded
+            std::unique_ptr<Transport> m_transport;  // over the TLS stream; guarded by m_writeMutex for Send
             std::atomic<bool> m_connected{false};
             std::atomic<bool> m_encrypted{false};
+            mutable std::mutex m_nameMutex;
+            std::string m_encryptionName; // guarded by m_nameMutex
             std::atomic<bool> m_stopping{false};
             std::atomic<bool> m_supportsResize{false};
 
