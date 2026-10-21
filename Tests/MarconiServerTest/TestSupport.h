@@ -94,6 +94,7 @@ namespace MarconiServerTest
         void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
         void OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens) override;
         void OnDisconnected(const Marconi::DisconnectInfo& info) override;
+        bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
 
         bool WaitFor(const std::function<bool()>& predicate, int timeoutMs = 5000);
 
@@ -105,13 +106,14 @@ namespace MarconiServerTest
         Marconi::Rfb::ServerInit serverInit;
         int updates = 0;
         int screenLayouts = 0;
+        int certificateQuestions = 0;              // how many times the server's certificate was queried
+        std::vector<uint8_t> lastCertificateSha256; // the fingerprint last asked about
+        bool trustCertificate = true;              // what OnUntrustedCertificate returns
     };
-
-    // Reads the four magic bytes a Marconi server sends on connect and checks they are "MRCN". Every viewer does
-    // this before reading any framed message.
-    void ReadMagic(Marconi::Wire::Transport& transport);
 
     void RunSessionTests();
     void RunListenerTests();
     void RunEndToEndTests();
+    void RunPasswordTests();
+    void RunIdentityTests();
 } // namespace MarconiServerTest

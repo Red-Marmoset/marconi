@@ -202,6 +202,29 @@ If you'd rather do it by hand, this is where everything lives:
 
 On macOS and Linux these files can only be read by your own account.
 
+## Sharing this computer (Marconi Server)
+
+Marconi can now also work the other way round. **Marconi Server** is a separate program that shares *this*
+computer, so someone using Marconi on another computer can see its screen and control it. You don't need any other
+VNC server.
+
+It's new and still being built, so for now you start it by hand (an installer, and a way to set it up from the
+Marconi window, are coming next):
+
+1. Start the server program. It puts a small icon in the system tray (near the clock). The first time, it asks you
+   to choose an access password — anyone connecting has to type it. You can leave it empty for no password, though a
+   password is a good idea.
+2. On the other computer, open Marconi and connect to `marconi://` followed by this computer's name or network
+   address (for example `marconi://office-pc`). The first time, Marconi shows you the server's identity and asks if
+   you trust it; after that it connects without asking, and warns you if the identity ever changes.
+3. The connection is always private: the screen and everything you type are encrypted.
+
+From the tray icon you can set or change the password, change the port the server listens on, and quit. The server
+keeps its settings and a log in a "marconi-server" folder in your user account.
+
+Right now the server shows this computer's actual screen on Windows; on macOS and Linux it shows a moving test
+picture for the moment, while the screen-sharing part for those systems is finished.
+
 ## Not available yet
 
 - **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.

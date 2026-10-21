@@ -48,6 +48,35 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
   using them on Windows and the test pattern elsewhere. They compile only on Windows, so they are a first cut
   that still needs a build and a run on a Windows machine; GDI stands in until Desktop Duplication (the video
   phase) replaces it.
+- **The access password** (the owner's login choice, part of 1.5): the server stores it hashed (PBKDF2-HMAC-SHA256
+  with a random salt, on the engine's HMAC-SHA256), checks the viewer's login against it, and locks login out after
+  repeated wrong tries; the server program takes `--password`, `--password-hash` and `--make-hash`. Tested, and run
+  against the live binary.
+- **Encryption (1.5) is done.** The engine's `Crypto` module gained a TLS server (`Crypto::TlsServer`) and
+  self-signed identities (`MakeSelfSignedIdentity`, `CertificateFingerprint`), on the same mbedTLS the client's
+  `TlsClient` already used. The server sends the four `MRCN` bytes in the clear (so a probe can still spot it), then
+  upgrades the connection to TLS before any protocol message; the password check and the whole picture now ride
+  inside TLS. The client pins the server's certificate: a fingerprint it already knows connects silently, an unknown
+  one goes through the existing "trust this certificate?" dialog. The server makes a self-signed certificate; with
+  `--cert-file`/`--key-file` it keeps one identity across restarts (the key is written owner-only), so viewers are
+  not asked to trust it again each time, and it prints the fingerprint on start. Tested in `CryptoTest` (server and
+  client talk, pinning matches, a broken identity fails) and `MarconiServerTest` (the real client connects
+  encrypted; a pinned fingerprint skips the question; a wrong pin that is declined is turned away).
+- **The tray app (1.9) is written.** `MarconiServerUI` (wxWidgets) runs the server core on a background thread and
+  puts an icon in the system tray with: a status line (what's being shared, the port, whether a password is set, a
+  short piece of the fingerprint), set/change password, change port, copy the full fingerprint, and quit. On first
+  run it asks for an access password (empty allowed). It keeps its settings, the TLS certificate and key, and its
+  logs under a per-user "marconi-server" folder, so the fingerprint stays the same across restarts. The shared
+  pieces moved into the core: `IdentityStore` (load-or-create the certificate and key, tested) and
+  `LoggingInputSink`. The console `MarconiServer` program stays as a headless way to run and test the same core.
+  Built and run on Linux under a virtual display (test-pattern mode): it makes its identity, starts listening, and
+  answers a client with the `MRCN` greeting. The Windows screen path still needs a run on a real Windows machine,
+  as 1.6/1.7 note.
+- **Version** is bumped to **0.6.0** with changelog and README entries for the server.
+- **Naming:** the tray project is `MarconiServerTray` (output `Build/MarconiServerTray`) so it doesn't clash with
+  the console `MarconiServer`. The installer phase decides the shipped program's name.
+- **Everything through 1.5 is merged into `main`; 1.9 is on the branch pending the owner's look.** `main` needs the
+  engine at e0cc258 or newer (for `Crypto::TlsServer`).
 
 Decisions taken as defaults under "get it done" (change any by editing section 1): port **1895**, `marconi://`,
 magic bytes `MRCN`, `Wire` namespace, one version for client and server. The server sends the four magic bytes
@@ -58,12 +87,9 @@ and TLS slots in later; the access password moved from 1.4 into 1.5, because it 
 
 Still to do in Phase 1, and why each waits:
 
-- **1.5 TLS and the password** needs the login-method decision below (section 1, point 4) and additions to the
-  engine's `Crypto` module (a TLS server, SHA-256, HMAC, PBKDF2), which are committed to the engine repo.
 - **1.6 screen capture** and **1.7 input injection** are Windows-only (Desktop Duplication, `SendInput`); they
-  can't be built or tested in the Linux cloud container, so they need a Windows machine.
-- **1.9** the tray icon and the version/changelog bump wait until the server captures a real screen, so a
-  release means something to a user.
+  can't be built or tested in the Linux cloud container, so they need a Windows machine. Until that run confirms the
+  real screen works, 0.6.0 is a version in the code, not yet a release the owner has cut.
 
 ## 1. Decisions needed from the owner
 

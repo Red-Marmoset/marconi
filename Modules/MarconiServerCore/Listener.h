@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "Auth.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Session.h"
@@ -45,12 +46,22 @@ namespace Marconi
 
             void SetFrameIntervalMs(int ms) { m_frameIntervalMs = ms; }
 
+            // The SHA-256 fingerprint of the certificate the server presents, as a lowercase hex string, so it can
+            // be shown to the person setting the server up. Empty before Start() or if the identity is bad.
+            const std::string& GetCertificateFingerprint() const { return m_fingerprint; }
+
         private:
+            // Makes sure there is a usable TLS identity (generating a self-signed one if the settings have none)
+            // and records its fingerprint. False (with `error`) if generation failed.
+            bool EnsureIdentity(std::string& error);
+
             ScreenSource& m_screen;
             InputSink& m_input;
             Settings m_settings;
+            Auth m_auth; // checks the password; shared across viewers so the lockout covers the whole server
             Net::Socket m_listenSocket;
             uint16_t m_port = 0;
+            std::string m_fingerprint; // the certificate's SHA-256, in hex, for display
             int m_frameIntervalMs = 16;
             std::atomic<bool> m_stop{false};
             std::atomic<Session*> m_current{nullptr}; // the live session, so Stop() can end it

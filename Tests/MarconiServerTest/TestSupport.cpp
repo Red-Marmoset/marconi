@@ -122,20 +122,13 @@ namespace MarconiServerTest
         changed.notify_all();
     }
 
-    void ReadMagic(Marconi::Wire::Transport& transport)
+    bool RecordingClientListener::OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate)
     {
-        uint8_t magic[4] = {};
-        size_t got = 0;
-        while (got < sizeof(magic))
-        {
-            ptrdiff_t n = transport.Read(magic + got, sizeof(magic) - got);
-            if (n <= 0)
-            {
-                break;
-            }
-            got += static_cast<size_t>(n);
-        }
-        CHECK(got == 4 && magic[0] == 'M' && magic[1] == 'R' && magic[2] == 'C' && magic[3] == 'N');
+        std::lock_guard<std::mutex> lock(mutex);
+        ++certificateQuestions;
+        lastCertificateSha256 = certificate.sha256;
+        changed.notify_all();
+        return trustCertificate;
     }
 
     bool RecordingClientListener::WaitFor(const std::function<bool()>& predicate, int timeoutMs)

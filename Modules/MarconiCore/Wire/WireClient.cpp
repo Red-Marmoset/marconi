@@ -3,6 +3,7 @@
 
 #include <MarconiCore/Wire/WireClient.h>
 
+#include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Wire/WireCompress.h>
 
 #include <Log/Log.h>
@@ -16,6 +17,18 @@ namespace Marconi
     {
         namespace
         {
+            // Carries the protocol over the TLS stream once the handshake succeeded.
+            class TlsStreamTransport : public Transport
+            {
+            public:
+                explicit TlsStreamTransport(Net::TlsStream& tls) : m_tls(tls) {}
+                ptrdiff_t Read(void* buffer, size_t length) override { return m_tls.Read(buffer, length); }
+                bool Write(const void* data, size_t length) override { return m_tls.Write(data, length); }
+
+            private:
+                Net::TlsStream& m_tls;
+            };
+
             // The whole desktop's size is the box that holds every display.
             void DesktopSize(const std::vector<Display>& displays, int& width, int& height)
             {
@@ -105,16 +118,13 @@ namespace Marconi
                 m_listener.OnDisconnected(info);
                 return;
             }
-            {
-                std::lock_guard<std::mutex> lock(m_writeMutex);
-                m_transport = std::make_unique<SocketTransport>(m_socket);
-            }
-            // The server sends the four magic bytes first; read and check them before anything else.
+            // The server sends the four magic bytes in the clear, before the TLS handshake, so read and check them
+            // straight off the socket first.
             uint8_t magic[sizeof(kMagic)] = {};
             size_t got = 0;
             while (got < sizeof(magic))
             {
-                ptrdiff_t n = m_transport->Read(magic + got, sizeof(magic) - got);
+                ptrdiff_t n = m_socket.Receive(magic + got, sizeof(magic) - got);
                 if (n <= 0)
                 {
                     break;
@@ -123,11 +133,45 @@ namespace Marconi
             }
             if (got != sizeof(magic) || std::memcmp(magic, kMagic, sizeof(magic)) != 0)
             {
-                std::lock_guard<std::mutex> lock(m_writeMutex);
-                m_transport.reset();
                 info.error = m_stopping ? "" : "This doesn't look like a Marconi server";
                 m_listener.OnDisconnected(info);
                 return;
+            }
+
+            // Upgrade the connection to TLS. The server's certificate is self-signed, so the trust decision is
+            // asked unless its fingerprint is the one the user accepted before (pinned).
+            Net::TlsOptions tlsOptions;
+            tlsOptions.hostName = options.host;
+            std::vector<uint8_t> pinned = options.trustedCertificateSha256;
+            tlsOptions.trustDecision = [this, pinned](const Net::TlsCertificate& certificate) {
+                if (!pinned.empty() && certificate.sha256 == pinned)
+                {
+                    return true;
+                }
+                return m_listener.OnUntrustedCertificate(certificate);
+            };
+            std::unique_ptr<Net::TlsStream> tls = Net::CreateTlsStream(m_socket, tlsOptions);
+            if (!tls)
+            {
+                info.error = "This build can't make encrypted connections";
+                m_listener.OnDisconnected(info);
+                return;
+            }
+            if (!tls->Handshake(error))
+            {
+                info.error = m_stopping ? "" : error;
+                m_listener.OnDisconnected(info);
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_nameMutex);
+                m_encryptionName = tls->GetProtocolName();
+            }
+            m_encrypted = true;
+            {
+                std::lock_guard<std::mutex> lock(m_writeMutex);
+                m_tls = std::move(tls);
+                m_transport = std::make_unique<TlsStreamTransport>(*m_tls);
             }
             MessageReader reader(*m_transport);
             try
@@ -136,7 +180,9 @@ namespace Marconi
                 {
                     std::lock_guard<std::mutex> lock(m_writeMutex);
                     m_transport.reset();
+                    m_tls.reset();
                     m_connected = false;
+                    m_encrypted = false;
                     m_listener.OnDisconnected(info);
                     return;
                 }
@@ -210,8 +256,10 @@ namespace Marconi
             {
                 std::lock_guard<std::mutex> lock(m_writeMutex);
                 m_transport.reset();
+                m_tls.reset();
             }
             m_connected = false;
+            m_encrypted = false;
             m_listener.OnDisconnected(info);
         }
 
@@ -432,7 +480,8 @@ namespace Marconi
 
         std::string Client::GetEncryptionName() const
         {
-            return m_encrypted.load() ? "TLS" : "";
+            std::lock_guard<std::mutex> lock(m_nameMutex);
+            return m_encryptionName;
         }
 
         std::chrono::steady_clock::duration Client::GetTimeSinceInput() const

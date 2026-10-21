@@ -5,6 +5,8 @@
 #include "TestSupport.h"
 
 #include <MarconiCore/Wire/WireCompress.h>
+#include <MarconiServerCore/Auth.h>
+#include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/Session.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
@@ -23,7 +25,8 @@ namespace MarconiServerTest
         public:
             explicit Viewer(Wire::Transport& transport) : m_reader(transport), m_transport(transport)
             {
-                ReadMagic(transport); // the server's four-byte preamble, before any framed message
+                // The in-memory session is pure protocol: no four-byte marker and no TLS (those belong to the
+                // socket connection the listener sets up). So the first message read is the server's Welcome.
             }
 
             void Send(const Wire::Bytes& framed) { m_transport.Write(framed.data(), framed.size()); }
@@ -152,6 +155,43 @@ namespace MarconiServerTest
             CHECK(screen.FrameCount() >= 1);
         });
 
+        RunTest("A server with a password accepts the right one and rejects the wrong one", []() {
+            Server::TestPatternScreen screen(4, 3);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.passwordHash = Server::HashPassword("letmein", 10000);
+            Server::Auth auth(settings.passwordHash);
+
+            auto attempt = [&](const std::string& password) {
+                Pipe clientToServer;
+                Pipe serverToClient;
+                PipeTransport serverTransport(clientToServer, serverToClient);
+                PipeTransport clientTransport(serverToClient, clientToServer);
+                Server::Session session(serverTransport, screen, input, settings, &auth);
+                session.SetFrameIntervalMs(1);
+                std::thread serverThread([&]() { session.Run(); });
+
+                Viewer viewer(clientTransport);
+                Wire::Bytes bytes;
+                Wire::Reader body(nullptr, 0);
+                viewer.Send(Wire::Hello{}.Encode());
+                CHECK(viewer.Next(bytes, body) == Wire::Type::Welcome);
+                Wire::Welcome::Decode(body);
+                viewer.Send(Wire::Login{password}.Encode());
+                CHECK(viewer.Next(bytes, body) == Wire::Type::LoginResult);
+                Wire::LoginResult::Status status = Wire::LoginResult::Decode(body).status;
+
+                session.Stop();
+                clientToServer.Close();
+                serverToClient.Close();
+                serverThread.join();
+                return status;
+            };
+
+            CHECK(attempt("letmein") == Wire::LoginResult::Status::Ok);
+            CHECK(attempt("wrong") == Wire::LoginResult::Status::WrongPassword);
+        });
+
         RunTest("A client that doesn't start with Hello is dropped", []() {
             Pipe clientToServer;
             Pipe serverToClient;
@@ -163,16 +203,14 @@ namespace MarconiServerTest
             Server::Session session(serverTransport, screen, input, Server::Settings{});
             std::thread serverThread([&]() { session.Run(); });
 
-            // The server still sends its four-byte preamble on connect; read it. Then send a Pointer instead of
-            // Hello: the server drops the connection without ever sending a Welcome.
-            ReadMagic(clientTransport);
+            // Send a Pointer instead of Hello: the server drops the connection without ever sending a Welcome.
             Wire::Bytes wrong = Wire::Pointer{}.Encode();
             clientTransport.Write(wrong.data(), wrong.size());
 
             serverThread.join(); // Run() returns on its own because the handshake was refused
             serverToClient.Close();
             uint8_t buffer[16];
-            CHECK(serverToClient.Read(buffer, sizeof(buffer)) == 0); // nothing after the preamble: no Welcome
+            CHECK(serverToClient.Read(buffer, sizeof(buffer)) == 0); // no Welcome: the server just closed
             CHECK(input.pointers.empty());                          // input before a successful handshake is never applied
         });
     }
