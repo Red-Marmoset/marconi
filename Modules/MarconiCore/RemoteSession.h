@@ -5,6 +5,7 @@
 #pragma once
 
 #include <MarconiCore/Net/SshTunnel.h>
+#include <MarconiCore/Performance.h>
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Rfb/ClipboardChannel.h>
 #include <MarconiCore/Rfb/Framebuffer.h>
@@ -45,6 +46,14 @@ namespace Marconi
         int requests = 0;
         int pointerEvents = 0;
         int keyEvents = 0;
+    };
+
+    // How the connection is doing, for the status bar.
+    struct ConnectionHealth
+    {
+        int roundTripMs = -1;   // the last measured round trip to the server; -1 before the first
+        int waitingMs = -1;     // how long the current ping has gone unanswered; -1 when none is outstanding
+        int sinceUpdateMs = -1; // how long since the last picture update arrived; -1 before the first
     };
 
     // Callbacks arrive on the connection thread. UI implementations should marshal to the UI thread.
@@ -134,6 +143,19 @@ namespace Marconi
 
         // Returns the counts so far and starts again from zero.
         virtual TrafficStats TakeTrafficStats() = 0;
+
+        // Measures the round trip: does nothing while a ping is unanswered or before the connection is up. The
+        // answer shows in GetHealth().
+        virtual void SendPing() {}
+        virtual ConnectionHealth GetHealth() const { return {}; }
+
+        // Timing of each picture update, where the protocol can tell (Marconi servers). The canvas reports each
+        // paint that showed new pixels through NotePainted, from the UI thread; GetPerformance summarises the
+        // last `windowMicros`. Protocols that can't time updates return false.
+        virtual void NotePainted() {}
+        virtual bool GetPerformance(int64_t /*windowMicros*/, PerformanceSnapshot& /*out*/) const { return false; }
+        // Writes a log line per update once it has been shown, and a summary every 10 seconds (--stats).
+        virtual void SetStatsLogging(bool /*enabled*/) {}
     };
 
     namespace Rfb

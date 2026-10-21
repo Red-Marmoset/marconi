@@ -40,8 +40,9 @@ namespace Marconi
                      screenError.c_str());
             m_pattern = std::make_unique<Server::TestPatternScreen>(1280, 720);
             m_loggingInput = std::make_unique<Server::LoggingInputSink>();
+            m_patternInput = std::make_unique<Server::PatternEchoInput>(*m_loggingInput, *m_pattern);
             m_screen = m_pattern.get();
-            m_input = m_loggingInput.get();
+            m_input = m_patternInput.get();
             m_servedDescription = "a test pattern";
         }
 

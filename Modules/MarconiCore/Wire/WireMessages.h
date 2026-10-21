@@ -34,17 +34,26 @@ namespace Marconi
 
         // What each end can do, agreed once in Hello (what the client offers) and Welcome (what the server will
         // use). A bit the other end doesn't set is a feature neither uses on this connection. Bits are never
-        // reused; a new feature takes the next free bit, so old and new builds still understand each other.
+        // reused; a new feature takes the next free bit, so old and new builds still understand each other. The
+        // values are 64-bit so bits 32 and up work.
         namespace Capability
         {
-            constexpr uint64_t Video = 1u << 0;            // H.264 (and later) video frames; Phase 4
-            constexpr uint64_t Datagram = 1u << 1;         // the UDP channel for video and input; Phase 5
-            constexpr uint64_t Clipboard = 1u << 2;        // clipboard text and images
-            constexpr uint64_t Files = 1u << 3;            // file transfer
-            constexpr uint64_t Gamepads = 1u << 4;         // forwarded game controllers; Phase 7
-            constexpr uint64_t MultipleDisplays = 1u << 5; // choose one of several displays
-            constexpr uint64_t ResizeDisplay = 1u << 6;    // ask the server to match its screen to the window
+            constexpr uint64_t Video = uint64_t{1} << 0;            // H.264 (and later) video frames; Phase 4
+            constexpr uint64_t Datagram = uint64_t{1} << 1;         // the UDP channel for video and input; Phase 5
+            constexpr uint64_t Clipboard = uint64_t{1} << 2;        // clipboard text and images
+            constexpr uint64_t Files = uint64_t{1} << 3;            // file transfer
+            constexpr uint64_t Gamepads = uint64_t{1} << 4;         // forwarded game controllers; Phase 7
+            constexpr uint64_t MultipleDisplays = uint64_t{1} << 5; // choose one of several displays
+            constexpr uint64_t ResizeDisplay = uint64_t{1} << 6;    // ask the server to match its screen to the window
+            // FrameEnd carries when the picture was captured and sent, and Pong when the Ping arrived and was
+            // answered, so the client can time each stage (PERFORMANCE_PLAN.md step 1).
+            constexpr uint64_t Timestamps = uint64_t{1} << 7;
         } // namespace Capability
+
+        // The clock the timestamps use: microseconds of the sender's steady (monotonic) clock. Its starting point
+        // means nothing across computers; the client works out the difference between the two clocks from Ping
+        // and Pong (Wire::ClockSync).
+        uint64_t NowMicros();
 
         // The type byte at the start of every message's payload. Control-channel and datagram messages share one
         // numbering so a type is never ambiguous. Gaps are left between groups for messages added later.
@@ -179,9 +188,15 @@ namespace Marconi
             static Ping Decode(Reader& reader);
         };
 
+        // With the Timestamps capability the server adds when the Ping arrived and when it answered, on its own
+        // clock; the client already knows when it sent the Ping and notes when the Pong arrives, which gives the
+        // four times a clock comparison needs. A Pong without them (an older server) decodes with hasTimes false.
         struct Pong
         {
             uint64_t token = 0;
+            bool hasTimes = false;
+            uint64_t receivedMicros = 0;
+            uint64_t answeredMicros = 0;
 
             Bytes Encode() const;
             static Pong Decode(Reader& reader);
@@ -246,9 +261,16 @@ namespace Marconi
             static FrameBegin Decode(Reader& reader);
         };
 
+        // With the Timestamps capability the server adds, on its own clock, when it captured the picture and when
+        // it finished handing the update to the network, and how long compressing it took. Without them (an older
+        // server) hasTimes is false.
         struct FrameEnd
         {
             uint64_t frameId = 0;
+            bool hasTimes = false;
+            uint64_t captureMicros = 0;
+            uint64_t sentMicros = 0;
+            uint32_t compressMicros = 0;
 
             Bytes Encode() const;
             static FrameEnd Decode(Reader& reader);

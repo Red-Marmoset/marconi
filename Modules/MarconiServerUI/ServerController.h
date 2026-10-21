@@ -74,6 +74,7 @@ namespace Marconi
             std::unique_ptr<Server::InputSink> m_systemInput;
             std::unique_ptr<Server::TestPatternScreen> m_pattern;
             std::unique_ptr<Server::InputSink> m_loggingInput;
+            std::unique_ptr<Server::PatternEchoInput> m_patternInput; // passes input on, telling the pattern
             Server::ScreenSource* m_screen = nullptr;
             Server::InputSink* m_input = nullptr;
             std::string m_servedDescription;

@@ -189,22 +189,39 @@ namespace Marconi
                 while (!m_stopping)
                 {
                     Bytes bytes = reader.Next();
+                    if (m_inFrame)
+                    {
+                        m_frame.bytes += bytes.size();
+                    }
                     Reader body(bytes);
                     Type type = ReadType(body);
                     switch (type)
                     {
                     case Type::FrameBegin:
-                        FrameBegin::Decode(body);
+                    {
+                        FrameBegin begin = FrameBegin::Decode(body);
                         m_frameRects.clear();
+                        m_frame = FrameTiming();
+                        m_frame.frameId = begin.frameId;
+                        m_frame.beganMicros = static_cast<int64_t>(NowMicros());
+                        m_frame.bytes = bytes.size();
+                        m_frame.decodeMicros = 0;
+                        m_inFrame = true;
                         break;
+                    }
                     case Type::Still:
+                    {
+                        uint64_t started = NowMicros();
                         HandleStill(Still::Decode(body));
+                        m_frame.decodeMicros += static_cast<int64_t>(NowMicros() - started);
                         break;
+                    }
                     case Type::Move:
                         HandleMove(Move::Decode(body));
                         break;
                     case Type::FrameEnd:
-                        FrameEnd::Decode(body);
+                        // Timed before the listener hears of it, so the paint it causes finds the update.
+                        FinishFrame(FrameEnd::Decode(body));
                         ++m_statUpdates;
                         m_listener.OnFramebufferUpdated(m_frameRects);
                         break;
@@ -230,7 +247,7 @@ namespace Marconi
                         ApplyDisplays(Displays::Decode(body).displays, false);
                         break;
                     case Type::Pong:
-                        Pong::Decode(body);
+                        HandlePong(Pong::Decode(body));
                         break;
                     case Type::Bye:
                     {
@@ -309,6 +326,17 @@ namespace Marconi
                                  : "The server has no password set, so it refused the connection";
                 return false;
             }
+
+            m_timestamps = (welcome.capabilities & Capability::Timestamps) != 0;
+            m_clock.Reset();
+            m_clockKnown = false;
+            m_pingSentMicros = 0;
+            m_roundTripMs = -1;
+            m_lastUpdateMicros = 0;
+            m_inFrame = false;
+            m_performance.Reset();
+            m_lastSummaryMicros = static_cast<int64_t>(NowMicros());
+            m_lastPingMicros = 0;
 
             int width = 0;
             int height = 0;
@@ -489,6 +517,136 @@ namespace Marconi
             std::chrono::steady_clock::time_point last{
                 std::chrono::steady_clock::duration{m_lastInputTime.load()}};
             return std::chrono::steady_clock::now() - last;
+        }
+
+        void Client::SendPing()
+        {
+            // Any thread. Only one ping at a time: a server that has gone quiet would otherwise get one every tick,
+            // and the first unanswered one is the time that matters.
+            if (!m_connected)
+            {
+                return;
+            }
+            // Claim the one outstanding ping atomically: the UI thread and the connection thread both ping.
+            uint64_t idle = 0;
+            if (!m_pingSentMicros.compare_exchange_strong(idle, NowMicros()))
+            {
+                return;
+            }
+            Ping ping;
+            ping.token = ++m_pingToken;
+            if (!Send(ping.Encode()))
+            {
+                m_pingSentMicros = 0;
+            }
+        }
+
+        void Client::HandlePong(const Pong& pong)
+        {
+            const uint64_t received = NowMicros();
+            const uint64_t sent = m_pingSentMicros.load();
+            if (sent == 0 || pong.token != m_pingToken.load())
+            {
+                return; // not the ping we're waiting for (a stale one, or a server answering something else)
+            }
+            m_pingSentMicros = 0;
+            m_roundTripMs = static_cast<int>((received - sent) / 1000);
+            if (pong.hasTimes)
+            {
+                m_clock.AddSample(sent, pong.receivedMicros, pong.answeredMicros, received);
+                m_clockKnown = m_clock.HasEstimate();
+            }
+        }
+
+        ConnectionHealth Client::GetHealth() const
+        {
+            ConnectionHealth health;
+            const uint64_t now = NowMicros();
+            health.roundTripMs = m_roundTripMs.load();
+            const uint64_t sent = m_pingSentMicros.load();
+            if (sent != 0 && now >= sent)
+            {
+                health.waitingMs = static_cast<int>((now - sent) / 1000);
+            }
+            const uint64_t last = m_lastUpdateMicros.load();
+            if (last != 0 && now >= last)
+            {
+                health.sinceUpdateMs = static_cast<int>((now - last) / 1000);
+            }
+            return health;
+        }
+
+        void Client::FinishFrame(const FrameEnd& end)
+        {
+            const int64_t now = static_cast<int64_t>(NowMicros());
+            m_lastUpdateMicros = static_cast<uint64_t>(now);
+            if (!m_inFrame)
+            {
+                return; // a FrameEnd without its FrameBegin: nothing to time
+            }
+            m_inFrame = false;
+            m_frame.receivedMicros = now;
+            // The server's times only mean something here once the two clocks have been compared.
+            if (end.hasTimes && m_clockKnown)
+            {
+                m_frame.captureMicros = m_clock.ToLocalMicros(end.captureMicros);
+                m_frame.sentMicros = m_clock.ToLocalMicros(end.sentMicros);
+                m_frame.compressMicros = end.compressMicros;
+            }
+            m_performance.FrameReceived(m_frame);
+
+            if (m_statsLogging)
+            {
+                auto ms = [](int64_t micros) { return micros < 0 ? -1.0 : static_cast<double>(micros) / 1000.0; };
+                LOG_INFO("Stats",
+                         "frame %llu: %llu bytes; server %.1f ms (compress %.1f), network %.1f ms, decode %.1f ms, "
+                         "capture to received %.1f ms",
+                         static_cast<unsigned long long>(m_frame.frameId),
+                         static_cast<unsigned long long>(m_frame.bytes),
+                         m_frame.captureMicros >= 0 ? ms(m_frame.sentMicros - m_frame.captureMicros) : -1.0,
+                         ms(m_frame.compressMicros),
+                         m_frame.sentMicros >= 0 ? ms(now - m_frame.sentMicros) : -1.0, ms(m_frame.decodeMicros),
+                         m_frame.captureMicros >= 0 ? ms(now - m_frame.captureMicros) : -1.0);
+                LogSummaryIfDue(now);
+            }
+
+            // Keep the clock comparison fresh while pictures flow: a ping a second at most, from this thread, so
+            // the viewer's slower status-bar ping isn't the only source.
+            constexpr int64_t kPingMicros = 1000 * 1000;
+            if (m_timestamps && m_pingSentMicros.load() == 0 && now - m_lastPingMicros >= kPingMicros)
+            {
+                m_lastPingMicros = now;
+                SendPing();
+            }
+        }
+
+        void Client::LogSummaryIfDue(int64_t now)
+        {
+            constexpr int64_t kSummaryMicros = 10 * 1000 * 1000;
+            if (now - m_lastSummaryMicros < kSummaryMicros)
+            {
+                return;
+            }
+            m_lastSummaryMicros = now;
+            PerformanceSnapshot s = m_performance.Summarise(now, kSummaryMicros);
+            LOG_INFO("Stats",
+                     "last 10 s: %d updates (%.1f a second), %.1f shown a second, %.0f kbit/s, round trip %d ms; "
+                     "medians: server %.1f ms (compress %.1f), network %.1f, decode %.1f, shown after %.1f; "
+                     "capture to shown %.1f ms (99th percentile %.1f)",
+                     s.frames, s.framesPerSecond, s.shownPerSecond, s.kilobitsPerSecond, m_roundTripMs.load(),
+                     s.serverMs, s.compressMs, s.networkMs, s.decodeMs, s.showMs, s.pipelineMs, s.pipelineP99Ms);
+        }
+
+        void Client::NotePainted()
+        {
+            m_performance.Shown(static_cast<int64_t>(NowMicros()));
+        }
+
+        bool Client::GetPerformance(int64_t windowMicros, PerformanceSnapshot& out) const
+        {
+            out = m_performance.Summarise(static_cast<int64_t>(NowMicros()), windowMicros);
+            out.roundTripMs = m_roundTripMs.load();
+            return true;
         }
 
         TrafficStats Client::TakeTrafficStats()

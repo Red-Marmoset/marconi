@@ -138,17 +138,12 @@ namespace Marconi
             TrafficStats TakeTrafficStats() override;
 
             // How the connection is doing, for a status readout. Any thread.
-            struct Health
-            {
-                int roundTripMs = -1;   // the last measured round trip to the server; -1 before the first
-                int waitingMs = -1;     // how long the current ping has gone unanswered; -1 when none is outstanding
-                int sinceUpdateMs = -1; // how long since the last FramebufferUpdate arrived; -1 before the first
-            };
+            using Health = ConnectionHealth;
             // Asks for a single pixel (a non-incremental update request for 1x1 at the origin): servers answer
             // those straight away, so the reply times the round trip. Does nothing while one is unanswered or
             // before the connection is up.
-            void SendPing();
-            Health GetHealth() const;
+            void SendPing() override;
+            Health GetHealth() const override;
 
             // The encodings advertised by default, most preferred first (only those with decoders).
             static std::vector<int32_t> GetDefaultEncodings();

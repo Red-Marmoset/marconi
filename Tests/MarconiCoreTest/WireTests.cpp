@@ -215,6 +215,66 @@ namespace MarconiTest
             CHECK(!Wire::ZlibDecompress(HexBytes("deadbeef"), wrong, 64));
         });
 
+        RunTest("Pong and FrameEnd carry the server's times only when asked to", []() {
+            Wire::Pong plain;
+            plain.token = 42;
+            Wire::Pong plainBack = RoundTrip(plain, Wire::Type::Pong);
+            CHECK(plainBack.token == 42);
+            CHECK(!plainBack.hasTimes);
+
+            Wire::Pong timed;
+            timed.token = 7;
+            timed.hasTimes = true;
+            timed.receivedMicros = 1234567890123ull;
+            timed.answeredMicros = 1234567890456ull;
+            Wire::Pong timedBack = RoundTrip(timed, Wire::Type::Pong);
+            CHECK(timedBack.token == 7);
+            CHECK(timedBack.hasTimes);
+            CHECK(timedBack.receivedMicros == 1234567890123ull);
+            CHECK(timedBack.answeredMicros == 1234567890456ull);
+
+            Wire::FrameEnd end;
+            end.frameId = 99;
+            Wire::FrameEnd endBack = RoundTrip(end, Wire::Type::FrameEnd);
+            CHECK(endBack.frameId == 99);
+            CHECK(!endBack.hasTimes);
+
+            end.hasTimes = true;
+            end.captureMicros = 5000000;
+            end.sentMicros = 5004321;
+            end.compressMicros = 1200;
+            Wire::FrameEnd timedEnd = RoundTrip(end, Wire::Type::FrameEnd);
+            CHECK(timedEnd.hasTimes);
+            CHECK(timedEnd.captureMicros == 5000000);
+            CHECK(timedEnd.sentMicros == 5004321);
+            CHECK(timedEnd.compressMicros == 1200);
+        });
+
+        RunTest("an older reader skips the times it doesn't know", []() {
+            // What a build from before the Timestamps capability reads: the fields it knows, then it stops, and the
+            // message's length (not its contents) moves the stream on. So a timed Pong costs an old client nothing.
+            Wire::Pong timed;
+            timed.token = 3;
+            timed.hasTimes = true;
+            timed.receivedMicros = 10;
+            timed.answeredMicros = 20;
+            Wire::Bytes framed = timed.Encode();
+            Wire::Reader outer(framed);
+            uint64_t length = outer.Varint();
+            Wire::Reader body(framed.data() + (framed.size() - outer.Remaining()), static_cast<size_t>(length));
+            CHECK(Wire::ReadType(body) == Wire::Type::Pong);
+            CHECK(body.U64() == 3); // all an old Pong::Decode reads
+            CHECK(!body.AtEnd());   // the rest is skipped by length
+        });
+
+        RunTest("capability bits from 32 up are real 64-bit values", []() {
+            CHECK(Wire::Capability::Timestamps == 128u);
+            constexpr uint64_t high = uint64_t{1} << 40;
+            Wire::Hello hello;
+            hello.capabilities = high | Wire::Capability::Timestamps;
+            CHECK(RoundTrip(hello, Wire::Type::Hello).capabilities == (high | Wire::Capability::Timestamps));
+        });
+
         RunTest("random bytes are decoded or refused, never crash", []() {
             // Every decoder, driven straight off random bodies: whatever the bytes, Decode either returns or throws
             // WireError. Anything else (a segfault, a std::bad_alloc from a huge length, another exception type)
@@ -260,7 +320,8 @@ namespace MarconiTest
                 Wire::Type::LoginResult, Wire::Type::Bye,           Wire::Type::Displays,
                 Wire::Type::StreamConfig, Wire::Type::Still,        Wire::Type::Move,
                 Wire::Type::CursorShape, Wire::Type::Key,           Wire::Type::Text,
-                Wire::Type::Pointer,     Wire::Type::ClipboardData};
+                Wire::Type::Pointer,     Wire::Type::ClipboardData, Wire::Type::Pong,
+                Wire::Type::FrameEnd};
             for (Wire::Type type : types)
             {
                 for (int i = 0; i < 2000; ++i)

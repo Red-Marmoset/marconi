@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.6.1
+
+- The status bar shows the round trip time to a Marconi server, as it does for VNC.
+
 ## 0.6.0
 
 - Added Marconi Server: a tray program that shares this computer so another can connect to it and control it, with the screen and your typing kept private by encryption.

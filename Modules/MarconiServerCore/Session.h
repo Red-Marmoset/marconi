@@ -48,14 +48,17 @@ namespace Marconi
             void RunFrameLoop();                         // this thread: capture and send the picture
             void RunInputLoop(Wire::MessageReader& reader); // the other thread: read and apply input
             bool Send(const Wire::Bytes& framed);        // one message, serialised against other senders
-            void SendFrame(const Capture& capture, bool full);
+            bool SendPong(uint64_t token, uint64_t receivedMicros);
+            void SendFrame(const Capture& capture, bool full, uint64_t captureMicros);
+            bool Timestamps() const { return (m_grantedCapabilities & Wire::Capability::Timestamps) != 0; }
 
             Wire::Transport& m_transport;
             ScreenSource& m_screen;
             InputSink& m_input;
             Settings m_settings;
             Auth* m_auth = nullptr;
-            uint64_t m_clientCapabilities = 0; // what the viewer offered in Hello
+            uint64_t m_clientCapabilities = 0;  // what the viewer offered in Hello
+            uint64_t m_grantedCapabilities = 0; // what Welcome agreed to use
             uint64_t m_frameId = 0;
             int m_frameIntervalMs = 16;
             std::mutex m_writeMutex;

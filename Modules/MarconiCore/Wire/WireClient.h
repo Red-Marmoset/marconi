@@ -6,7 +6,9 @@
 
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/RemoteSession.h>
+#include <MarconiCore/Performance.h>
 #include <MarconiCore/Wire/WireChannel.h>
+#include <MarconiCore/Wire/WireClockSync.h>
 #include <MarconiCore/Wire/WireMessages.h>
 
 #include <atomic>
@@ -28,7 +30,8 @@ namespace Marconi
             std::string password;   // sent at login (inside TLS once encryption is added)
             std::string clientName; // shown in the server's log and its "someone connected" notice
             int connectTimeoutMs = 10000;
-            uint64_t capabilities = Capability::MultipleDisplays; // what this client offers; grows with each phase
+            // What this client offers; grows with each phase.
+            uint64_t capabilities = Capability::MultipleDisplays | Capability::Timestamps;
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
@@ -69,6 +72,11 @@ namespace Marconi
             void SetQuality(int compressLevel, int qualityLevel) override;
             std::chrono::steady_clock::duration GetTimeSinceInput() const override;
             TrafficStats TakeTrafficStats() override;
+            void SendPing() override;
+            ConnectionHealth GetHealth() const override;
+            void NotePainted() override;
+            bool GetPerformance(int64_t windowMicros, PerformanceSnapshot& out) const override;
+            void SetStatsLogging(bool enabled) override { m_statsLogging = enabled; }
 
         private:
             void Run(ClientOptions options);
@@ -78,6 +86,9 @@ namespace Marconi
             void ApplyDisplays(const std::vector<Display>& displays, bool initial);
             bool Send(const Bytes& framed); // one message, serialised; false if not connected or the write failed
             void MarkInput();
+            void HandlePong(const Pong& pong);
+            void FinishFrame(const FrameEnd& end);
+            void LogSummaryIfDue(int64_t now);
 
             SessionListener& m_listener;
             Rfb::Framebuffer m_framebuffer;
@@ -103,6 +114,22 @@ namespace Marconi
             std::atomic<int> m_statRectangles{0};
             std::atomic<int> m_statPointerEvents{0};
             std::atomic<int> m_statKeyEvents{0};
+
+            // Timing (PERFORMANCE_PLAN.md step 1). The ping fields are shared with the UI thread; the clock and the
+            // update being received belong to the connection thread.
+            std::atomic<bool> m_timestamps{false}; // the server agreed to send times
+            std::atomic<uint64_t> m_pingToken{0};
+            std::atomic<uint64_t> m_pingSentMicros{0}; // 0 when no ping is outstanding
+            std::atomic<int> m_roundTripMs{-1};
+            std::atomic<uint64_t> m_lastUpdateMicros{0};
+            ClockSync m_clock;
+            std::atomic<bool> m_clockKnown{false};
+            FrameTiming m_frame;        // the update between FrameBegin and FrameEnd
+            bool m_inFrame = false;
+            PerformanceMonitor m_performance;
+            std::atomic<bool> m_statsLogging{false};
+            int64_t m_lastSummaryMicros = 0;
+            int64_t m_lastPingMicros = 0; // when the connection thread last pinged by itself
         };
     } // namespace Wire
 } // namespace Marconi

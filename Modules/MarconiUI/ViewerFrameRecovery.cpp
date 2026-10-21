@@ -21,8 +21,7 @@ namespace MarconiUI
             return;
         }
         Marconi::TrafficStats stats = m_session->TakeTrafficStats();
-        // The round-trip readout is a VNC feature for now; a Marconi connection leaves it blank.
-        Marconi::Rfb::Client::Health health = m_rfb != nullptr ? m_rfb->GetHealth() : Marconi::Rfb::Client::Health{};
+        Marconi::ConnectionHealth health = m_session->GetHealth();
         LOG_INFO("Viewer", "Last 10s: %d updates with %d rectangles, %d requests, %d pointer and %d key events sent; "
                  "round trip %d ms%s",
                  stats.updates, stats.rectangles, stats.requests, stats.pointerEvents, stats.keyEvents,
@@ -40,16 +39,15 @@ namespace MarconiUI
         {
             return;
         }
-        // The ping-based round-trip readout is a VNC feature for now; a Marconi connection shows nothing here.
-        if (m_rfb == nullptr)
+        if (!m_session)
         {
             return;
         }
         if (++m_healthTicks % kPingEverySeconds == 1)
         {
-            m_rfb->SendPing();
+            m_session->SendPing();
         }
-        Marconi::Rfb::Client::Health health = m_rfb->GetHealth();
+        Marconi::ConnectionHealth health = m_session->GetHealth();
         wxString text;
         if (health.waitingMs >= kNoReplyAfterMs)
         {

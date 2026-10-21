@@ -3,7 +3,7 @@
 
 #include "Session.h"
 
-#include <MarconiCore/Wire/WireCompress.h>
+#include "StillEncoder.h"
 
 #include <Log/Log.h>
 
@@ -16,35 +16,8 @@ namespace Marconi
         namespace
         {
             // What this build's server can do, for the capability handshake. It grows as phases land (video,
-            // clipboard, files, gamepads); for now it can describe several displays and nothing more.
-            constexpr uint64_t kServerCapabilities = Wire::Capability::MultipleDisplays;
-
-            // Packs the pixels of one rectangle of a capture into a Still's little-endian 0x00RRGGBB bytes
-            // (byte order B, G, R, 0), row by row.
-            Wire::Bytes PackRect(const Capture& capture, const Wire::Rect& rect)
-            {
-                Wire::Bytes data;
-                data.reserve(static_cast<size_t>(rect.width) * rect.height * 4);
-                for (int32_t y = rect.y; y < rect.y + rect.height; ++y)
-                {
-                    const uint32_t* row = capture.Row(y);
-                    for (int32_t x = rect.x; x < rect.x + rect.width; ++x)
-                    {
-                        uint32_t pixel = row[x];
-                        data.push_back(static_cast<uint8_t>(pixel));
-                        data.push_back(static_cast<uint8_t>(pixel >> 8));
-                        data.push_back(static_cast<uint8_t>(pixel >> 16));
-                        data.push_back(0);
-                    }
-                }
-                return data;
-            }
-
-            bool RectInside(const Wire::Rect& rect, int32_t width, int32_t height)
-            {
-                return rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0 &&
-                       rect.x + rect.width <= width && rect.y + rect.height <= height;
-            }
+            // clipboard, files, gamepads); for now it can describe several displays and send timestamps.
+            constexpr uint64_t kServerCapabilities = Wire::Capability::MultipleDisplays | Wire::Capability::Timestamps;
         } // namespace
 
         Session::Session(Wire::Transport& transport, ScreenSource& screen, InputSink& input, const Settings& settings,
@@ -81,6 +54,7 @@ namespace Marconi
             Wire::Welcome welcome;
             welcome.version = Wire::kProtocolVersion;
             welcome.capabilities = hello.capabilities & kServerCapabilities;
+            m_grantedCapabilities = welcome.capabilities;
             welcome.serverName = m_settings.serverName;
             welcome.serverVersion = m_settings.serverVersion;
             welcome.displays = m_screen.GetDisplays();
@@ -128,9 +102,11 @@ namespace Marconi
             while (!m_stop)
             {
                 Wire::Bytes bytes;
+                uint64_t receivedMicros = 0;
                 try
                 {
                     bytes = reader.Next();
+                    receivedMicros = Wire::NowMicros();
                 }
                 catch (const Wire::WireError&)
                 {
@@ -159,12 +135,8 @@ namespace Marconi
                         m_input.TypeText(Wire::Text::Decode(body).utf8);
                         break;
                     case Wire::Type::Ping:
-                    {
-                        Wire::Pong pong;
-                        pong.token = Wire::Ping::Decode(body).token;
-                        Send(pong.Encode());
+                        SendPong(Wire::Ping::Decode(body).token, receivedMicros);
                         break;
-                    }
                     case Wire::Type::Bye:
                         m_stop = true;
                         break;
@@ -180,7 +152,23 @@ namespace Marconi
             m_stop = true;
         }
 
-        void Session::SendFrame(const Capture& capture, bool full)
+        bool Session::SendPong(uint64_t token, uint64_t receivedMicros)
+        {
+            Wire::Pong pong;
+            pong.token = token;
+            std::lock_guard<std::mutex> lock(m_writeMutex);
+            if (Timestamps())
+            {
+                // Stamped once the write lock is held, so time spent queued behind a picture counts as the
+                // server's, not the network's, and the client's clock comparison stays fair.
+                pong.hasTimes = true;
+                pong.receivedMicros = receivedMicros;
+                pong.answeredMicros = Wire::NowMicros();
+            }
+            return Wire::WriteMessage(m_transport, pong.Encode());
+        }
+
+        void Session::SendFrame(const Capture& capture, bool full, uint64_t captureMicros)
         {
             Wire::FrameBegin begin;
             begin.frameId = ++m_frameId;
@@ -190,6 +178,7 @@ namespace Marconi
                 m_stop = true;
                 return;
             }
+            uint64_t compressMicros = 0;
             const std::vector<Wire::Rect>& rects = capture.dirty;
             Wire::Rect whole{0, 0, capture.width, capture.height};
             const std::vector<Wire::Rect> wholeOnly{whole};
@@ -200,21 +189,9 @@ namespace Marconi
                     continue;
                 }
                 Wire::Still still;
-                still.rect = rect;
-                Wire::Bytes raw = PackRect(capture, rect);
-                // Compress unless zlib can't beat the raw pixels (tiny or already-random rectangles): a screen is
-                // mostly flat colour and text, so this usually sends far less, which is what keeps the link lean.
-                Wire::Bytes packed = Wire::ZlibCompress(raw);
-                if (!packed.empty() && packed.size() < raw.size())
-                {
-                    still.compression = Wire::Still::Compression::Zlib;
-                    still.data = std::move(packed);
-                }
-                else
-                {
-                    still.compression = Wire::Still::Compression::None;
-                    still.data = std::move(raw);
-                }
+                StillTiming timing;
+                EncodeStill(capture, rect, still, &timing);
+                compressMicros += timing.packMicros + timing.compressMicros;
                 if (!Send(still.Encode()))
                 {
                     m_stop = true;
@@ -223,6 +200,13 @@ namespace Marconi
             }
             Wire::FrameEnd end;
             end.frameId = begin.frameId;
+            if (Timestamps())
+            {
+                end.hasTimes = true;
+                end.captureMicros = captureMicros;
+                end.sentMicros = Wire::NowMicros();
+                end.compressMicros = static_cast<uint32_t>(compressMicros);
+            }
             if (!Send(end.Encode()))
             {
                 m_stop = true;
@@ -235,11 +219,13 @@ namespace Marconi
             while (!m_stop)
             {
                 Capture capture;
+                // Stamped as the grab starts, so the time spent reading the screen counts towards the picture's age.
+                const uint64_t captureMicros = Wire::NowMicros();
                 if (m_screen.Grab(capture))
                 {
                     if (first || !capture.dirty.empty())
                     {
-                        SendFrame(capture, first);
+                        SendFrame(capture, first, captureMicros);
                         first = false;
                     }
                 }

@@ -3,6 +3,8 @@
 
 #include <MarconiCore/Wire/WireMessages.h>
 
+#include <chrono>
+
 namespace Marconi
 {
     namespace Wire
@@ -68,6 +70,13 @@ namespace Marconi
                 return displays;
             }
         } // namespace
+
+        uint64_t NowMicros()
+        {
+            return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                             std::chrono::steady_clock::now().time_since_epoch())
+                                             .count());
+        }
 
         Bytes Frame(const Bytes& body)
         {
@@ -155,13 +164,26 @@ namespace Marconi
 
         Bytes Pong::Encode() const
         {
-            return Build(Type::Pong, [&](Writer& w) { w.U64(token); });
+            return Build(Type::Pong, [&](Writer& w) {
+                w.U64(token);
+                if (hasTimes)
+                {
+                    w.Varint(receivedMicros).Varint(answeredMicros);
+                }
+            });
         }
 
         Pong Pong::Decode(Reader& r)
         {
             Pong message;
             message.token = r.U64();
+            // The times were added later behind the Timestamps capability; an older server's Pong ends here.
+            if (!r.AtEnd())
+            {
+                message.hasTimes = true;
+                message.receivedMicros = r.Varint();
+                message.answeredMicros = r.Varint();
+            }
             return message;
         }
 
@@ -246,13 +268,27 @@ namespace Marconi
 
         Bytes FrameEnd::Encode() const
         {
-            return Build(Type::FrameEnd, [&](Writer& w) { w.U64(frameId); });
+            return Build(Type::FrameEnd, [&](Writer& w) {
+                w.U64(frameId);
+                if (hasTimes)
+                {
+                    w.Varint(captureMicros).Varint(sentMicros).Varint(compressMicros);
+                }
+            });
         }
 
         FrameEnd FrameEnd::Decode(Reader& r)
         {
             FrameEnd message;
             message.frameId = r.U64();
+            // The times were added later behind the Timestamps capability; an older server's FrameEnd ends here.
+            if (!r.AtEnd())
+            {
+                message.hasTimes = true;
+                message.captureMicros = r.Varint();
+                message.sentMicros = r.Varint();
+                message.compressMicros = static_cast<uint32_t>(r.Varint());
+            }
             return message;
         }
 

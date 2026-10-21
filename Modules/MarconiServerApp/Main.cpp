@@ -164,6 +164,7 @@ int main(int argc, char** argv)
     std::unique_ptr<Marconi::Server::ScreenSource> systemScreen;
     std::unique_ptr<Marconi::Server::InputSink> systemInput;
     std::unique_ptr<Marconi::Server::TestPatternScreen> pattern;
+    std::unique_ptr<Marconi::Server::PatternEchoInput> patternInput;
     Marconi::Server::LoggingInputSink logging;
     const char* what = nullptr;
 
@@ -188,6 +189,9 @@ int main(int argc, char** argv)
     {
         pattern = std::make_unique<Marconi::Server::TestPatternScreen>(width, height);
         screen = pattern.get();
+        // The pattern draws where the viewer's pointer is, so input latency shows in the picture.
+        patternInput = std::make_unique<Marconi::Server::PatternEchoInput>(*input, *pattern);
+        input = patternInput.get();
         what = "a test pattern";
     }
     else
