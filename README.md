@@ -414,6 +414,16 @@ authentication and logs every key, pointer and clipboard event it receives:
 `Tools/fake_vencrypt_server.py` is the same idea for encryption: it only accepts VeNCrypt over real TLS (a
 self-signed certificate, or anonymous TLS), then serves one frame and waits for a key press.
 
+**The encoder trial** (Windows) tries every H.264 video encoder Windows offers, the graphics card's own and
+Microsoft's, and reports which low-delay settings each accepts and how fast it is. Its results decide how Marconi
+Server's video is built (see `PERFORMANCE_PLAN.md`, step 1):
+
+    .\Build.ps1 -Project Tools\EncoderTrial\Project.json -Config Release
+    Build\EncoderTrial\Release\EncoderTrial.exe [--size 1920x1080] [--fps 60] [--kbps 20000] [--frames 300]
+
+It takes about five seconds per encoder and uses a whole processor core while it runs, to feed pictures at an even
+rate. Run it on each computer whose graphics card matters and keep its output.
+
 ## Encryption: how it works and what's left
 
 - `Modules/MarconiCore/Net/Tls.h` is the interface: `TlsStream` (handshake, read, write, shutdown, protocol name)

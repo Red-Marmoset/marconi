@@ -1,0 +1,11 @@
+{
+    "name": "EncoderTrial",
+    "version": "0.1.0",
+    "type": "console",
+    "description": "Throwaway trial of the Windows hardware H.264 encoders through Media Foundation (PERFORMANCE_PLAN.md step 1): which low-latency settings each accepts, and its delay. Not part of the app.",
+    "dependencies": [],
+    "platformLibraries": {
+        "Windows": ["mfplat.lib", "mfuuid.lib", "d3d11.lib", "ole32.lib", "oleaut32.lib", "strmiids.lib"]
+    },
+    "platforms": ["Windows", "Linux", "macOS"]
+}

@@ -1,0 +1,9 @@
+{
+    "name": "EncoderTrial",
+    "type": "console",
+    "version": "0.1.0",
+    "modules": [
+        "EncoderTrial"
+    ],
+    "compiler": "msvc"
+}
