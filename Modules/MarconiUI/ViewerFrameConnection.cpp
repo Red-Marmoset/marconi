@@ -124,6 +124,7 @@ namespace MarconiUI
         {
             Marconi::SessionListener& listener = *this;
             std::unique_ptr<Marconi::Wire::Client> client = std::make_unique<Marconi::Wire::Client>(listener);
+            client->SetStatsLogging(m_options.stats);
             m_wire = client.get();
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());

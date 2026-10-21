@@ -42,6 +42,10 @@ namespace Marconi
         double showMs = -1;     // received to shown on screen
         double pipelineMs = -1; // capture to shown (or to received, when nothing paints)
         double pipelineP99Ms = -1;
+        // How far the server's clock is ahead of this one, once the two have been compared, so the readout can show
+        // the server's clock next to the test pattern's (filming both gives the time to the screen).
+        bool clockKnown = false;
+        int64_t serverClockOffsetMicros = 0;
     };
 
     // Collects FrameTimings from the connection thread and paint times from the UI thread. Thread-safe. Keeps

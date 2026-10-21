@@ -70,6 +70,7 @@ namespace MarconiUI
         bool showFiles = false; // open the file panel straight away (--files)
         bool filesCheck = false; // headless: copy a small file to the server and back over TightVNC, then quit
         bool skipProbe = false; // the address's protocol and port are already known (e.g. found on the network)
+        bool stats = false;     // --stats: log each picture's timing (Marconi servers) and a summary every 10 s
         std::vector<uint8_t> trustedCertificateSha256; // a server certificate the user accepted before
 
         // Headless (testing and automation): no window and no dialogs. Saves the picture the viewer would show
@@ -185,6 +186,7 @@ namespace MarconiUI
         void LeaveLostState();
         void LogTraffic();
         void OnHealthTick();
+        void UpdatePerformanceReadout(); // F8 > Show Performance: refreshes the readout's figures
 
         ViewerOptions m_options;
         // The connection, whatever protocol it speaks: null until the first connect. The canvas and the clipboard

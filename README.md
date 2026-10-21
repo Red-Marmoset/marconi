@@ -90,6 +90,8 @@ From the menu you can:
 - ask the other computer to change its screen size to fit this window, where its server allows it (this changes
   the screen for anyone sitting at it too);
 - save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
+- show how quickly the picture arrives (**Show Performance**): the round trip, and with Marconi Server also how many
+  pictures arrive a second and how old each one is by the time it appears;
 - refresh the picture, or disconnect.
 
 The right-hand end of the status bar shows how long a message takes to reach the other computer and come back,
@@ -243,12 +245,20 @@ picture for the moment, while the screen-sharing part for those systems is finis
 
 ## Command line
 
-    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--ssh] [--saved NAME] [address]
+    marconi [--scale fit|50|75|100|125|150|200] [--view-only] [--fullscreen] [--no-clipboard] [--ssh] [--stats] [--saved NAME] [address]
     marconi --remove-my-data
 
 `--saved NAME` opens a saved connection by its name, address or id, using its stored password. `--remove-my-data`
 removes the current user's saved connections, keychain passwords, settings and logs, then exits; the Windows
-uninstaller runs it for the "Saved connections, passwords and logs" option.
+uninstaller runs it for the "Saved connections, passwords and logs" option. `--stats` logs how long each picture took
+to arrive from a Marconi server, stage by stage, and a summary every 10 seconds.
+
+**Measuring delay.** `MarconiServer --test-pattern` draws, in large digits, the frame number and its own clock in
+milliseconds, and a cross where your pointer last was (red while a button is held). With **Show Performance** on,
+the viewer shows the same clock as it is *now* on the other computer, worked out from the round trips. Filming the
+viewer's screen with a fast camera (240 frames a second) and comparing the two clocks in a frame of the video gives
+how old the picture is when it appears; moving the mouse and counting frames until the cross follows gives the delay
+for input.
 
 **Headless mode**, for testing and automation, runs a connection without a window or dialogs. It logs what happens
 and saves what the viewer would show as PNG files in the log folder, then exits:

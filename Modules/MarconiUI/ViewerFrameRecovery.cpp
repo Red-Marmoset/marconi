@@ -3,6 +3,8 @@
 
 #include "ViewerFrame.h"
 
+#include "PerformanceOverlay.h"
+
 #include <MarconiCore/Reconnect.h>
 
 #include <Log/Log.h>
@@ -61,6 +63,20 @@ namespace MarconiUI
         {
             SetStatusText(text, 1);
         }
+        UpdatePerformanceReadout();
+    }
+
+    void ViewerFrame::UpdatePerformanceReadout()
+    {
+        if (!m_canvas->IsShowingPerformance() || !m_session)
+        {
+            return;
+        }
+        constexpr int64_t kWindowMicros = 2 * 1000 * 1000; // figures over the last two seconds
+        Marconi::PerformanceSnapshot snapshot;
+        const bool detailed = m_session->GetPerformance(kWindowMicros, snapshot);
+        m_canvas->SetPerformance(FormatPerformance(detailed, snapshot, m_session->GetHealth()), snapshot.clockKnown,
+                                 snapshot.serverClockOffsetMicros);
     }
 
     void ViewerFrame::WaitForPicture()

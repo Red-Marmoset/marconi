@@ -554,6 +554,7 @@ namespace Marconi
             if (pong.hasTimes)
             {
                 m_clock.AddSample(sent, pong.receivedMicros, pong.answeredMicros, received);
+                m_clockOffsetMicros = m_clock.GetOffsetMicros();
                 m_clockKnown = m_clock.HasEstimate();
             }
         }
@@ -646,6 +647,8 @@ namespace Marconi
         {
             out = m_performance.Summarise(static_cast<int64_t>(NowMicros()), windowMicros);
             out.roundTripMs = m_roundTripMs.load();
+            out.clockKnown = m_clockKnown.load();
+            out.serverClockOffsetMicros = m_clockOffsetMicros.load();
             return true;
         }
 

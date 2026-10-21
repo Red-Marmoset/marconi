@@ -5,6 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.6.2
+
+- F8 > Show Performance shows how quickly pictures arrive from the other computer.
+- `--stats` logs how long each picture takes to arrive from a Marconi server.
+- Marconi Server's test pattern shows a frame counter, its clock and where your pointer is, for measuring delay.
+
 ## 0.6.1
 
 - The status bar shows the round trip time to a Marconi server, as it does for VNC.

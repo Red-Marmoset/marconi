@@ -198,6 +198,9 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "headless",
              "no window or dialogs: log and save snapshots to the log folder (testing, automation)",
              wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "stats",
+             "log how long each picture takes to arrive from a Marconi server, with a summary every 10 seconds",
+             wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_OPTION, nullptr, "snapshot-every", "headless: seconds between snapshots (default 5)",
              wxCMD_LINE_VAL_NUMBER, 0},
             {wxCMD_LINE_OPTION, nullptr, "quit-after", "headless: seconds before closing (default 60)",
@@ -341,6 +344,7 @@ namespace MarconiUI
                 options.showFiles = parser.Found("files");
                 options.clipboard = options.clipboard && !parser.Found("no-clipboard");
                 options.sshTunnel = options.sshTunnel || parser.Found("ssh");
+                options.stats = parser.Found("stats");
                 if (headless)
                 {
                     long seconds = 0;

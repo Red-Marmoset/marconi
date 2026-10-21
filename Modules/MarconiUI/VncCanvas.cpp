@@ -5,8 +5,10 @@
 #include "VncCanvas.h"
 
 #include "ClipboardFiles.h"
+#include "PerformanceOverlay.h"
 #include "ScaledBlit.h"
 
+#include <MarconiCore/Wire/WireMessages.h>
 #include <MarconiCore/Zoom.h>
 
 #include <wx/cursor.h>
@@ -278,6 +280,45 @@ namespace MarconiUI
             CopyFromFramebuffer(rect);
             RefreshRect(ToWindow(wxRect(rect.x, rect.y, rect.width, rect.height)), false);
         }
+        if (!rects.empty())
+        {
+            m_newPicture = true;
+            if (m_showPerformance && m_serverClockKnown)
+            {
+                // Repaint the readout with each picture, so its clock line is as current as the picture is.
+                RefreshRect(m_performanceRect, false);
+            }
+        }
+    }
+
+    void VncCanvas::ShowPerformance(bool show)
+    {
+        if (show == m_showPerformance)
+        {
+            return;
+        }
+        m_showPerformance = show;
+        RefreshPerformance();
+    }
+
+    void VncCanvas::SetPerformance(const wxArrayString& lines, bool clockKnown, int64_t serverClockOffsetMicros)
+    {
+        m_performanceLines = lines;
+        m_serverClockKnown = clockKnown;
+        m_serverClockOffsetMicros = serverClockOffsetMicros;
+        if (m_showPerformance)
+        {
+            RefreshPerformance();
+        }
+    }
+
+    void VncCanvas::RefreshPerformance()
+    {
+        wxClientDC dc(this);
+        wxRect area = m_performanceRect;
+        m_performanceRect = PerformanceOverlayRect(dc, GetClientSize(), m_performanceLines);
+        area.Union(m_performanceRect);
+        RefreshRect(area, false);
     }
 
     void VncCanvas::CopyFromFramebuffer(const Marconi::Rfb::Rect& requested)
@@ -382,6 +423,27 @@ namespace MarconiUI
         fill(visible.x, shown.GetBottom() + 1, visible.width, visible.GetBottom() - shown.GetBottom());
         fill(visible.x, shown.y, shown.x - visible.x, shown.height);
         fill(shown.GetRight() + 1, shown.y, visible.GetRight() - shown.GetRight(), shown.height);
+
+        if (m_showPerformance)
+        {
+            dc.SetDeviceOrigin(0, 0); // the readout sits in the window's corner, whatever the scroll position
+            m_performanceRect = PerformanceOverlayRect(dc, client, m_performanceLines);
+            wxString clockLine;
+            if (m_serverClockKnown)
+            {
+                // The same number the test pattern draws: the server's steady clock in milliseconds, last 8 digits.
+                int64_t serverMicros = static_cast<int64_t>(Marconi::Wire::NowMicros()) + m_serverClockOffsetMicros;
+                clockLine = wxString::Format("Other computer's clock: %08lld",
+                                             static_cast<long long>((serverMicros / 1000) % 100000000));
+            }
+            DrawPerformanceOverlay(dc, m_performanceRect, m_performanceLines, clockLine);
+        }
+
+        if (m_newPicture && m_session != nullptr)
+        {
+            m_newPicture = false;
+            m_session->NotePainted(); // for the timing of each picture (Marconi servers)
+        }
 
         if (m_stale)
         {

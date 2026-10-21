@@ -124,6 +124,7 @@ namespace Marconi
             std::atomic<uint64_t> m_lastUpdateMicros{0};
             ClockSync m_clock;
             std::atomic<bool> m_clockKnown{false};
+            std::atomic<int64_t> m_clockOffsetMicros{0}; // a copy of m_clock's offset for the UI thread
             FrameTiming m_frame;        // the update between FrameBegin and FrameEnd
             bool m_inFrame = false;
             PerformanceMonitor m_performance;

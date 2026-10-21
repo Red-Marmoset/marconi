@@ -95,6 +95,12 @@ namespace MarconiUI
         // Called with the paths of files dropped on the remote screen from Explorer or Finder.
         void SetFileDropHandler(std::function<void(const std::vector<std::string>&)> handler);
 
+        // The performance readout in the top-right corner (F8 > Show Performance). `lines` come from
+        // FormatPerformance; when the server's clock is known it is shown too, current at every paint. UI thread.
+        void ShowPerformance(bool show);
+        bool IsShowingPerformance() const { return m_showPerformance; }
+        void SetPerformance(const wxArrayString& lines, bool clockKnown, int64_t serverClockOffsetMicros);
+
     private:
         void ApplyDesktopSize(int width, int height);
         bool FramebufferIsBlack();
@@ -102,6 +108,7 @@ namespace MarconiUI
         void ApplyCursor();
         void CopyFromFramebuffer(const Marconi::Rfb::Rect& rect);
         void OnPaint(wxPaintEvent& event);
+        void RefreshPerformance(); // repaints the readout's area (old and new)
         void OnSize(wxSizeEvent& event);
         wxSize GetShownSize() const;
         void ZoomAround(int zoomPercent, const wxPoint& around);
@@ -127,6 +134,12 @@ namespace MarconiUI
         void OnKillFocus(wxFocusEvent& event);
 
         Marconi::RemoteSession* m_session = nullptr;
+        bool m_newPicture = false; // updates have been copied in since the last paint (for the session's timing)
+        bool m_showPerformance = false;
+        wxArrayString m_performanceLines;
+        bool m_serverClockKnown = false;
+        int64_t m_serverClockOffsetMicros = 0;
+        wxRect m_performanceRect; // where the readout was last drawn, in window coordinates
         wxBitmap m_backing;
         wxSize m_desktopSize; // size of the picture shown (the server's, unless a resize is pending)
         bool m_hasPicture = false;

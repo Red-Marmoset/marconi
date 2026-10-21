@@ -49,6 +49,7 @@ namespace MarconiUI
         ID_QUALITY_LAST = ID_QUALITY_FIRST + 2, // Best, Balanced, Low bandwidth
         ID_FILES,
         ID_REFRESH,
-        ID_DISCONNECT,
+        ID_SHOW_PERFORMANCE, // the timing readout over the picture
+        ID_DISCONNECT,       // keep last: the viewer binds its commands from ID_SCALE_FIT to here
     };
 } // namespace MarconiUI

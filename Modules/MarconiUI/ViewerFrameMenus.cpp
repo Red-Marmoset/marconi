@@ -144,6 +144,8 @@ namespace MarconiUI
                                   ? wxString()
                                   : wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
         menu->Append(ID_REFRESH, "&Refresh Screen");
+        menu->AppendCheckItem(ID_SHOW_PERFORMANCE, "Show &Performance",
+                              "Show how quickly pictures arrive from the other computer");
         menu->AppendSeparator();
         menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
         menu->AppendCheckItem(ID_FILES, "Transfer &Files\tF10");
@@ -171,6 +173,7 @@ namespace MarconiUI
         menu->Enable(ID_SYSTEM_KEYS, SystemKeyCapture::IsSupported());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
         menu->Check(ID_FILES, m_files->IsShown());
+        menu->Check(ID_SHOW_PERFORMANCE, m_canvas->IsShowingPerformance());
         for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_ALT_TAB, ID_SEND_ALT_F4, ID_SEND_WINDOWS_KEY, ID_SEND_CTRL_ESC,
                        ID_SEND_CTRL_SHIFT_ESC, ID_SEND_PRINT_SCREEN, ID_SEND_CMD_TAB, ID_SEND_F8, ID_SEND_F9,
                        ID_SEND_F10, ID_REFRESH})
@@ -378,6 +381,10 @@ namespace MarconiUI
             {
                 m_session->RequestFullUpdate();
             }
+            break;
+        case ID_SHOW_PERFORMANCE:
+            m_canvas->ShowPerformance(!m_canvas->IsShowingPerformance());
+            UpdatePerformanceReadout();
             break;
         case ID_DISCONNECT:
             Close();

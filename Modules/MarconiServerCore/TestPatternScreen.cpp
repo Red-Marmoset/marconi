@@ -150,12 +150,12 @@ namespace Marconi
                 for (int32_t x = 0; x < m_width; ++x)
                 {
                     uint8_t red = m_width > 1 ? static_cast<uint8_t>(x * 255 / (m_width - 1)) : 0;
-                    // The bar is white; everything else is a red/green gradient with blue carrying the frame count,
-                    // so even a still photo of a single frame identifies it.
+                    // The bar is white; everything else is a red/green gradient. (The frame number is in the digits;
+                    // it used to tint the blue of every pixel, which left bands of stale colour wherever the
+                    // dirty areas didn't reach.)
                     uint32_t colour = x == bar ? 0x00FFFFFFu
                                                : (static_cast<uint32_t>(red) << 16) |
-                                                     (static_cast<uint32_t>(green) << 8) |
-                                                     static_cast<uint8_t>(m_frame);
+                                                     (static_cast<uint32_t>(green) << 8);
                     row[x] = colour;
                 }
             }
