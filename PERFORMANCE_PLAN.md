@@ -24,6 +24,25 @@ How to use this document:
   builds, and the results go in section 6. Claims about other products and platform APIs are linked to a source
   or marked **verify**; a "verify" is checked on the bench before anything is built on it.
 
+## Progress
+
+**Step 1 is under way** (branch `claude/beautiful-babbage-qh3jhe`, versions 0.6.1 to 0.6.3), built and tested on
+Linux against engine e0cc258:
+
+- Done: timestamps in the protocol and the clock comparison (item 2), `--stats` (3), F8 > Show Performance (4),
+  the measuring test pattern (5), `MarconiServer --bench` (1), and a test relay that delays each direction by a set
+  time (the delay part of 6). The status bar's round trip now works for Marconi servers too.
+- Written but not run: the encoder trial (7, `Tools/EncoderTrial`). It compiles and links against the Windows
+  headers and libraries; it needs a run on each of the owner's Windows machines.
+- Still to do: run the encoder trial and fill in its table; measure today's lossless path on the owner's machines
+  with `--bench`, `--stats` and a 240 frames a second film, and add the rows to section 6. Jitter, loss and
+  reordering in the simulator wait for the datagram channel (step 4), where they matter. Step 1's MINOR bump comes
+  when these are done.
+- Differences from the text below, as built: the server's times ride on `FrameEnd` rather than `FrameBegin` (the
+  update is complete by then, so its send time is real); the readout isn't remembered per connection; it shows
+  pictures received against pictures shown rather than "dropped" and has no loss line yet (there is no loss on
+  TCP; it comes with step 4).
+
 ## 1. Decisions
 
 ### Taken by the owner
@@ -37,6 +56,8 @@ How to use this document:
   `AGENTS.md` says.
 - **The Linux decoder is decided when step 3 reaches Linux** (see open point 1). The owner leans towards VA-API
   with small decoders because of the LGPL, but would prefer ffmpeg if it can be included in line with its licence.
+- **The datagram channel is encrypted with DTLS**, built with the channel itself in step 4, not before (open point
+  5, decided).
 
 ### Open, each with a recommendation
 
@@ -76,11 +97,11 @@ How to use this document:
 3. **New libraries.** Opus (BSD) for sound. zstd (BSD) only if step 2's measurements show it pays over zlib.
    **Recommendation:** accept both, zstd conditionally.
 4. **The frame rate to design for.** **Recommendation:** 144 a second (60 and 120 come with it); 240 later.
-5. **Encrypting the datagram channel.** `SERVER_PLAN.md` plans AES-GCM with keys sent over the control channel.
-   The alternative is **DTLS** (TLS for datagrams), which mbedTLS already implements, and which Parsec uses
-   ([Parsec](https://parsec.app/blog/a-networking-protocol-built-for-the-lowest-latency-interactive-game-streaming-1fd5a03a6007)).
-   DTLS saves designing nonces, replay protection, rekeying and address changes ourselves. **Recommendation:**
-   DTLS, if the engine's mbedTLS build has it (**verify** in step 1).
+5. **Encrypting the datagram channel. DECIDED (owner): DTLS, later.** `SERVER_PLAN.md` planned AES-GCM with keys
+   sent over the control channel; **DTLS** (TLS for datagrams), which mbedTLS implements and Parsec uses
+   ([Parsec](https://parsec.app/blog/a-networking-protocol-built-for-the-lowest-latency-interactive-game-streaming-1fd5a03a6007)),
+   saves designing nonces, replay protection, rekeying and address changes ourselves. It is built in step 4;
+   checking that the engine's mbedTLS build has DTLS moves there too.
 6. **HDR** (high dynamic range) **stays out until asked.** When a server display is in HDR mode, the capture
    either converts the picture to standard range or reports that it can't, chosen in step 2.
 
@@ -141,7 +162,7 @@ Nothing else starts until these numbers exist.
 1. **`MarconiServer --bench`**: captures (and, from step 3, encodes) for a number of seconds and prints each
    stage's time and size: waiting for the screen, capture, conversion, compression or encoding, packing,
    sending. The results are added to section 6.
-2. **Timestamps in the protocol.** A `Timestamps` capability bit. With it, `FrameBegin` (and later the video
+2. **Timestamps in the protocol.** A `Timestamps` capability bit. With it, `FrameEnd` (and later the video
    frame) carries when the picture was captured and when it was sent, and `Ping`/`Pong` carry the four times
    needed to work out the difference between the two computers' clocks (sent, received, answered, answer
    received). Old builds ignore the extra bytes: `Ping::Decode` and `Pong::Decode` already skip trailing data
@@ -158,19 +179,20 @@ Nothing else starts until these numbers exist.
 6. **A bad-network simulator** for tests: a stand-in for the transport (and later the datagram channel) that adds
    delay, jitter, loss and reordering from a fixed random seed, so `MarconiServerTest` can check behaviour under
    loss repeatably. Notes for `tc netem` on Linux for manual runs.
-7. **The encoder trial** (`--bench-encode`, throwaway code kept out of the release): on each of the owner's
+7. **The encoder trial** (`Tools/EncoderTrial`, a separate tool kept out of the release): on each of the owner's
    Windows GPUs, through Media Foundation, find out and record per vendor:
    - whether the hardware encoder takes a D3D11 texture directly, and its latency in low-latency mode
      ([CODECAPI_AVLowLatencyMode](https://learn.microsoft.com/en-us/windows/win32/medfound/codecapi-avlowlatencymode));
    - constant bitrate, no B-frames, one picture out per picture in;
-   - gradual refresh (`CODECAPI_AVEncVideoIntraRefreshMode` and `...Size`), so there are no keyframe bursts;
+   - gradual refresh (`CODECAPI_AVEncVideoGradualIntraRefresh`; the name checked against the Windows headers),
+     so there are no keyframe bursts;
    - long-term reference frames (`AVEncVideoLTRBufferControl`, `AVEncVideoMarkLTRFrame`,
      `AVEncVideoUseLTRFrame`), which let the client recover from loss without a keyframe;
    - slices limited by size (`AVEncSliceControlMode`), so a slice fits a network packet;
    - what happens when the bitrate is changed mid-stream (some encoders restart: **verify**);
    - whether 4:4:4 is possible (believed not, through Media Foundation: **verify**).
    This decides open point 2 and the loss-repair design in step 4.
-8. **Check the engine** for DTLS and AES-GCM in its mbedTLS build (open point 5).
+8. (Checking the engine for DTLS moved to step 4 with the owner's decision on open point 5.)
 
 Done when: section 6 has a row per machine for today's lossless path, and the encoder trial's table is filled
 for every GPU the owner has.
@@ -326,7 +348,8 @@ keyboard and mouse; text is exact within 250 ms of stopping; an idle desktop cos
 
 1. **UDP sockets** get IPv6, connected use, non-blocking receive and sending several packets per call.
 2. **The datagram channel** in `Wire/`, with its own small header and version, opened by a UDP hello that proves
-   it belongs to a logged-in session. Encrypted per open point 5. The server never answers a datagram it can't
+   it belongs to a logged-in session. Encrypted with DTLS (open point 5); first check that the engine's mbedTLS
+   build has DTLS, and add it there if not. The server never answers a datagram it can't
    authenticate (so it can't be used to flood someone else), and a change of address is authenticated again.
 3. **Packets.** Each frame's slices are cut into packets of about 1200 bytes (frame number, packet number and
    count, keyframe and end-of-frame flags). The path's packet size limit is checked once at the start. Large
@@ -409,7 +432,7 @@ need 64-bit constants (`1ull << n`; today's use `1u`).
 
 | Addition | Where | Behind |
 |---|---|---|
-| capture and send times on `FrameBegin` and video frames; four times on `Ping`/`Pong` | control | `Timestamps` |
+| capture, compress and send times on `FrameEnd` and video frames; the server's two times on `Pong` (done, 0.6.1) | control | `Timestamps` |
 | new `Still::Compression` values | control | `StillFilters` |
 | `StreamConfig.codec`; video `Frame` with its changed-tile set; `RequestKeyframe` | control, then datagram | `Video` (reserved) |
 | `PointerRelative` | control, then datagram | `RelativeMouse` |
@@ -423,6 +446,11 @@ Filled in as steps finish. Glass to glass is from a 240 frames a second film.
 
 | Date | Step | Machines (CPU, GPU) | Resolution and rate | Capture | Encode | Decode | Present | Pipeline | Glass to glass | Bitrate |
 |---|---|---|---|---|---|---|---|---|---|---|
+| 2026-10-21 | 1 | Linux cloud container, 4 cores, no GPU; server and client on one machine (loopback); test pattern | 1280x720, 45 to 52 a second | 1.8 ms (pattern drawn, not captured) | 0.5 ms zlib | 0.3 ms | 1.5 ms to paint | 7.9 ms median, 18.8 ms slowest 1% | not filmed | 530 to 900 kbit/s |
+
+The first row is a baseline of the tools, not of real capture: the test pattern redraws itself in memory, and the
+rate is held under 60 a second by the session's 16 ms pause after each picture's work (step 2 replaces it with
+waiting on the display).
 
 Encoder trial (step 1), one row per GPU:
 

@@ -75,6 +75,9 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
 - **Version** is bumped to **0.6.0** with changelog and README entries for the server.
 - **Naming:** the tray project is `MarconiServerTray` (output `Build/MarconiServerTray`) so it doesn't clash with
   the console `MarconiServer`. The installer phase decides the shipped program's name.
+- **Speed work has started** (`PERFORMANCE_PLAN.md` step 1, on `claude/beautiful-babbage-qh3jhe`): per-picture
+  timing in the protocol, the Show Performance readout, `--stats`, `MarconiServer --bench`, the measuring test
+  pattern and the Windows encoder trial (written, not yet run). See that document's Progress section.
 - **Everything through 1.5 is merged into `main`; 1.9 is on the branch pending the owner's look.** `main` needs the
   engine at e0cc258 or newer (for `Crypto::TlsServer`).
 
