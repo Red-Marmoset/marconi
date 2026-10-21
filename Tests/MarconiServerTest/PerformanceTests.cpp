@@ -6,6 +6,7 @@
 #include "TestSupport.h"
 
 #include <MarconiCore/Wire/WireClient.h>
+#include <MarconiServerCore/Bench.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/Session.h>
 #include <MarconiServerCore/TestPatternScreen.h>
@@ -190,6 +191,27 @@ namespace MarconiServerTest
             Server::Capture fourth;
             CHECK(screen.Grab(fourth));
             CHECK(!Contains(fourth.dirty, Wire::Rect{305, 145, 11, 11}));
+        });
+
+        RunTest("The benchmark reads, packs and compresses the screen and reports each stage", []() {
+            Server::TestPatternScreen screen(320, 200);
+            Server::BenchOptions options;
+            options.durationMs = 300;
+            options.frameIntervalMs = 5;
+            Server::BenchResult result = Server::RunBench(screen, options);
+            CHECK(result.grabs >= 5);
+            CHECK(result.changedFrames == result.grabs); // the pattern moves every frame
+            CHECK(result.seconds >= 0.3);
+            CHECK(result.loopMs >= 5);
+            CHECK(result.grabMs >= 0 && result.grabP99Ms >= result.grabMs);
+            CHECK(result.compressMs >= 0 && result.compressP99Ms >= result.compressMs);
+            CHECK(result.frameMs >= result.grabMs);
+            CHECK(result.changedPixels >= 200); // at least a column of the bar, full height
+            CHECK(result.bytes > 0);
+            CHECK(result.kilobitsPerSecond > 0);
+            std::string text = Server::FormatBench(result, "a test pattern");
+            CHECK(text.find("Benchmark of a test pattern") != std::string::npos);
+            CHECK(text.find("compressing") != std::string::npos);
         });
 
         RunTest("Over a link with 25 ms each way, the client measures the round trip and each update's age", []() {

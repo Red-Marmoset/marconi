@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.6.3
+
+- Marconi Server can measure how long reading and compressing the screen takes (`--bench`).
+
 ## 0.6.2
 
 - F8 > Show Performance shows how quickly pictures arrive from the other computer.

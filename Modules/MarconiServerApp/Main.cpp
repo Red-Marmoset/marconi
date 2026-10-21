@@ -4,6 +4,7 @@
 
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/IdentityStore.h>
+#include <MarconiServerCore/Bench.h>
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/PasswordHash.h>
@@ -36,6 +37,8 @@ namespace
         printf("  --make-hash TEXT      print the hash of a password and exit (store it, not the password)\n");
         printf("  --cert-file PATH      load the server's certificate from PATH (made on first run with --key-file)\n");
         printf("  --key-file PATH       load the server's private key from PATH (made on first run with --cert-file)\n");
+        printf("  --bench [SECONDS]     read and compress the screen for SECONDS (default 10) with no viewer, then\n");
+        printf("                        print how long each stage took\n");
         printf("  --help                show this\n");
         printf("\nWithout --cert-file/--key-file the server makes a fresh certificate each run, so viewers are\n");
         printf("asked to trust it again every time. Point both at files to keep one identity across restarts.\n");
@@ -61,6 +64,7 @@ int main(int argc, char** argv)
     int width = 1280;
     int height = 720;
     bool forceTestPattern = false;
+    int benchSeconds = 0; // --bench: run the benchmark for this long instead of serving
     std::string certFile;
     std::string keyFile;
 
@@ -75,6 +79,20 @@ int main(int argc, char** argv)
         else if (arg == "--test-pattern")
         {
             forceTestPattern = true;
+        }
+        else if (arg == "--bench")
+        {
+            benchSeconds = 10;
+            // An optional number of seconds follows.
+            if (i + 1 < argc && argv[i + 1][0] >= '0' && argv[i + 1][0] <= '9')
+            {
+                benchSeconds = std::atoi(argv[++i]);
+                if (benchSeconds < 1)
+                {
+                    printf("--bench needs at least 1 second\n");
+                    return 2;
+                }
+            }
         }
         else if (arg == "--port")
         {
@@ -197,6 +215,16 @@ int main(int argc, char** argv)
     else
     {
         what = "this computer's screen";
+    }
+
+    if (benchSeconds > 0)
+    {
+        Marconi::Server::BenchOptions bench;
+        bench.durationMs = benchSeconds * 1000;
+        printf("Reading and compressing %s for %d seconds...\n", what, benchSeconds);
+        Marconi::Server::BenchResult result = Marconi::Server::RunBench(*screen, bench);
+        printf("%s", Marconi::Server::FormatBench(result, what).c_str());
+        return 0;
     }
 
     // A kept identity needs both files named; a fresh-each-run identity needs neither. One without the other is a
