@@ -228,6 +228,14 @@ keeps its settings and a log in a "marconi-server" folder in your user account.
 Right now the server shows this computer's actual screen on Windows; on macOS and Linux it shows a moving test
 picture for the moment, while the screen-sharing part for those systems is finished.
 
+## Keeping Marconi up to date
+
+When Marconi starts it asks GitHub whether a newer version has been released (it sends nothing about you; GitHub
+sees only that a copy of Marconi asked). When there is one, the start window says so, with a button that opens the
+download for your computer. Settings has a "Check for updates now" button, and a box to untick if you'd rather
+Marconi didn't check by itself. On Windows, the installer closes a running Marconi before updating and starts it
+again afterwards.
+
 ## Not available yet
 
 - **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.
@@ -343,7 +351,10 @@ Personal > Certificates). `Package.ps1` then uses `signtool` from the Windows SD
 uninstaller and the setup executable, each with a timestamp from `http://timestamp.digicert.com` so the signatures
 stay valid after the certificate expires. Set `MARCONI_SIGN_TIMESTAMP_URL` to use a different timestamp server.
 
-The installer shows the MIT license, which must be accepted before installing. It then asks who Marconi is for:
+The installer closes a running Marconi (politely first, by force after ten seconds) before replacing its files, and
+starts it again at the end: the finish page's "Start Marconi now" box, or straight away for a silent install. The
+uninstaller closes it the same way. It shows the MIT license, which must be accepted before installing. It then asks
+who Marconi is for:
 
 - **Just me** installs to `%LOCALAPPDATA%\Programs\Marconi`, with the shortcuts and the Settings > Apps entry for
   your account only. It needs no administrator permission.

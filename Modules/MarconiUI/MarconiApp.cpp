@@ -13,6 +13,7 @@
 #include <MarconiCore/Address.h>
 #include <MarconiCore/Rdp/Connect.h>
 #include <MarconiCore/Text.h>
+#include <MarconiCore/Update.h>
 #include <MarconiCore/Files/SftpFiles.h>
 #include <MarconiCore/Net/Discovery.h>
 #include <MarconiCore/Version.h>
@@ -218,6 +219,9 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "files-check",
              "headless diagnostics: copy a small file to a TightVNC server and back over the VNC connection, tidy up",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
+            {wxCMD_LINE_SWITCH, nullptr, "update-check",
+             "diagnostics: ask GitHub whether a newer Marconi has been released, log the answer, then exit",
+             wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
             {wxCMD_LINE_SWITCH, nullptr, "rdp-check",
              "diagnostics: connect to a Remote Desktop server, negotiate, do TLS and the NLA login, then exit",
              wxCMD_LINE_VAL_NONE, wxCMD_LINE_HIDDEN},
@@ -269,6 +273,26 @@ namespace MarconiUI
         }
 #endif
         ConnectionStore::MigrateFromRmvnc();
+
+        if (parser.Found("update-check"))
+        {
+            Marconi::Net::HttpsRequest request;
+            Marconi::Update::CheckResult result =
+                Marconi::Update::CheckForUpdate(Marconi::GetVersionString(), request, 15000);
+            if (!result.checked)
+            {
+                LOG_WARNING("App", "Update check: %s", result.error.c_str());
+            }
+            else
+            {
+                LOG_INFO("App", "Update check: newest release %s (%s); this is %s: %s; download %s",
+                         result.release.tag.c_str(), result.release.name.c_str(), Marconi::GetVersionString(),
+                         result.newer ? "an update" : "up to date",
+                         result.release.downloadUrl.empty() ? result.release.pageUrl.c_str()
+                                                            : result.release.downloadUrl.c_str());
+            }
+            return false;
+        }
 
         if (parser.Found("discover"))
         {

@@ -64,6 +64,9 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 !include "FileFunc.nsh"
 !include "nsDialogs.nsh"
 !include "WinMessages.nsh"
+!include "StrFunc.nsh"
+${StrStr}
+${UnStrStr}
 
 Var AllUsers      ; 1: everyone on this PC (HKLM, Program Files); 0: just the current account (HKCU, its own folder)
 Var IsAdmin       ; 1 when running with administrator rights
@@ -76,6 +79,7 @@ Var MachineVersion
 Var UserVersion
 Var RadioUser
 Var RadioAll
+Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started again at the end)
 
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
@@ -91,7 +95,7 @@ Var RadioAll
 !define MUI_HEADERIMAGE_UNBITMAP "${HEADER_BITMAP}"
 
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${APP_NAME} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME}, the VNC client from ${PUBLISHER}, on your computer.$\r$\n$\r$\nIf ${APP_NAME} is running, close it before continuing. Your saved connections are kept when upgrading.$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME}, the remote desktop client from ${PUBLISHER}, on your computer.$\r$\n$\r$\nIf ${APP_NAME} is running, Setup closes it and starts it again afterwards. Your saved connections are kept when upgrading.$\r$\n$\r$\nClick Next to continue."
 !define MUI_FINISHPAGE_TITLE "${APP_NAME} is ready"
 !define MUI_FINISHPAGE_TEXT "${APP_NAME} ${VERSION} has been installed on your computer.$\r$\n$\r$\nClick Finish to close Setup."
 ; When installing for everyone, Setup runs as administrator, and MUI's own run would start Marconi that way too: its
@@ -123,7 +127,7 @@ Page custom ModePageCreate ModePageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
-!define MUI_WELCOMEPAGE_TEXT "This will remove ${APP_NAME} from your computer.$\r$\n$\r$\nYour saved connections, stored passwords and logs are kept unless you choose to remove them too, two pages on.$\r$\n$\r$\nClose ${APP_NAME} before continuing, then click Next."
+!define MUI_WELCOMEPAGE_TEXT "This will remove ${APP_NAME} from your computer.$\r$\n$\r$\nYour saved connections, stored passwords and logs are kept unless you choose to remove them too, two pages on.$\r$\n$\r$\nIf ${APP_NAME} is running, it is closed first. Click Next to continue."
 !insertmacro MUI_UNPAGE_WELCOME
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_COMPONENTS
@@ -389,11 +393,62 @@ Function ComponentsShow
     ${EndIf}
 FunctionEnd
 
+; Closes any running ${APP_EXE} so its files can be replaced or removed: first politely (the same as closing its
+; windows; a connection in the middle of a file transfer may ask and hold things up), then, after ten seconds,
+; forcibly. Sets $WasRunning when there was one. taskkill and tasklist come with Windows.
+!macro CloseRunningAppFunction PREFIX STRSTR
+Function ${PREFIX}CloseRunningApp
+    StrCpy $WasRunning 0
+    nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+        Return ; tasklist isn't available: carry on as before
+    ${EndIf}
+    ${${STRSTR}} $2 $1 "${APP_EXE}"
+    ${If} $2 == ""
+        Return
+    ${EndIf}
+    StrCpy $WasRunning 1
+    DetailPrint "Closing ${APP_NAME}"
+    nsExec::ExecToStack 'taskkill /IM ${APP_EXE}'
+    Pop $0
+    Pop $1
+    StrCpy $3 0
+    ${Do}
+        Sleep 500
+        nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
+        Pop $0
+        Pop $1
+        ${${STRSTR}} $2 $1 "${APP_EXE}"
+        ${If} $2 == ""
+            Return
+        ${EndIf}
+        IntOp $3 $3 + 1
+    ${LoopUntil} $3 >= 20
+    DetailPrint "${APP_NAME} didn't close; ending it"
+    nsExec::ExecToStack 'taskkill /F /IM ${APP_EXE}'
+    Pop $0
+    Pop $1
+    Sleep 1000
+FunctionEnd
+!macroend
+!insertmacro CloseRunningAppFunction "" "StrStr"
+!insertmacro CloseRunningAppFunction "un." "UnStrStr"
+
 ; Explorer launches Marconi on Setup's behalf, so it runs as the signed-in user. If Explorer isn't running, or is
 ; itself elevated, the plug-in falls back to a plain ShellExecute. The empty action means the default ("open").
 Function LaunchAsUser
     SetOutPath "$INSTDIR"
     ShellExecAsUser::ShellExecAsUser "" "$INSTDIR\${APP_EXE}" ""
+FunctionEnd
+
+; A silent install has no finish page, so a ${APP_NAME} that Setup closed is started again here.
+Function .onInstSuccess
+    ${If} ${Silent}
+    ${AndIf} $WasRunning == 1
+        Call LaunchAsUser
+    ${EndIf}
 FunctionEnd
 
 Function OpenSourceAsUser
@@ -403,6 +458,7 @@ FunctionEnd
 Section "${APP_NAME}" SecApp
     SectionIn RO
     Call ApplyMode
+    Call CloseRunningApp
 
     ; Upgrading: remove the previous version of the same kind first (keeping its user data), so files it had and
     ; this one doesn't aren't left behind. _?= runs its uninstaller in place and waits for it.
@@ -543,6 +599,7 @@ SectionEnd
 
 Section "un.${APP_NAME}" SecUnApp
     SectionIn RO
+    Call un.CloseRunningApp
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
     Delete "$SMPROGRAMS\${SOURCE_SHORTCUT}"
     Delete "$DESKTOP\${APP_NAME}.lnk"

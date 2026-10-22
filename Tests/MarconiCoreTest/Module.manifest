@@ -4,6 +4,6 @@
     "type": "console",
     "description": "Tests for the Marconi core: streams, handshake, decoders, client against a scripted fake server",
     "dependencies": ["Test", "MarconiCore"],
-    "externalDependencies": ["wxwidgets", "stb"],
+    "externalDependencies": ["wxwidgets", "stb", "json"],
     "platforms": ["Windows", "Linux", "macOS"]
 }

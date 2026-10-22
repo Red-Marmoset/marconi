@@ -4,7 +4,7 @@
     "type": "Engine",
     "description": "Headless VNC/RFB client core: sockets, protocol, decoders. Uses wx's bundled zlib and stb_image (JPEG) but no wx headers.",
     "dependencies": ["Platform", "Log", "Crypto"],
-    "externalDependencies": ["wxwidgets", "stb"],
+    "externalDependencies": ["wxwidgets", "stb", "json"],
     "platformLibraries": {
         "Windows": ["ws2_32.lib"]
     },

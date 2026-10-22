@@ -6,6 +6,8 @@
 #include "ConnectionStore.h"
 
 #include <MarconiCore/Net/Discovery.h>
+#include <MarconiCore/Net/Https.h>
+#include <MarconiCore/Update.h>
 
 #include <wx/frame.h>
 #include <wx/timer.h>
@@ -60,6 +62,13 @@ namespace MarconiUI
         void ShowNetwork();
         void OnNetworkActivated(wxListEvent& event);
 
+        // "A newer Marconi is available": asked of GitHub on a worker thread when the window opens (unless turned
+        // off in Settings) or from Settings; the answer arrives on the UI thread.
+        void StartUpdateCheck(bool manual);
+        void HandleUpdateResult(const Marconi::Update::CheckResult& result, bool manual);
+        void ShowUpdateBar(bool show);
+        void OpenUpdate();
+
         ConnectionStore m_store;
         std::vector<SavedConnection> m_connections;
         wxTextCtrl* m_address = nullptr;
@@ -78,6 +87,12 @@ namespace MarconiUI
         wxListView* m_network = nullptr;
         wxStaticText* m_networkEmpty = nullptr;
         std::vector<NetworkEntry> m_networkEntries;
+        wxSizer* m_updateBar = nullptr;
+        wxStaticText* m_updateText = nullptr;
+        std::thread m_updateThread;
+        Marconi::Net::HttpsRequest m_updateRequest;
+        std::atomic<bool> m_updateChecking{false};
+        Marconi::Update::Release m_update; // the newer release, once one is known
         wxTimer m_discoveryTimer;
         std::thread m_discoveryThread;
         std::atomic<bool> m_discoveryCancel{false};

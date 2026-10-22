@@ -5,6 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.1
+
+- Marconi checks GitHub for a newer version when it starts, and says so with a download button; Settings has a check
+  too, and a way to turn the automatic one off.
+- The Windows installer closes a running Marconi before updating and starts it again afterwards.
+
 ## 0.7.0
 
 - Connects to computers that offer Remote Desktop (RDP): the picture, keyboard and mouse work; the clipboard and

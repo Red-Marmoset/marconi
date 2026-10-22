@@ -19,7 +19,9 @@
 
 #include <wx/bmpbndl.h>
 #include <wx/button.h>
+#include <wx/checkbox.h>
 #include <wx/choice.h>
+#include <wx/config.h>
 #include <wx/dcbuffer.h>
 #include <wx/dialog.h>
 #include <wx/display.h>
@@ -168,6 +170,18 @@ namespace MarconiUI
         wxButton* settings = button("Settings");
         brand->Add(settings, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, border);
         outer->Add(brand, 0, wxEXPAND | wxALL, border);
+        // "A newer Marconi is available", shown once the update check has an answer that says so.
+        m_updateBar = new wxBoxSizer(wxHORIZONTAL);
+        m_updateText = label("");
+        m_updateBar->Add(m_updateText, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, gap);
+        wxButton* download = button("Download", true);
+        wxButton* later = button("Not now");
+        m_updateBar->Add(download, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
+        m_updateBar->Add(later, 0, wxALIGN_CENTER_VERTICAL);
+        outer->Add(m_updateBar, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, border);
+        m_updateBar->ShowItems(false);
+        download->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OpenUpdate(); });
+        later->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { ShowUpdateBar(false); });
         divider();
 
         outer->Add(label("Quick connect", true), 0, wxLEFT | wxRIGHT | wxTOP, border);
@@ -355,6 +369,11 @@ namespace MarconiUI
         m_address->SetFocus();
         StartDiscovery();
         m_discoveryTimer.Start(10000);
+
+        if (wxConfigBase::Get()->ReadBool("/Updates/CheckOnStart", true))
+        {
+            StartUpdateCheck(false);
+        }
     }
 
     ConnectionsFrame::~ConnectionsFrame()
@@ -364,6 +383,87 @@ namespace MarconiUI
         if (m_discoveryThread.joinable())
         {
             m_discoveryThread.join();
+        }
+        m_updateRequest.Cancel();
+        if (m_updateThread.joinable())
+        {
+            m_updateThread.join();
+        }
+    }
+
+    void ConnectionsFrame::StartUpdateCheck(bool manual)
+    {
+        if (m_updateChecking.exchange(true))
+        {
+            return; // one is under way; its answer will come
+        }
+        if (m_updateThread.joinable())
+        {
+            m_updateThread.join(); // the previous check has finished
+        }
+        m_updateThread = std::thread([this, manual]() {
+            Marconi::Update::CheckResult result =
+                Marconi::Update::CheckForUpdate(Marconi::GetVersionString(), m_updateRequest, 15000);
+            CallAfter([this, result, manual]() {
+                m_updateChecking = false;
+                HandleUpdateResult(result, manual);
+            });
+        });
+    }
+
+    void ConnectionsFrame::HandleUpdateResult(const Marconi::Update::CheckResult& result, bool manual)
+    {
+        const wxString current = wxString::FromUTF8(Marconi::GetVersionString());
+        if (!result.checked)
+        {
+            LOG_WARNING("App", "Update check: %s", result.error.c_str());
+            if (manual)
+            {
+                wxMessageBox("Couldn't check for updates.\n\n" + wxString::FromUTF8(result.error), "Marconi",
+                             wxOK | wxICON_WARNING, this);
+            }
+            return;
+        }
+        if (!result.newer)
+        {
+            if (manual)
+            {
+                wxMessageBox("You have the latest version, Marconi " + current + ".", "Marconi",
+                             wxOK | wxICON_INFORMATION, this);
+            }
+            return;
+        }
+        m_update = result.release;
+        const wxString newer = wxString::FromUTF8(m_update.version.ToString());
+        m_updateText->SetLabel("Marconi " + newer + " is available (you have " + current + ").");
+        ShowUpdateBar(true);
+        if (manual)
+        {
+            wxMessageDialog ask(this,
+                                "Marconi " + newer + " is available; you have " + current + ".\n\nDownload it now?",
+                                "Marconi", wxYES_NO | wxICON_INFORMATION);
+            ask.SetYesNoLabels("Download", "Not now");
+            if (ask.ShowModal() == wxID_YES)
+            {
+                OpenUpdate();
+            }
+        }
+    }
+
+    void ConnectionsFrame::ShowUpdateBar(bool show)
+    {
+        m_updateBar->ShowItems(show);
+        Layout();
+    }
+
+    void ConnectionsFrame::OpenUpdate()
+    {
+        // The installer or disk image for this computer when the release has one, else the release page.
+        const std::string& url = m_update.downloadUrl.empty() ? m_update.pageUrl : m_update.downloadUrl;
+        if (url.empty() || !wxLaunchDefaultBrowser(wxString::FromUTF8(url)))
+        {
+            wxMessageBox("Couldn't open the download. Find it at https://github.com/Red-Marmoset/marconi/releases",
+                         "Marconi", wxOK | wxICON_WARNING, this);
         }
     }
 
@@ -616,6 +716,19 @@ namespace MarconiUI
             }
         });
         layout->Add(remove, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
+
+        // Updates: whether to ask GitHub at every start, and a check right now (its answer comes once the dialog
+        // has closed, since it takes a moment).
+        wxCheckBox* checkOnStart = new wxCheckBox(&dialog, wxID_ANY, "Check for updates when Marconi starts");
+        checkOnStart->SetValue(wxConfigBase::Get()->ReadBool("/Updates/CheckOnStart", true));
+        layout->Add(checkOnStart, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
+        bool checkNow = false;
+        wxButton* check = new wxButton(&dialog, wxID_ANY, "Check for updates now");
+        check->Bind(wxEVT_BUTTON, [&dialog, &checkNow](wxCommandEvent&) {
+            checkNow = true;
+            dialog.EndModal(wxID_OK);
+        });
+        layout->Add(check, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
         layout->Add(new wxStaticText(&dialog, wxID_ANY,
             "Marconi " + wxString::FromUTF8(Marconi::GetVersionString()) + " / Red Marmoset Studios"),
             0, wxLEFT | wxRIGHT | wxBOTTOM, space);
@@ -626,6 +739,12 @@ namespace MarconiUI
         if (dialog.ShowModal() == wxID_OK)
         {
             ChooseAppearance(appearance->GetSelection());
+            wxConfigBase::Get()->Write("/Updates/CheckOnStart", checkOnStart->GetValue());
+            wxConfigBase::Get()->Flush();
+            if (checkNow)
+            {
+                StartUpdateCheck(true);
+            }
         }
         if (removeEverything)
         {

@@ -164,6 +164,7 @@ namespace MarconiTest
     void RunRdpSequenceTests();
     void RunRdpInputOutputTests();
     void RunRdpLicenseTests();
+    void RunUpdateTests();
     void RunRdpPointerTests();
     void RunRdpClientTests();
 } // namespace MarconiTest
