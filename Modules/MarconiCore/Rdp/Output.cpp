@@ -41,16 +41,20 @@ namespace Marconi
                     uint16_t bitmapLength = GetU16(data, p + 16);
                     rect.x = left;
                     rect.y = top;
+                    rect.destWidth = rect.width;
+                    rect.destHeight = rect.height;
                     if (right >= left && bottom >= top)
                     {
                         // The right/bottom are inclusive; width/height usually match but trust the explicit size.
+                        rect.destWidth = static_cast<uint16_t>(right - left + 1);
+                        rect.destHeight = static_cast<uint16_t>(bottom - top + 1);
                         if (rect.width == 0)
                         {
-                            rect.width = static_cast<uint16_t>(right - left + 1);
+                            rect.width = rect.destWidth;
                         }
                         if (rect.height == 0)
                         {
-                            rect.height = static_cast<uint16_t>(bottom - top + 1);
+                            rect.height = rect.destHeight;
                         }
                     }
                     rect.compressed = (flags & kBitmapCompression) != 0;
@@ -93,6 +97,59 @@ namespace Marconi
             return ReadRectangles(body, 2, count, out, error);
         }
 
+        bool ParsePaletteUpdate(const Bytes& body, std::vector<uint32_t>& palette, std::string& error)
+        {
+            // TS_UPDATE_PALETTE after updateType: pad2Octets (2), numberColors (4), then RGB triples.
+            if (body.size() < 6)
+            {
+                error = "a palette update had no colour count";
+                return false;
+            }
+            uint32_t count = static_cast<uint32_t>(body[2]) | (static_cast<uint32_t>(body[3]) << 8) |
+                             (static_cast<uint32_t>(body[4]) << 16) | (static_cast<uint32_t>(body[5]) << 24);
+            if (count > 256 || body.size() < 6 + static_cast<size_t>(count) * 3)
+            {
+                error = "a palette update's colours ran past the end";
+                return false;
+            }
+            palette.assign(256, 0);
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                size_t p = 6 + static_cast<size_t>(i) * 3;
+                palette[i] = (static_cast<uint32_t>(body[p]) << 16) | (static_cast<uint32_t>(body[p + 1]) << 8) |
+                             body[p + 2];
+            }
+            return true;
+        }
+
+        bool ParseUpdatePdu(const Bytes& body, Update& out, std::string& error)
+        {
+            if (body.size() < 2)
+            {
+                error = "an update PDU had no update type";
+                return false;
+            }
+            Bytes rest(body.begin() + 2, body.end());
+            switch (GetU16(body, 0))
+            {
+                case 0x0000:
+                    out.type = UpdateType::Orders;
+                    return true;
+                case 0x0001:
+                    out.type = UpdateType::Bitmap;
+                    return ParseBitmapUpdate(rest, out.rects, error);
+                case 0x0002:
+                    out.type = UpdateType::Palette;
+                    return ParsePaletteUpdate(rest, out.palette, error);
+                case 0x0003:
+                    out.type = UpdateType::Synchronize;
+                    return true;
+                default:
+                    out.type = UpdateType::Other;
+                    return true;
+            }
+        }
+
         bool ParseFastPathUpdates(const Bytes& payload, std::vector<FastPathUpdate>& out, std::string& error)
         {
             size_t p = 0;
@@ -115,23 +172,35 @@ namespace Marconi
                 }
                 (void)fragmentation; // single-fragment updates only for now
                 FastPathUpdate update;
-                if (code == 0x01) // FASTPATH_UPDATETYPE_BITMAP
+                update.code = code;
+                update.data.assign(payload.begin() + p, payload.begin() + p + size);
+                if (code == 0x01 || code == 0x02) // FASTPATH_UPDATETYPE_BITMAP / _PALETTE
                 {
-                    update.type = FastPathUpdateType::Bitmap;
-                    // The payload is a TS_UPDATE_BITMAP: a 2-byte updateType (0x0001) then the bitmap data.
-                    Bytes body(payload.begin() + p, payload.begin() + p + size);
-                    if (body.size() < 2)
+                    // The payload is a TS_UPDATE_BITMAP / TS_UPDATE_PALETTE: a 2-byte updateType then the data.
+                    if (update.data.size() < 2)
                     {
-                        error = "a fast-path bitmap update was too short";
+                        error = "a fast-path update was too short";
                         return false;
                     }
-                    Bytes afterType(body.begin() + 2, body.end());
-                    if (!ParseBitmapUpdate(afterType, update.rects, error))
+                    Bytes afterType(update.data.begin() + 2, update.data.end());
+                    if (code == 0x01)
                     {
-                        return false;
+                        update.type = FastPathUpdateType::Bitmap;
+                        if (!ParseBitmapUpdate(afterType, update.rects, error))
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        update.type = FastPathUpdateType::Palette;
+                        if (!ParsePaletteUpdate(afterType, update.palette, error))
+                        {
+                            return false;
+                        }
                     }
                 }
-                else if (code == 0x04 || code == 0x05 || code == 0x06 || code == 0x08) // pointer updates
+                else if (code >= 0x05 && code <= 0x0C && code != 0x07) // pointer updates: PTR_NULL to LARGE_POINTER
                 {
                     update.type = FastPathUpdateType::Pointer;
                 }

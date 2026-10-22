@@ -28,7 +28,7 @@ namespace Marconi
 
         bool IsSupported(Protocol protocol)
         {
-            return protocol == Protocol::Vnc || protocol == Protocol::Marconi;
+            return protocol == Protocol::Vnc || protocol == Protocol::Marconi || protocol == Protocol::Rdp;
         }
 
         Choice ChooseProtocol(const Address& address, const std::vector<ProbeResult>& results)

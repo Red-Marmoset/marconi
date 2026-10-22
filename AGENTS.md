@@ -64,6 +64,9 @@ its phases in order, and keep it current (decisions, measurements, finished step
 
 - `MarconiCore` has no wx headers. It uses wx's bundled zlib (`#include <zlib.h>`, symbols prefixed `wx_zlib_`),
   stb_image for JPEG, and the engine's `Crypto` module.
+- `RemoteSession` (`RemoteSession.h`) is what the viewer drives; `Rfb::Client` (VNC), `Wire::Client` (the Marconi
+  protocol) and `Rdp::Client` (Remote Desktop) implement it. The viewer picks one from the address's protocol or
+  the probe. Each runs its protocol on a worker thread.
 - `Rfb::Client` runs the protocol on a worker thread.
   - Its `ClientListener` callbacks arrive on that thread; `ViewerFrame` passes them to the UI thread with
     `CallAfter`.

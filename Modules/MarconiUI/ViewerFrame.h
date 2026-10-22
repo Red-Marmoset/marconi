@@ -42,6 +42,10 @@ namespace Marconi
     {
         class Client;
     }
+    namespace Rdp
+    {
+        class Client;
+    }
 } // namespace Marconi
 
 namespace MarconiUI
@@ -129,10 +133,14 @@ namespace MarconiUI
         void HandleProbe(const std::vector<Marconi::Net::ProbeResult>& results);
         void ConnectVnc(uint16_t port);
         void ConnectMarconi(uint16_t port);
+        void ConnectRdp(uint16_t port);
         // The VNC connection object, made on the first VNC connect and kept for the window's life (reconnects reuse
         // it); m_session points at it afterwards.
         Marconi::Rfb::Client& EnsureRfbClient();
         Marconi::Wire::Client& EnsureWireClient();
+        Marconi::Rdp::Client& EnsureRdpClient();
+        // The desktop size to ask a Remote Desktop server for: this window's display, or a fixed size headless.
+        wxSize DesktopSizeForRdp() const;
         void RememberDetected(const wxString& detected);
         void HandleConnected(const Marconi::Rfb::ServerInit& serverInit);
         void HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info);
@@ -189,11 +197,12 @@ namespace MarconiUI
         ViewerOptions m_options;
         // The connection, whatever protocol it speaks: null until the first connect. The canvas and the clipboard
         // sync hold the same pointer. m_rfb is the same object when it is a VNC connection, for VNC-only features
-        // (TightVNC file transfer, Mac quirks); null otherwise.
+        // (TightVNC file transfer, Mac quirks); null otherwise. m_wire and m_rdp likewise for the other protocols.
         std::unique_ptr<Marconi::RemoteSession> m_session;
         Marconi::Rfb::Client* m_rfb = nullptr;
         Marconi::Wire::Client* m_wire = nullptr;
-        std::function<void()> m_reconnect; // reconnects with the protocol this window is using (VNC or Marconi)
+        Marconi::Rdp::Client* m_rdp = nullptr;
+        std::function<void()> m_reconnect; // reconnects with the protocol this window is using
         ClipboardSync m_clipboard;
         VncCanvas* m_canvas = nullptr;
         wxAuiManager m_aui;               // docks the toolbar (and later the file panel) around the screen

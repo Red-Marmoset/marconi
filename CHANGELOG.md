@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.0
+
+- Connects to computers that offer Remote Desktop (RDP): the picture, keyboard and mouse work; the clipboard and
+  changing the screen size come later.
+
 ## 0.6.0
 
 - Added Marconi Server: a tray program that shares this computer so another can connect to it and control it, with the screen and your typing kept private by encryption.

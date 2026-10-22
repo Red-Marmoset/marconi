@@ -36,10 +36,13 @@ namespace MarconiTest
             Net::Choice c =
                 Net::ChooseProtocol(host, {Found(5900, Protocol::Vnc), Missing(3389), Found(22, Protocol::Ssh)});
             CHECK(c.kind == Net::Choice::Kind::Connect && c.protocol == Protocol::Vnc && c.port == 5900);
-            // RDP ranks higher but isn't supported yet: VNC still wins.
+            // A computer offering both Remote Desktop and VNC: Remote Desktop ranks higher.
             c = Net::ChooseProtocol(host, {Found(5900, Protocol::Vnc), Found(3389, Protocol::Rdp)});
-            CHECK(c.kind == Net::Choice::Kind::Connect && c.protocol == Protocol::Vnc);
+            CHECK(c.kind == Net::Choice::Kind::Connect && c.protocol == Protocol::Rdp && c.port == 3389);
             CHECK(c.found.size() == 2 && c.found[0].protocol == Protocol::Rdp); // best first
+            // Remote Desktop on its own (a Windows PC, or a Linux desktop sharing its screen that way) connects.
+            c = Net::ChooseProtocol(host, {Missing(5900), Found(3389, Protocol::Rdp), Found(22, Protocol::Ssh)});
+            CHECK(c.kind == Net::Choice::Kind::Connect && c.protocol == Protocol::Rdp && c.port == 3389);
             // A VNC server on an odd port, identified by greeting.
             c = Net::ChooseProtocol({"box", 5905}, {Found(5905, Protocol::Vnc)});
             CHECK(c.kind == Net::Choice::Kind::Connect && c.port == 5905);
@@ -47,12 +50,7 @@ namespace MarconiTest
 
         RunTest("ChooseProtocol reports unsupported and missing services", []() {
             Address host{"drips"};
-            Net::Choice c =
-                Net::ChooseProtocol(host, {Missing(5900), Found(3389, Protocol::Rdp), Found(22, Protocol::Ssh)});
-            CHECK(c.kind == Net::Choice::Kind::Unsupported);
-            CHECK(Net::DescribeChoice(c, host) ==
-                  "drips offers Remote Desktop (RDP), which Marconi doesn't support yet.");
-            c = Net::ChooseProtocol(host, {Missing(5900), Missing(3389), Found(22, Protocol::Ssh)});
+            Net::Choice c = Net::ChooseProtocol(host, {Missing(5900), Missing(3389), Found(22, Protocol::Ssh)});
             CHECK(c.kind == Net::Choice::Kind::Unsupported);
             CHECK(Net::DescribeChoice(c, host) ==
                   "drips only offers SSH (a text terminal), which Marconi doesn't support yet.");

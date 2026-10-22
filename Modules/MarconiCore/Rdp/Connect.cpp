@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// RDP milestones 1-2 end to end: negotiation, TLS upgrade, and the CredSSP login over the TLS channel.
+// An RDP connection end to end: negotiation, TLS upgrade, the CredSSP login, the connection sequence, and the framed
+// PDUs of the live session.
 
 #include <MarconiCore/Rdp/Connect.h>
 
@@ -58,7 +59,8 @@ namespace Marconi
             Net::TlsOptions tlsOptions;
             tlsOptions.hostName = host;
             tlsOptions.trustDecision = std::move(trustDecision);
-            m_tls = Net::CreateTlsStream(*m_socket, tlsOptions);
+            m_tls = createTlsStream ? createTlsStream(*m_socket, tlsOptions)
+                                    : Net::CreateTlsStream(*m_socket, tlsOptions);
             if (!m_tls)
             {
                 error = "This build of Marconi can't make encrypted connections.";
@@ -106,46 +108,142 @@ namespace Marconi
             return true;
         }
 
+        bool Connection::ReadExact(uint8_t* buffer, size_t count)
+        {
+            size_t got = 0;
+            while (got < count)
+            {
+                ptrdiff_t n = m_tls->Read(buffer + got, count - got);
+                if (n <= 0)
+                {
+                    return false;
+                }
+                got += static_cast<size_t>(n);
+            }
+            return true;
+        }
+
         bool Connection::ReadFramed(Bytes& mcsPdu, std::string& error)
         {
-            auto readExact = [&](uint8_t* buffer, size_t count) {
-                size_t got = 0;
-                while (got < count)
+            bool fastPath = false;
+            if (!ReadPdu(mcsPdu, fastPath, error))
+            {
+                return false;
+            }
+            if (fastPath)
+            {
+                error = "the server sent a fast-path update before the connection was active";
+                return false;
+            }
+            return true;
+        }
+
+        bool Connection::ReadPdu(Bytes& payload, bool& fastPath, std::string& error)
+        {
+            uint8_t first = 0;
+            if (!ReadExact(&first, 1))
+            {
+                error = "the connection was closed";
+                return false;
+            }
+            if (first == 0x03)
+            {
+                // A TPKT frame: version 3, reserved, then the big-endian total length.
+                uint8_t header[4] = {first, 0, 0, 0};
+                if (!ReadExact(header + 1, 3))
                 {
-                    ptrdiff_t n = m_tls->Read(buffer + got, count - got);
-                    if (n <= 0)
-                    {
-                        return false;
-                    }
-                    got += static_cast<size_t>(n);
+                    error = "the connection dropped while reading a frame";
+                    return false;
                 }
+                size_t total = (static_cast<size_t>(header[2]) << 8) | header[3];
+                if (total < 7 || total > 1024 * 1024)
+                {
+                    error = "the server sent an RDP frame with an implausible length";
+                    return false;
+                }
+                Bytes frame(header, header + 4);
+                frame.resize(total);
+                if (!ReadExact(frame.data() + 4, total - 4))
+                {
+                    error = "the connection dropped while reading a frame";
+                    return false;
+                }
+                if (!UnframeX224Data(frame, payload))
+                {
+                    error = "the server's RDP frame didn't parse";
+                    return false;
+                }
+                fastPath = false;
                 return true;
-            };
-            uint8_t header[4];
-            if (!readExact(header, 4) || header[0] != 0x03)
+            }
+            if ((first & 0x03) != 0)
             {
                 error = "the server sent something that wasn't an RDP frame";
                 return false;
             }
-            size_t total = (static_cast<size_t>(header[2]) << 8) | header[3];
-            if (total < 7 || total > 1024 * 1024)
-            {
-                error = "the server sent an RDP frame with an implausible length";
-                return false;
-            }
-            Bytes frame(header, header + 4);
-            frame.resize(total);
-            if (!readExact(frame.data() + 4, total - 4))
+            // A fast-path output PDU (MS-RDPBCGR 2.2.9.1.2): the header byte, a 1- or 2-byte total length, then
+            // (with TLS doing the encryption, no signature) the updates.
+            uint8_t length1 = 0;
+            if (!ReadExact(&length1, 1))
             {
                 error = "the connection dropped while reading a frame";
                 return false;
             }
-            if (!UnframeX224Data(frame, mcsPdu))
+            size_t total = length1;
+            size_t headerBytes = 2;
+            if (length1 & 0x80)
             {
-                error = "the server's RDP frame didn't parse";
+                uint8_t length2 = 0;
+                if (!ReadExact(&length2, 1))
+                {
+                    error = "the connection dropped while reading a frame";
+                    return false;
+                }
+                total = (static_cast<size_t>(length1 & 0x7F) << 8) | length2;
+                headerBytes = 3;
+            }
+            if (total < headerBytes || total > 1024 * 1024)
+            {
+                error = "the server sent an RDP frame with an implausible length";
                 return false;
             }
+            if ((first & 0xC0) != 0)
+            {
+                error = "the server sent a fast-path update with RDP encryption, which Marconi doesn't support";
+                return false;
+            }
+            payload.resize(total - headerBytes);
+            if (!payload.empty() && !ReadExact(payload.data(), payload.size()))
+            {
+                error = "the connection dropped while reading a frame";
+                return false;
+            }
+            fastPath = true;
             return true;
+        }
+
+        bool Connection::SendPdu(const Bytes& pdu, std::string& error)
+        {
+            if (!m_tls)
+            {
+                error = "not connected";
+                return false;
+            }
+            return SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId, pdu), error);
+        }
+
+        bool Connection::SendActivation(uint32_t shareId, uint16_t width, uint16_t height, std::string& error)
+        {
+            return SendPdu(BuildConfirmActive(shareId, m_userChannelId, width, height), error) &&
+                   SendPdu(BuildSynchronize(shareId, m_userChannelId, m_ioChannelId), error) &&
+                   SendPdu(BuildControlCooperate(shareId, m_userChannelId), error) &&
+                   SendPdu(BuildControlRequest(shareId, m_userChannelId), error) &&
+                   SendPdu(BuildFontList(shareId, m_userChannelId), error);
+        }
+
+        void Connection::Shutdown()
+        {
+            m_socket->Shutdown();
         }
 
         bool Connection::JoinChannel(uint16_t channelId, std::string& error)
@@ -236,11 +334,16 @@ namespace Marconi
                 {
                     continue; // not a data channel message (e.g. a disconnect provider ultimatum would end here)
                 }
-                uint16_t count = 0;
-                if (ParseDemandActive(payload, shareId, count))
+                DemandActiveInfo demand;
+                if (ParseDemandActiveInfo(payload, demand))
                 {
+                    shareId = demand.shareId;
                     m_outcome.shareId = shareId;
-                    LOG_INFO("Rdp", "Server Demand Active received (share 0x%x, %u capability sets)", shareId, count);
+                    m_outcome.desktopWidth = demand.desktopWidth;
+                    m_outcome.desktopHeight = demand.desktopHeight;
+                    LOG_INFO("Rdp", "Server Demand Active received (share 0x%x, %u capability sets, desktop %ux%u at "
+                             "%u bpp)", shareId, demand.capabilitySetCount, demand.desktopWidth, demand.desktopHeight,
+                             demand.preferredBitsPerPixel);
                     break;
                 }
             }
@@ -250,17 +353,14 @@ namespace Marconi
                 return false;
             }
 
-            // Confirm Active with our capabilities, then the finalisation PDUs.
-            if (!SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId,
-                                                 BuildConfirmActive(shareId, m_userChannelId, width, height)), error) ||
-                !SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId,
-                                                 BuildSynchronize(shareId, m_userChannelId, m_ioChannelId)), error) ||
-                !SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId,
-                                                 BuildControlCooperate(shareId, m_userChannelId)), error) ||
-                !SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId,
-                                                 BuildControlRequest(shareId, m_userChannelId)), error) ||
-                !SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId,
-                                                 BuildFontList(shareId, m_userChannelId)), error))
+            // Confirm Active with our capabilities (agreeing to the server's desktop size when it named one), then
+            // the finalisation PDUs.
+            if (m_outcome.desktopWidth != 0 && m_outcome.desktopHeight != 0)
+            {
+                width = m_outcome.desktopWidth;
+                height = m_outcome.desktopHeight;
+            }
+            if (!SendActivation(shareId, width, height, error))
             {
                 return false;
             }

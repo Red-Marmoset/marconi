@@ -10,13 +10,16 @@
 
 #include <MarconiCore/Net/ProtocolChoice.h>
 #include <MarconiCore/Net/WakeOnLan.h>
+#include <MarconiCore/Rdp/RdpClient.h>
 #include <MarconiCore/Text.h>
 #include <MarconiCore/Wire/WireClient.h>
 
 #include <Log/Log.h>
 
+#include <wx/display.h>
 #include <wx/msgdlg.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <functional>
 #include <string>
@@ -49,6 +52,10 @@ namespace MarconiUI
         {
             ConnectMarconi(Marconi::EffectivePort(address));
         }
+        else if (address.protocol == Marconi::Protocol::Rdp)
+        {
+            ConnectRdp(Marconi::EffectivePort(address));
+        }
         else if (m_options.sshTunnel)
         {
             // The VNC port may not be reachable from here at all; the SSH server connects to it on our behalf.
@@ -69,6 +76,12 @@ namespace MarconiUI
         {
             m_usingRemembered = true;
             ConnectVnc(static_cast<uint16_t>(rememberedPort));
+        }
+        else if (address.protocol == Marconi::Protocol::Auto && m_options.detected.StartsWith("rdp ") &&
+                 m_options.detected.Mid(4).ToLong(&rememberedPort) && rememberedPort > 0 && rememberedPort < 65536)
+        {
+            m_usingRemembered = true;
+            ConnectRdp(static_cast<uint16_t>(rememberedPort));
         }
         else
         {
@@ -130,6 +143,61 @@ namespace MarconiUI
             m_clipboard.SetSession(m_session.get());
         }
         return *m_wire;
+    }
+
+    Marconi::Rdp::Client& ViewerFrame::EnsureRdpClient()
+    {
+        if (m_rdp == nullptr)
+        {
+            Marconi::SessionListener& listener = *this;
+            std::unique_ptr<Marconi::Rdp::Client> client = std::make_unique<Marconi::Rdp::Client>(listener);
+            m_rdp = client.get();
+            m_session = std::move(client);
+            m_canvas->SetSession(m_session.get());
+            m_clipboard.SetSession(m_session.get());
+        }
+        return *m_rdp;
+    }
+
+    wxSize ViewerFrame::DesktopSizeForRdp() const
+    {
+        // A Remote Desktop server makes its desktop the size the client asks for, so ask for the display this
+        // window is on (the Fit scale mode then shows it whole, however the window is sized). RDP wants a width
+        // that is a multiple of 4.
+        wxSize size(1024, 768);
+        if (!m_options.headless)
+        {
+            int index = wxDisplay::GetFromWindow(this);
+            wxDisplay display(index == wxNOT_FOUND ? 0u : static_cast<unsigned>(index));
+            wxRect area = display.GetClientArea();
+            if (area.width >= 640 && area.height >= 480)
+            {
+                size = area.GetSize();
+            }
+        }
+        size.x = std::min(size.x & ~3, 8192);
+        size.y = std::min(size.y, 8192);
+        return size;
+    }
+
+    void ViewerFrame::ConnectRdp(uint16_t port)
+    {
+        m_port = port;
+        m_reconnect = [this]() { ConnectRdp(m_port); };
+        m_clipboard.Reset();
+        Marconi::Address shown = m_options.address;
+        shown.port = port;
+        shown.protocol = Marconi::Protocol::Rdp;
+        SetStatusText("Connecting to " + wxString::FromUTF8(Marconi::FormatAddress(shown)) + "...");
+        Marconi::Rdp::ClientOptions options;
+        options.host = m_options.address.host;
+        options.port = port;
+        options.credentials = m_options.credentials;
+        options.trustedCertificateSha256 = m_options.trustedCertificateSha256;
+        wxSize size = DesktopSizeForRdp();
+        options.desktopWidth = static_cast<uint16_t>(size.x);
+        options.desktopHeight = static_cast<uint16_t>(size.y);
+        EnsureRdpClient().Connect(options);
     }
 
     void ViewerFrame::ConnectMarconi(uint16_t port)
@@ -194,15 +262,20 @@ namespace MarconiUI
         Marconi::Net::Choice choice = Marconi::Net::ChooseProtocol(m_options.address, results);
         if (choice.kind == Marconi::Net::Choice::Kind::Connect)
         {
-            bool marconi = choice.protocol == Marconi::Protocol::Marconi;
+            const char* name = choice.protocol == Marconi::Protocol::Marconi ? "marconi %u"
+                               : choice.protocol == Marconi::Protocol::Rdp   ? "rdp %u"
+                                                                              : "vnc %u";
             if (m_options.address.protocol == Marconi::Protocol::Auto && m_options.address.port == 0)
             {
-                RememberDetected(wxString::Format(marconi ? "marconi %u" : "vnc %u",
-                                                  static_cast<unsigned>(choice.port)));
+                RememberDetected(wxString::Format(name, static_cast<unsigned>(choice.port)));
             }
-            if (marconi)
+            if (choice.protocol == Marconi::Protocol::Marconi)
             {
                 ConnectMarconi(choice.port);
+            }
+            else if (choice.protocol == Marconi::Protocol::Rdp)
+            {
+                ConnectRdp(choice.port);
             }
             else
             {

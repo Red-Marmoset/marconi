@@ -51,8 +51,10 @@ best option it supports. It remembers what it found, so connecting next time is 
 **On this network** lists computers nearby that announce themselves, as Macs with Screen Sharing do. The list
 updates every 10 seconds.
 
-Some computers offer Remote Desktop (built into Windows) or SSH (a text-only connection) instead. Marconi recognises
-these, but can't use them yet, and tells you so.
+Some computers offer Remote Desktop (built into Windows, and a choice on many Linux desktops) instead of VNC. Marconi
+connects to those too: you log in with an account on that computer. Over Remote Desktop the picture, keyboard and
+mouse work; the clipboard and changing the other computer's screen size come later. SSH (a text-only connection) is
+recognised but not supported, and Marconi tells you so.
 
 ### Ways to write an address
 
@@ -65,7 +67,8 @@ Most of the time a name or address on its own is all you need. For special cases
 | `studio-mac.local::5901` | a specific port number, here 5901 |
 | `alice@studio-mac.local` | log in to a Mac as the user `alice` |
 | `vnc://studio-mac.local` | VNC only |
-| `rdp://drips`, `ssh://drips` | Remote Desktop or SSH only (recognised, not supported yet) |
+| `rdp://drips` | Remote Desktop only |
+| `ssh://drips` | SSH only (recognised, not supported yet) |
 | `[fe80::1]:1` | an IPv6 address, in square brackets |
 
 ## While you're connected
@@ -228,7 +231,10 @@ picture for the moment, while the screen-sharing part for those systems is finis
 ## Not available yet
 
 - **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.
-- **Remote Desktop and SSH** connections (recognised, but not supported yet).
+- **SSH** connections (recognised, but not supported yet).
+- Over **Remote Desktop**: the clipboard, changing the other computer's screen size, the server's pointer when it
+  uses the newest large pointer shapes, and the faster picture formats (the plain ones are used, which need more
+  bandwidth).
 - Copying text in some languages and symbols with servers that don't support the newer clipboard messages (Macs,
   TightVNC): with those, the clipboard only carries Western European characters, and Marconi says so when some
   can't be sent.
@@ -255,9 +261,9 @@ and saves what the viewer would show as PNG files in the log folder, then exits:
 
     marconi --saved "Studio Mac" --headless --view-only --snapshot-every 5 --quit-after 60
 
-Remote Desktop (RDP) support is being built in stages (see `Documentation/RDP.md`); the viewer can't open an RDP
-connection yet. To try the part that is done, `--rdp-check` connects to an RDP server, negotiates, does the TLS
-handshake and, if the server asks for Network Level Authentication, logs in, then logs the result and exits:
+Remote Desktop (RDP) support is built in stages (see `Documentation/RDP.md`). `--rdp-check` connects to an RDP
+server without a window, negotiates, does the TLS handshake and, if the server asks for Network Level
+Authentication, logs in, runs the connection sequence, then logs the result and exits:
 
     marconi rdp://user:password@host --rdp-check
 

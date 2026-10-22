@@ -32,7 +32,8 @@ namespace Marconi
         // Whether Marconi can connect with `protocol` today.
         bool IsSupported(Protocol protocol);
 
-        // Picks the best supported protocol among `results` (preference: RDP, VNC, SSH), honouring a forced protocol.
+        // Picks the best supported protocol among `results` (preference: Marconi, RDP, VNC, SSH), honouring a forced
+        // protocol.
         Choice ChooseProtocol(const Address& address, const std::vector<ProbeResult>& results);
 
         // The message to show the user, or "" for Connect.

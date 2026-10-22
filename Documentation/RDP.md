@@ -1,8 +1,9 @@
 # RDP support: design
 
 Marconi speaks VNC. This document plans Remote Desktop (RDP), the protocol Windows itself uses, so Marconi can
-reach a Windows computer without a VNC server installed on it. It is a plan to build against, not a record of what
-exists: at the time of writing only the pieces noted under "Already here" are in the code.
+reach a Windows computer without a VNC server installed on it (and a Linux desktop that shares its screen the same
+way). The first usable checkpoint (milestones 1 to 5) is in the code: the viewer opens RDP connections. "Already
+here" below says exactly what exists; the rest is the plan for what follows.
 
 ## Why, and in what order
 
@@ -65,7 +66,31 @@ milestone 1.
   the viewer, which still says RDP is recognised but not supported.
 - Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
   (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
-  specification; it has nothing to decode until milestones 2 and 3 bring a session up.
+  specification.
+- **Milestones 1 to 5 wired into the viewer** (`Rdp/RdpClient`, a `RemoteSession` like the VNC and Marconi
+  clients): `ViewerFrame` opens an RDP connection when the address says `rdp://`, when the probe finds only RDP (or
+  RDP and VNC: RDP ranks higher, as the chooser always planned), or when a remembered probe result says "rdp". The
+  client asks for the account (user name and password, `DOMAIN\user` splits the domain off) before connecting, runs
+  `Rdp::Connection` (negotiation, TLS with the same certificate questions as VNC and Marconi, CredSSP when the
+  server wants NLA, the connection sequence), then reads the session: slow-path Update PDUs and fast-path output
+  (bitmap updates into the `Framebuffer`, palette updates for 8-bit pictures, pointer updates through
+  `Rdp/Pointer` into `CursorShape`, with the 25-entry pointer cache), a later Demand Active (the server changing
+  its desktop: the picture is resized and the activation answered again), Set Error Info (kept as the reason shown
+  when the server then closes) and the MCS Disconnect Provider Ultimatum. Input: keysyms map to scancodes
+  (`Rdp/Input`), with a Unicode event for characters that have none; the mouse sends a move plus one event per
+  button change, and a wheel turn per notch. `RequestFullUpdate` sends a Refresh Rect for the whole desktop.
+  Decisions made here:
+  - The desktop size asked for is the display the window is on (width rounded down to a multiple of 4; 1024x768
+    headless). The server's Demand Active may name another size, which the framebuffer and the Confirm Active then
+    take: Windows sizes the session to the client, a shared physical screen keeps its own.
+  - Fast-path output is not advertised in the General capability set (slow path is enough and is what every server
+    falls back to), but fast-path PDUs are read all the same in case a server sends them.
+  - 16 bits per pixel is asked for; 32-bit rectangles (planar) are not decoded, so a server insisting on them shows
+    a logged warning and no picture: milestone 8.
+  - No keepalive yet: a dead link is noticed when the next send fails or the socket closes.
+  - Tested in `RdpClientTests` against a scripted loopback server with a passthrough stand-in for TLS (the
+    connection sequence, both update paths, pointers, input, a desktop change and the server's error info), and
+    `RdpPointerTests` for the pointer shapes.
 
 ## What RDP needs that VNC didn't
 
@@ -126,7 +151,8 @@ against a real server (the Linux `xrdp` in the dev container, and the owner's Wi
 7. **Multiple monitors and dynamic resize** (RDP has both natively).
 8. **Graphics pipeline codecs** (RemoteFX / planar / NSCodec / H.264): speed, after correctness.
 
-Milestones 1 to 5 with NLA on (so 1 to 5 including 2) are the first real, usable checkpoint.
+Milestones 1 to 5 with NLA on (so 1 to 5 including 2) are the first real, usable checkpoint: reached, see "Already
+here". Next in order: 6 (clipboard), 7 (resize and multiple monitors), 8 (codecs).
 
 ## Testing
 

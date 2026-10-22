@@ -3,6 +3,8 @@
 
 #include <MarconiCore/Rdp/Sequence.h>
 
+#include <cstdio>
+
 namespace Marconi
 {
     namespace Rdp
@@ -261,6 +263,43 @@ namespace Marconi
             return true;
         }
 
+        bool ParseDemandActiveInfo(const Bytes& pdu, DemandActiveInfo& out)
+        {
+            out = DemandActiveInfo();
+            if (!ParseDemandActive(pdu, out.shareId, out.capabilitySetCount))
+            {
+                return false;
+            }
+            ShareControlType type = ShareControlType::DemandActive;
+            uint16_t source = 0;
+            Bytes body;
+            ReadShareControl(pdu, type, source, body);
+            // shareId (4), lengthSourceDescriptor (2), lengthCombinedCapabilities (2), the source descriptor,
+            // numberCapabilities (2), pad (2), then the capability sets.
+            size_t p = 8 + GetU16(body, 4) + 4;
+            for (uint16_t i = 0; i < out.capabilitySetCount && p + 4 <= body.size(); ++i)
+            {
+                uint16_t capType = GetU16(body, p);
+                uint16_t length = GetU16(body, p + 2);
+                if (length < 4 || p + length > body.size())
+                {
+                    break;
+                }
+                if (capType == kCapBitmap && length >= 16)
+                {
+                    out.preferredBitsPerPixel = GetU16(body, p + 4);
+                    out.desktopWidth = GetU16(body, p + 12);
+                    out.desktopHeight = GetU16(body, p + 14);
+                }
+                else if (capType == kCapGeneral && length >= 16)
+                {
+                    out.fastPathOutput = (GetU16(body, p + 14) & 0x0001) != 0; // FASTPATH_OUTPUT_SUPPORTED
+                }
+                p += length;
+            }
+            return true;
+        }
+
         Bytes BuildConfirmActive(uint32_t shareId, uint16_t source, uint16_t desktopWidth, uint16_t desktopHeight)
         {
             Bytes caps;
@@ -320,6 +359,51 @@ namespace Marconi
             PutU16(body, 0x0003); // listFlags: FONTLIST_FIRST | FONTLIST_LAST
             PutU16(body, 50);     // entrySize
             return WrapShareData(shareId, source, ShareDataType::FontList, body);
+        }
+
+        Bytes BuildRefreshRect(uint32_t shareId, uint16_t source, uint16_t width, uint16_t height)
+        {
+            Bytes body;
+            body.push_back(1); // numberOfAreas
+            body.insert(body.end(), 3, 0); // pad
+            PutU16(body, 0); // left
+            PutU16(body, 0); // top
+            PutU16(body, static_cast<uint16_t>(width > 0 ? width - 1 : 0));   // right, inclusive
+            PutU16(body, static_cast<uint16_t>(height > 0 ? height - 1 : 0)); // bottom, inclusive
+            return WrapShareData(shareId, source, ShareDataType::RefreshRect, body);
+        }
+
+        bool ParseSetErrorInfo(const Bytes& body, uint32_t& errorInfo)
+        {
+            if (body.size() < 4)
+            {
+                return false;
+            }
+            errorInfo = GetU32(body, 0);
+            return true;
+        }
+
+        std::string ErrorInfoText(uint32_t errorInfo)
+        {
+            switch (errorInfo)
+            {
+                case 0x00000001: return "The server ended the connection.";
+                case 0x00000002: return "The server logged this session off.";
+                case 0x00000003: return "The server ended the connection because it was idle for too long.";
+                case 0x00000004: return "The server ended the connection because nobody logged in for too long.";
+                case 0x00000005: return "Another connection to that computer took over this session.";
+                case 0x00000006: return "The server ran out of memory.";
+                case 0x00000007: return "The server refused the connection.";
+                case 0x00000009: return "That account isn't allowed to connect to this computer remotely.";
+                case 0x0000000A: return "The server wants you to log in again.";
+                case 0x0000000B: return "Someone on the other computer ended the connection.";
+                case 0x0000000C: return "You were logged off.";
+                case 0x00000011: return "The server has no licence left for this connection.";
+                default: break;
+            }
+            char code[32];
+            snprintf(code, sizeof(code), "0x%08x", errorInfo);
+            return std::string("The server ended the connection (code ") + code + ").";
         }
     } // namespace Rdp
 } // namespace Marconi

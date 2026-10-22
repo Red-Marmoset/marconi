@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// RDP milestones 1-2 end to end over a real connection: the X.224/TLS negotiation, the TLS upgrade, and (when the
-// server asks for it) the CredSSP login. On success the connection is authenticated and ready for the MCS
-// connection sequence (milestone 3). See Documentation/RDP.md.
+// An RDP connection over a real socket: the X.224/TLS negotiation, the TLS upgrade, the CredSSP login when the
+// server asks for it (milestones 1-2), the MCS connection sequence and capability exchange (milestone 3), and then
+// the framed PDUs of the live session that Rdp::Client drives (milestones 4-5). See Documentation/RDP.md.
 
 #pragma once
 
@@ -35,6 +35,8 @@ namespace Marconi
             bool reachedActive = false;    // the connection sequence completed: the server will now send output
             uint16_t ioChannelId = 0;      // the MCS channel the desktop rides on, once known
             uint32_t shareId = 0;          // the share id the server assigned
+            uint16_t desktopWidth = 0;     // the desktop size the server announced in its Demand Active (0: none)
+            uint16_t desktopHeight = 0;
         };
 
         // Holds an authenticated RDP connection: the socket and the TLS stream stay open for the caller to continue
@@ -48,7 +50,13 @@ namespace Marconi
             Connection& operator=(const Connection&) = delete;
 
             Net::TlsStream& Tls() { return *m_tls; }
+            Net::Socket& GetSocket() { return *m_socket; }
             const ConnectOutcome& Outcome() const { return m_outcome; }
+            uint16_t UserChannelId() const { return m_userChannelId; }
+
+            // Makes the encrypted stream once the negotiation chooses TLS. Empty means Net::CreateTlsStream; tests
+            // substitute their own.
+            std::function<std::unique_ptr<Net::TlsStream>(Net::Socket&, const Net::TlsOptions&)> createTlsStream;
 
             // Runs the negotiation, TLS upgrade and (if asked) the CredSSP login. False with `error` on failure;
             // `Outcome()` says how far it got either way. `trustDecision` is asked when the server's certificate
@@ -64,9 +72,23 @@ namespace Marconi
             bool Activate(uint16_t width, uint16_t height, const std::string& clientName, const LogonInfo& logon,
                           std::string& error);
 
+            // The live session, once Activate succeeded. SendPdu wraps an RDP PDU (a Share Control or Share Data
+            // PDU) for the I/O channel and sends it; it may be called from another thread than the reader's.
+            bool SendPdu(const Bytes& pdu, std::string& error);
+            // Reads one PDU from the server: either the MCS PDU inside a TPKT/X.224 frame (`fastPath` false), or
+            // the updates inside a fast-path output PDU (`fastPath` true). False with `error` when the connection
+            // ends or the bytes make no sense.
+            bool ReadPdu(Bytes& payload, bool& fastPath, std::string& error);
+            // Answers a Demand Active (the first, or a later one when the server changes its desktop) with our
+            // Confirm Active for `width` by `height` and the finalisation PDUs.
+            bool SendActivation(uint32_t shareId, uint16_t width, uint16_t height, std::string& error);
+            // Makes any blocked read or write fail, so another thread can end the session.
+            void Shutdown();
+
         private:
             bool SendFramed(const Bytes& mcsPdu, std::string& error);
             bool ReadFramed(Bytes& mcsPdu, std::string& error);
+            bool ReadExact(uint8_t* buffer, size_t count);
             bool JoinChannel(uint16_t channelId, std::string& error);
 
             uint16_t m_userChannelId = 0;
