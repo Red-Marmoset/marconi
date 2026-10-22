@@ -325,8 +325,8 @@ namespace MarconiTest
     void RunRdpPointerTests()
     {
         RunTest("A colour pointer decodes to ARGB with the AND mask making pixels transparent", []() {
-            // 2 by 2, white everywhere; the AND mask hides the top-right pixel (bit 6 of the row byte).
-            Rdp::Bytes data = ColourPointer(3, 2, 2, 0xFFFFFF, {0x40, 0x00});
+            // 2 by 2, black everywhere; the AND mask (bit 6 of the row byte) makes the top-right pixel transparent.
+            Rdp::Bytes data = ColourPointer(3, 2, 2, 0x000000, {0x40, 0x00});
             Rdp::PointerUpdate update;
             std::string error;
             CHECK(Rdp::DecodePointerAttribute(data, 24, nullptr, update, error));
@@ -334,9 +334,13 @@ namespace MarconiTest
             CHECK(update.shape.width == 2 && update.shape.height == 2);
             CHECK(update.shape.hotspotX == 1 && update.shape.hotspotY == 1);
             CHECK(update.shape.argb.size() == 4);
-            CHECK(update.shape.argb[0] == 0xFFFFFFFF); // top left: opaque white
+            CHECK(update.shape.argb[0] == 0xFF000000); // top left: opaque black
             CHECK(update.shape.argb[1] == 0x00000000); // top right: transparent
-            CHECK(update.shape.argb[2] == 0xFFFFFFFF && update.shape.argb[3] == 0xFFFFFFFF);
+            CHECK(update.shape.argb[2] == 0xFF000000 && update.shape.argb[3] == 0xFF000000);
+            // With the AND bit set over a coloured pixel the server means "invert the screen"; that shows as black.
+            Rdp::Bytes inverting = ColourPointer(0, 1, 1, 0xFFFFFF, {0x80});
+            CHECK(Rdp::DecodePointerAttribute(inverting, 24, nullptr, update, error));
+            CHECK(update.shape.argb[0] == 0xFF000000);
         });
 
         RunTest("The slow-path pointer PDU and the fast-path codes are told apart", []() {

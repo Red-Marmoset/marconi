@@ -86,6 +86,9 @@ namespace Marconi
             void Shutdown();
 
         private:
+            // Answers a licensing message during Activate (MS-RDPELE); false with `error` when the server refuses.
+            bool HandleLicensing(const Bytes& pdu, uint8_t messageType, const std::string& user,
+                                 const std::string& machine, std::string& error);
             bool SendFramed(const Bytes& mcsPdu, std::string& error);
             bool ReadFramed(Bytes& mcsPdu, std::string& error);
             bool ReadExact(uint8_t* buffer, size_t count);

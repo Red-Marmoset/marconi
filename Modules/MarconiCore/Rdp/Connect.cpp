@@ -6,12 +6,14 @@
 
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/Rdp/ClientData.h>
+#include <MarconiCore/Rdp/License.h>
 #include <MarconiCore/Rdp/Mcs.h>
 #include <MarconiCore/Rdp/Negotiation.h>
 #include <MarconiCore/Rdp/Pdu.h>
 #include <MarconiCore/Rdp/Security.h>
 #include <MarconiCore/Rdp/Sequence.h>
 
+#include <Crypto/Crypto.h>
 #include <Log/Log.h>
 
 namespace Marconi
@@ -262,6 +264,56 @@ namespace Marconi
             return true;
         }
 
+        bool Connection::HandleLicensing(const Bytes& pdu, uint8_t messageType, const std::string& user,
+                                         const std::string& machine, std::string& error)
+        {
+            switch (messageType)
+            {
+                case kLicenseRequest:
+                {
+                    ServerLicenseRequest request;
+                    if (!ParseServerLicenseRequest(pdu, request, error))
+                    {
+                        return false;
+                    }
+                    uint8_t clientRandom[32];
+                    uint8_t premaster[48];
+                    if (!Crypto::RandomBytes(clientRandom, sizeof(clientRandom)) ||
+                        !Crypto::RandomBytes(premaster, sizeof(premaster)))
+                    {
+                        error = "couldn't make the random values the licensing exchange needs";
+                        return false;
+                    }
+                    LOG_INFO("Rdp", "Server License Request received (%zu-bit key); answering with a New License "
+                             "Request", request.modulus.size() * 8);
+                    return SendPdu(BuildNewLicenseRequest(request, clientRandom, premaster, user, machine), error);
+                }
+                case kLicenseErrorAlert:
+                {
+                    uint32_t code = 0;
+                    uint32_t transition = 0;
+                    if (ParseLicenseErrorAlert(pdu, code, transition) && code == kStatusValidClient)
+                    {
+                        LOG_INFO("Rdp", "Licensing done: the server accepts this client");
+                        return true;
+                    }
+                    error = LicenseErrorText(code);
+                    return false;
+                }
+                case kPlatformChallenge:
+                    error = "The server wants a Remote Desktop licence from a licensing server, which Marconi can't "
+                            "provide yet.";
+                    return false;
+                case kNewLicense:
+                case kUpgradeLicense:
+                    LOG_INFO("Rdp", "Licensing done: the server issued a licence (not kept)");
+                    return true;
+                default:
+                    LOG_INFO("Rdp", "Skipping a licensing message of type 0x%02x", messageType);
+                    return true;
+            }
+        }
+
         bool Connection::Activate(uint16_t width, uint16_t height, const std::string& clientName,
                                   const LogonInfo& logon, std::string& error)
         {
@@ -319,7 +371,8 @@ namespace Marconi
             }
             LOG_INFO("Rdp", "Client Info sent; waiting for the server's capabilities");
 
-            // Wait for the server's Demand Active (it may send a licensing PDU or error info first; skip those).
+            // Wait for the server's Demand Active. Before it, the server runs the licensing exchange: its License
+            // Request is answered with a New License Request, and its verdict read; anything else is skipped.
             uint32_t shareId = 0;
             for (int guard = 0; guard < 20; ++guard)
             {
@@ -332,7 +385,18 @@ namespace Marconi
                 Bytes payload;
                 if (!StripSendData(pdu, channel, payload))
                 {
+                    LOG_INFO("Rdp", "Skipping a %zu-byte MCS PDU (0x%02x) while waiting for Demand Active", pdu.size(),
+                             pdu.empty() ? 0 : pdu[0]);
                     continue; // not a data channel message (e.g. a disconnect provider ultimatum would end here)
+                }
+                uint8_t licenseType = 0;
+                if (IsLicensingPdu(payload, licenseType))
+                {
+                    if (!HandleLicensing(payload, licenseType, logon.user, clientName, error))
+                    {
+                        return false;
+                    }
+                    continue;
                 }
                 DemandActiveInfo demand;
                 if (ParseDemandActiveInfo(payload, demand))
@@ -346,6 +410,8 @@ namespace Marconi
                              demand.preferredBitsPerPixel);
                     break;
                 }
+                LOG_INFO("Rdp", "Skipping a %zu-byte PDU on channel %u (flags 0x%04x) while waiting for Demand Active",
+                         payload.size(), channel, payload.size() >= 2 ? (payload[0] | (payload[1] << 8)) : 0);
             }
             if (shareId == 0)
             {

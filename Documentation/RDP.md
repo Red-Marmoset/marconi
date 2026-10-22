@@ -79,6 +79,12 @@ milestone 1.
   when the server then closes) and the MCS Disconnect Provider Ultimatum. Input: keysyms map to scancodes
   (`Rdp/Input`), with a Unicode event for characters that have none; the mouse sends a move plus one event per
   button change, and a wheel turn per notch. `RequestFullUpdate` sends a Refresh Rect for the whole desktop.
+  - **Licensing** (`Rdp/License`, MS-RDPELE), which the plan had not listed: after the Client Info, xrdp (and
+    Windows) send a Server License Request and wait for the client's answer before the Demand Active. Marconi
+    answers with a New License Request: a fresh premaster secret RSA-encrypted (the engine's big integers) with the
+    key from the server's certificate, proprietary or X.509 chain, plus the user and machine names. The server's
+    "valid client" verdict ends the exchange; a Platform Challenge (a licensing server wanting a real licence) is
+    reported as unsupported.
   Decisions made here:
   - The desktop size asked for is the display the window is on (width rounded down to a multiple of 4; 1024x768
     headless). The server's Demand Active may name another size, which the framebuffer and the Confirm Active then
@@ -89,8 +95,11 @@ milestone 1.
     a logged warning and no picture: milestone 8.
   - No keepalive yet: a dead link is noticed when the next send fails or the socket closes.
   - Tested in `RdpClientTests` against a scripted loopback server with a passthrough stand-in for TLS (the
-    connection sequence, both update paths, pointers, input, a desktop change and the server's error info), and
-    `RdpPointerTests` for the pointer shapes.
+    connection sequence, both update paths, pointers, input, a desktop change and the server's error info),
+    `RdpPointerTests` for the pointer shapes and `RdpLicenseTests` for licensing (with the License Request xrdp
+    really sends). `MARCONI_RDP_TEST=host:port` runs the client against a real server; against xrdp 0.9.24 on
+    Linux the session comes up over TLS 1.3 and its login window decodes correctly (checked by eye from the
+    `MARCONI_RDP_SNAPSHOT` picture). A Windows server and NLA end to end are still to be confirmed.
 
 ## What RDP needs that VNC didn't
 
