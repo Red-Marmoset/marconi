@@ -40,6 +40,12 @@ namespace MarconiTest
             c = Net::ChooseProtocol(host, {Found(5900, Protocol::Vnc), Found(3389, Protocol::Rdp)});
             CHECK(c.kind == Net::Choice::Kind::Connect && c.protocol == Protocol::Rdp && c.port == 3389);
             CHECK(c.found.size() == 2 && c.found[0].protocol == Protocol::Rdp); // best first
+            // VNC on another display (snorkels: 5901) is found, and the usual port wins a tie.
+            c = Net::ChooseProtocol(host, {Missing(5900), Found(3389, Protocol::Rdp), Found(5901, Protocol::Vnc)});
+            CHECK(c.protocol == Protocol::Rdp && c.fallbacks.size() == 1 && c.fallbacks[0].port == 5901);
+            c = Net::ChooseProtocol(host, {Found(5900, Protocol::Vnc), Found(5901, Protocol::Vnc)});
+            CHECK(c.port == 5900 && c.fallbacks.size() == 1 && c.fallbacks[0].port == 5901);
+            c = Net::ChooseProtocol(host, {Found(5900, Protocol::Vnc), Found(3389, Protocol::Rdp)});
             // VNC is kept to try if Remote Desktop can't connect.
             CHECK(c.fallbacks.size() == 1 && c.fallbacks[0].protocol == Protocol::Vnc && c.fallbacks[0].port == 5900);
             // Remote Desktop on its own (a Windows PC, or a Linux desktop sharing its screen that way) connects.
@@ -65,8 +71,8 @@ namespace MarconiTest
             c = Net::ChooseProtocol(host, {Missing(5900), Missing(3389), Missing(22)});
             CHECK(c.kind == Net::Choice::Kind::NothingFound);
             CHECK(Net::DescribeChoice(c, host) ==
-                  "Couldn't find a remote desktop on drips. Tried Marconi (1895), VNC (5900), Remote Desktop (3389) "
-                  "and SSH (22).");
+                  "Couldn't find a remote desktop on drips. Tried Marconi (1895), VNC (5900 to 5910), Remote Desktop "
+                  "(3389) and SSH (22).");
             c = Net::ChooseProtocol(host, {Found(7000, Protocol::Auto), Found(22, Protocol::Ssh)});
             CHECK(c.kind == Net::Choice::Kind::Unsupported && c.found.front().protocol == Protocol::Ssh);
             Net::ProbeResult unresolved = Missing(5900);

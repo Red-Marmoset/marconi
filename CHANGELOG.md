@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.4
+
+- Also looks for VNC on ports 5901 to 5910 when finding how to connect.
+
 ## 0.7.3
 
 - When a computer offers more than one way to connect and the first one fails, Marconi tries the next.

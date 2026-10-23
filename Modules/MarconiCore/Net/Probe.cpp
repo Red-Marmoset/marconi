@@ -142,10 +142,17 @@ namespace Marconi
             {
                 return {{address.port, Protocol::Auto}};
             }
-            return {{DefaultPort(Protocol::Marconi), Protocol::Marconi},
-                    {DefaultPort(Protocol::Vnc), Protocol::Vnc},
-                    {DefaultPort(Protocol::Rdp), Protocol::Rdp},
-                    {DefaultPort(Protocol::Ssh), Protocol::Ssh}};
+            std::vector<ProbeTarget> targets = {{DefaultPort(Protocol::Marconi), Protocol::Marconi},
+                                                {DefaultPort(Protocol::Vnc), Protocol::Vnc},
+                                                {DefaultPort(Protocol::Rdp), Protocol::Rdp},
+                                                {DefaultPort(Protocol::Ssh), Protocol::Ssh}};
+            // VNC servers for a second (third, ...) desktop listen on the following ports. They come last, so on a
+            // tie the usual port wins and these are the fallbacks.
+            for (uint16_t display = 1; display <= kExtraVncDisplays; ++display)
+            {
+                targets.push_back({static_cast<uint16_t>(DefaultPort(Protocol::Vnc) + display), Protocol::Vnc});
+            }
+            return targets;
         }
 
         namespace

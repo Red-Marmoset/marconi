@@ -29,7 +29,11 @@ namespace Marconi
             std::string detail;                 // e.g. "RFB 003.889", "SSH-2.0-OpenSSH_9.6", or why it failed
         };
 
-        // The ports to try for an address: its own port if it has one, else the usual VNC, RDP and SSH ports.
+        // VNC displays 1 to this (ports 5901 onwards) are probed as well as display 0.
+        constexpr uint16_t kExtraVncDisplays = 10;
+
+        // The ports to try for an address: its own port if it has one, else the usual Marconi, VNC, RDP and SSH
+        // ports, then VNC displays 1 to kExtraVncDisplays.
         std::vector<ProbeTarget> DefaultProbeTargets(const Address& address);
 
         // Probes every target in parallel and returns one result per target, in the same order. Never authenticates.

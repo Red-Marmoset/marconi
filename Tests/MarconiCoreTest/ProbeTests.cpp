@@ -121,11 +121,14 @@ namespace MarconiTest
 
         RunTest("DefaultProbeTargets", []() {
             std::vector<Net::ProbeTarget> all = Net::DefaultProbeTargets({"h"});
-            CHECK(all.size() == 4);
+            CHECK(all.size() == 14);
             CHECK(all[0].port == 1895 && all[0].expected == Protocol::Marconi);
             CHECK(all[1].port == 5900 && all[1].expected == Protocol::Vnc);
             CHECK(all[2].port == 3389 && all[2].expected == Protocol::Rdp);
             CHECK(all[3].port == 22 && all[3].expected == Protocol::Ssh);
+            // Then VNC displays 1 to 10, after the usual ports.
+            CHECK(all[4].port == 5901 && all[4].expected == Protocol::Vnc);
+            CHECK(all[13].port == 5910 && all[13].expected == Protocol::Vnc);
             std::vector<Net::ProbeTarget> one = Net::DefaultProbeTargets({"h", 2222});
             CHECK(one.size() == 1 && one[0].port == 2222 && one[0].expected == Protocol::Auto);
             std::vector<Net::ProbeTarget> forced = Net::DefaultProbeTargets({"h", 0, "", Protocol::Rdp});

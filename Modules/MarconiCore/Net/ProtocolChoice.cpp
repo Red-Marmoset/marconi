@@ -107,7 +107,8 @@ namespace Marconi
             if (address.protocol == Protocol::Auto && address.port == 0)
             {
                 return "Couldn't find a remote desktop on " + host +
-                       ". Tried Marconi (1895), VNC (5900), Remote Desktop (3389) and SSH (22).";
+                       ". Tried Marconi (1895), VNC (5900 to " + std::to_string(5900 + kExtraVncDisplays) +
+                       "), Remote Desktop (3389) and SSH (22).";
             }
             uint16_t port = address.port != 0 ? address.port : DefaultPort(address.protocol);
             return "Couldn't find a remote desktop on " + host + " (port " + std::to_string(port) + ").";
