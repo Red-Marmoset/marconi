@@ -131,6 +131,7 @@ namespace MarconiUI
         void StartProbe();
         void StopProbe();
         void HandleProbe(const std::vector<Marconi::Net::ProbeResult>& results);
+        void ConnectFound(const Marconi::Net::ProbeResult& found); // connects with what a probe found, remembering it
         void ConnectVnc(uint16_t port);
         void ConnectMarconi(uint16_t port);
         void ConnectRdp(uint16_t port);
@@ -255,6 +256,8 @@ namespace MarconiUI
         std::atomic<bool> m_probeCancel{false};
         bool m_usingRemembered = false; // connecting with ViewerOptions::detected, not a fresh probe
         bool m_reprobed = false;        // a remembered result failed and we probed again; don't loop
+        // Other protocols the probe found, best first: tried in turn if the chosen one can't connect at all.
+        std::vector<Marconi::Net::ProbeResult> m_fallbacks;
         uint16_t m_port = 0;            // the port we connect to
 
         // Hand-off between the connection thread (waiting for an answer) and the UI thread (asking the user), for

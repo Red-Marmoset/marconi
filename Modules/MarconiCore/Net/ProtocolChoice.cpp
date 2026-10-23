@@ -46,13 +46,24 @@ namespace Marconi
             });
             for (const ProbeResult& result : choice.found)
             {
-                if (IsSupported(result.protocol))
+                if (!IsSupported(result.protocol))
+                {
+                    continue;
+                }
+                if (choice.kind != Choice::Kind::Connect)
                 {
                     choice.kind = Choice::Kind::Connect;
                     choice.protocol = result.protocol;
                     choice.port = result.port;
-                    return choice;
                 }
+                else
+                {
+                    choice.fallbacks.push_back(result);
+                }
+            }
+            if (choice.kind == Choice::Kind::Connect)
+            {
+                return choice;
             }
             bool anyKnown = std::any_of(choice.found.begin(), choice.found.end(),
                                         [](const ProbeResult& r) { return r.protocol != Protocol::Auto; });

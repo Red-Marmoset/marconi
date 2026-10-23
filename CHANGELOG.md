@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.3
+
+- When a computer offers more than one way to connect and the first one fails, Marconi tries the next.
+
 ## 0.7.2
 
 - Fixed the Windows installer, which couldn't be built in 0.7.1.

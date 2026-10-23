@@ -124,6 +124,8 @@ namespace MarconiUI
             Marconi::SessionListener& listener = *this;
             std::unique_ptr<Marconi::Rfb::Client> client = std::make_unique<Marconi::Rfb::Client>(listener);
             m_rfb = client.get();
+            m_wire = nullptr; // a fallback switches protocols: the previous client goes with m_session
+            m_rdp = nullptr;
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -138,6 +140,8 @@ namespace MarconiUI
             Marconi::SessionListener& listener = *this;
             std::unique_ptr<Marconi::Wire::Client> client = std::make_unique<Marconi::Wire::Client>(listener);
             m_wire = client.get();
+            m_rfb = nullptr;
+            m_rdp = nullptr;
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -152,6 +156,8 @@ namespace MarconiUI
             Marconi::SessionListener& listener = *this;
             std::unique_ptr<Marconi::Rdp::Client> client = std::make_unique<Marconi::Rdp::Client>(listener);
             m_rdp = client.get();
+            m_rfb = nullptr;
+            m_wire = nullptr;
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -262,25 +268,11 @@ namespace MarconiUI
         Marconi::Net::Choice choice = Marconi::Net::ChooseProtocol(m_options.address, results);
         if (choice.kind == Marconi::Net::Choice::Kind::Connect)
         {
-            const char* name = choice.protocol == Marconi::Protocol::Marconi ? "marconi %u"
-                               : choice.protocol == Marconi::Protocol::Rdp   ? "rdp %u"
-                                                                              : "vnc %u";
-            if (m_options.address.protocol == Marconi::Protocol::Auto && m_options.address.port == 0)
-            {
-                RememberDetected(wxString::Format(name, static_cast<unsigned>(choice.port)));
-            }
-            if (choice.protocol == Marconi::Protocol::Marconi)
-            {
-                ConnectMarconi(choice.port);
-            }
-            else if (choice.protocol == Marconi::Protocol::Rdp)
-            {
-                ConnectRdp(choice.port);
-            }
-            else
-            {
-                ConnectVnc(choice.port);
-            }
+            m_fallbacks = choice.fallbacks;
+            Marconi::Net::ProbeResult chosen;
+            chosen.protocol = choice.protocol;
+            chosen.port = choice.port;
+            ConnectFound(chosen);
             return;
         }
         wxString message = wxString::FromUTF8(Marconi::Net::DescribeChoice(choice, m_options.address));
@@ -291,6 +283,29 @@ namespace MarconiUI
             wxMessageBox(message, "Marconi", wxOK | wxICON_INFORMATION, this);
         }
         Close(true);
+    }
+
+    void ViewerFrame::ConnectFound(const Marconi::Net::ProbeResult& found)
+    {
+        const char* name = found.protocol == Marconi::Protocol::Marconi ? "marconi %u"
+                           : found.protocol == Marconi::Protocol::Rdp   ? "rdp %u"
+                                                                         : "vnc %u";
+        if (m_options.address.protocol == Marconi::Protocol::Auto && m_options.address.port == 0)
+        {
+            RememberDetected(wxString::Format(name, static_cast<unsigned>(found.port)));
+        }
+        if (found.protocol == Marconi::Protocol::Marconi)
+        {
+            ConnectMarconi(found.port);
+        }
+        else if (found.protocol == Marconi::Protocol::Rdp)
+        {
+            ConnectRdp(found.port);
+        }
+        else
+        {
+            ConnectVnc(found.port);
+        }
     }
 
     void ViewerFrame::RememberDetected(const wxString& detected)
@@ -502,6 +517,7 @@ namespace MarconiUI
         m_desktopName = wxString::FromUTF8(serverInit.name);
         SetTitle(GetServerDisplayName() + " - Marconi");
         m_connected = true;
+        m_fallbacks.clear(); // this protocol works: reconnects stay with it
         if (m_rfb != nullptr && m_rfb->HasFileTransfer())
         {
             // TightVNC: files travel on this connection, with no second login.
@@ -651,6 +667,18 @@ namespace MarconiUI
         m_connected = false;
         UpdateSystemKeyCapture();
         UpdateControls();
+        if (!m_fallbacks.empty() && !info.error.empty() && !info.wasConnected && !info.authenticationFailed &&
+            !m_reconnecting)
+        {
+            // The machine offers more than one way in and the best one failed (e.g. a Remote Desktop login Marconi
+            // can't do): try the next.
+            Marconi::Net::ProbeResult next = m_fallbacks.front();
+            m_fallbacks.erase(m_fallbacks.begin());
+            LOG_INFO("Viewer", "%s; trying %s on port %u instead", info.error.c_str(),
+                     Marconi::ProtocolName(next.protocol), next.port);
+            ConnectFound(next);
+            return;
+        }
         if (m_reconnecting && !info.authenticationFailed && !info.error.empty())
         {
             // An attempt failed: wait and try again, unless the time is up.

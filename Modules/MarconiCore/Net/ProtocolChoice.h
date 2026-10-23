@@ -26,6 +26,8 @@ namespace Marconi
             Protocol protocol = Protocol::Auto; // Connect: what to use
             uint16_t port = 0;                  // Connect: where
             std::vector<ProbeResult> found;     // every reachable result, best first
+            std::vector<ProbeResult> fallbacks; // Connect: the other supported results, best first, to try in turn
+                                                // if `protocol` can't connect
             std::string error;                  // NothingFound because the name couldn't be resolved: that error
         };
 

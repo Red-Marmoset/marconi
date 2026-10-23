@@ -40,9 +40,17 @@ namespace MarconiTest
             c = Net::ChooseProtocol(host, {Found(5900, Protocol::Vnc), Found(3389, Protocol::Rdp)});
             CHECK(c.kind == Net::Choice::Kind::Connect && c.protocol == Protocol::Rdp && c.port == 3389);
             CHECK(c.found.size() == 2 && c.found[0].protocol == Protocol::Rdp); // best first
+            // VNC is kept to try if Remote Desktop can't connect.
+            CHECK(c.fallbacks.size() == 1 && c.fallbacks[0].protocol == Protocol::Vnc && c.fallbacks[0].port == 5900);
             // Remote Desktop on its own (a Windows PC, or a Linux desktop sharing its screen that way) connects.
             c = Net::ChooseProtocol(host, {Missing(5900), Found(3389, Protocol::Rdp), Found(22, Protocol::Ssh)});
             CHECK(c.kind == Net::Choice::Kind::Connect && c.protocol == Protocol::Rdp && c.port == 3389);
+            CHECK(c.fallbacks.empty()); // SSH can't be a fallback
+            // Everything supported is a fallback, best first.
+            c = Net::ChooseProtocol(host, {Found(5900, Protocol::Vnc), Found(3389, Protocol::Rdp),
+                                           Found(1895, Protocol::Marconi)});
+            CHECK(c.protocol == Protocol::Marconi && c.fallbacks.size() == 2 &&
+                  c.fallbacks[0].protocol == Protocol::Rdp && c.fallbacks[1].protocol == Protocol::Vnc);
             // A VNC server on an odd port, identified by greeting.
             c = Net::ChooseProtocol({"box", 5905}, {Found(5905, Protocol::Vnc)});
             CHECK(c.kind == Net::Choice::Kind::Connect && c.port == 5905);
