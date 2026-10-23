@@ -249,6 +249,43 @@ namespace MarconiTest
             // Everything up to the Font Map, for a `width` by `height` desktop. False if the client went off script.
             bool RunConnectionSequence(uint32_t shareId, uint16_t width, uint16_t height, Rdp::Bytes& clientInfo)
             {
+                if (!RunUntilClientInfo(clientInfo))
+                {
+                    return false;
+                }
+                SendPdu(DemandActive(shareId, width, height));
+                Rdp::Bytes confirmActive = ReadRequest();
+                Rdp::ShareControlType type = Rdp::ShareControlType::Data;
+                uint16_t source = 0;
+                Rdp::Bytes body;
+                if (!Rdp::ReadShareControl(confirmActive, type, source, body) ||
+                    type != Rdp::ShareControlType::ConfirmActive)
+                {
+                    printf("  expected a Confirm Active\n");
+                    return false;
+                }
+                for (int i = 0; i < 4; ++i)
+                {
+                    ReadRequest(); // synchronize, control cooperate, control request, font list
+                }
+                Rdp::Bytes sync;
+                P16(sync, 1); P16(sync, 1002);
+                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::Synchronize, sync));
+                Rdp::Bytes cooperate;
+                P16(cooperate, 4); P16(cooperate, 0); P32(cooperate, 0x03EA);
+                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::Control, cooperate));
+                Rdp::Bytes granted;
+                P16(granted, 2); P16(granted, 1007); P32(granted, 0x03EA);
+                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::Control, granted));
+                Rdp::Bytes fontMap;
+                P16(fontMap, 0); P16(fontMap, 0); P16(fontMap, 3); P16(fontMap, 4);
+                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::FontMap, fontMap));
+                return true;
+            }
+
+            // The sequence as far as the client's Client Info packet.
+            bool RunUntilClientInfo(Rdp::Bytes& clientInfo)
+            {
                 Rdp::Bytes request = ReadFrame();
                 if (request.size() < 11 || request[5] != 0xE0)
                 {
@@ -278,34 +315,7 @@ namespace MarconiTest
                     SendMcs({0x3E, 0x00, 0x00, 0x06, join[3], join[4], join[3], join[4]});
                 }
                 clientInfo = ReadRequest();
-                SendPdu(DemandActive(shareId, width, height));
-                Rdp::Bytes confirmActive = ReadRequest();
-                Rdp::ShareControlType type = Rdp::ShareControlType::Data;
-                uint16_t source = 0;
-                Rdp::Bytes body;
-                if (!Rdp::ReadShareControl(confirmActive, type, source, body) ||
-                    type != Rdp::ShareControlType::ConfirmActive)
-                {
-                    printf("  expected a Confirm Active\n");
-                    return false;
-                }
-                for (int i = 0; i < 4; ++i)
-                {
-                    ReadRequest(); // synchronize, control cooperate, control request, font list
-                }
-                Rdp::Bytes sync;
-                P16(sync, 1); P16(sync, 1002);
-                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::Synchronize, sync));
-                Rdp::Bytes cooperate;
-                P16(cooperate, 4); P16(cooperate, 0); P32(cooperate, 0x03EA);
-                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::Control, cooperate));
-                Rdp::Bytes granted;
-                P16(granted, 2); P16(granted, 1007); P32(granted, 0x03EA);
-                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::Control, granted));
-                Rdp::Bytes fontMap;
-                P16(fontMap, 0); P16(fontMap, 0); P16(fontMap, 3); P16(fontMap, 4);
-                SendPdu(Rdp::WrapShareData(shareId, 0x03EA, Rdp::ShareDataType::FontMap, fontMap));
-                return true;
+                return !clientInfo.empty();
             }
         };
 
@@ -557,6 +567,41 @@ namespace MarconiTest
             CHECK(listener.WaitFor([&]() { return listener.disconnected; }));
             CHECK(listener.disconnectError == "You were logged off.");
             CHECK(!client.IsConnected());
+        });
+
+        RunTest("A server that refuses the session after the login says why, and the Client Info asks it to", []() {
+            FakeServer server;
+            RecordingListener listener;
+            listener.trustCertificate = true;
+            Net::TlsCertificate certificate;
+            certificate.sha256.assign(32, 0x5A);
+            Rdp::Client client(listener);
+            Rdp::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = server.GetPort();
+            options.credentials = {"bob", "secret"};
+            options.createTlsStream = [certificate](Net::Socket& socket, const Net::TlsOptions& tlsOptions) {
+                return std::unique_ptr<Net::TlsStream>(new PassthroughTls(socket, tlsOptions, certificate));
+            };
+            client.Connect(options);
+            CHECK(server.AcceptClient());
+            server.GetClientSocket().SetReceiveTimeout(5000);
+            ScriptedRdpServer script{server.GetClientSocket()};
+            Rdp::Bytes clientInfo;
+            CHECK(script.RunUntilClientInfo(clientInfo));
+            // After the security header and code page: the flags, with logon notify and logon errors set.
+            CHECK(clientInfo.size() >= 12);
+            uint32_t flags = clientInfo[8] | (clientInfo[9] << 8) | (clientInfo[10] << 16) |
+                             (static_cast<uint32_t>(clientInfo[11]) << 24);
+            CHECK((flags & 0x00000040) != 0 && (flags & 0x00010000) != 0);
+            // As Windows ends a session it won't start: a Set Error Info, then the MCS Disconnect Provider Ultimatum.
+            Rdp::Bytes errorInfo;
+            P32(errorInfo, 0x00000009); // ERRINFO_SERVER_INSUFFICIENT_PRIVILEGES
+            script.SendPdu(Rdp::WrapShareData(0, 0x03EA, static_cast<Rdp::ShareDataType>(47), errorInfo));
+            script.SendMcs({0x21, 0x80});
+            CHECK(listener.WaitFor([&]() { return listener.disconnected; }));
+            CHECK(listener.disconnectError == Rdp::ErrorInfoText(9));
+            server.Close();
         });
 
         RunTest("Rdp::Client reports a refused certificate and a cancelled login cleanly", []() {

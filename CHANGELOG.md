@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.7
+
+- When a Windows computer refuses a Remote Desktop session after the login, Marconi says why if Windows gives a reason.
+
 ## 0.7.6
 
 - Fixed Remote Desktop connections to Windows computers failing straight after logging in.

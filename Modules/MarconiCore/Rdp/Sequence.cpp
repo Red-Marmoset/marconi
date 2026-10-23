@@ -61,7 +61,9 @@ namespace Marconi
                 kInfoAutoLogon = 0x00000008,
                 kInfoUnicode = 0x00000010,
                 kInfoMaximizeShell = 0x00000020,
+                kInfoLogonNotify = 0x00000040,
                 kInfoEnableWindowsKey = 0x00000100,
+                kInfoLogonErrors = 0x00010000,
             };
 
             // Capability set types (MS-RDPBCGR 2.2.1.13.1.1.1).
@@ -188,8 +190,10 @@ namespace Marconi
         {
             Bytes info;
             PutU32(info, 0);          // codePage
+            // Logon notify and logon errors, as Windows' own client sends: the server then says why it refuses a
+            // logon (Save Session Info) instead of only hanging up.
             uint32_t flags = kInfoMouse | kInfoDisableCtrlAltDel | kInfoUnicode | kInfoMaximizeShell |
-                             kInfoEnableWindowsKey;
+                             kInfoLogonNotify | kInfoEnableWindowsKey | kInfoLogonErrors;
             if (logon.autoLogon)
             {
                 flags |= kInfoAutoLogon;

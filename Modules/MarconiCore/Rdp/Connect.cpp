@@ -23,6 +23,11 @@ namespace Marconi
 {
     namespace Rdp
     {
+        namespace
+        {
+            constexpr uint8_t kPduTypeSetErrorInfo = 47; // pduType2 of a Set Error Info PDU (MS-RDPBCGR 2.2.5.1.1)
+        } // namespace
+
         Connection::Connection() : m_socket(std::make_unique<Net::Socket>()) {}
         Connection::~Connection() = default;
 
@@ -381,20 +386,34 @@ namespace Marconi
             // Wait for the server's Demand Active. Before it, the server runs the licensing exchange: its License
             // Request is answered with a New License Request, and its verdict read; anything else is skipped.
             uint32_t shareId = 0;
+            std::string serverReason; // what the server said before ending the connection, if anything
             for (int guard = 0; guard < 20; ++guard)
             {
                 Bytes pdu;
                 if (!ReadFramed(pdu, error))
                 {
+                    if (!serverReason.empty())
+                    {
+                        error = serverReason;
+                    }
                     return false;
                 }
                 uint16_t channel = 0;
                 Bytes payload;
                 if (!StripSendData(pdu, channel, payload))
                 {
-                    LOG_INFO("Rdp", "Skipping a %zu-byte MCS PDU (0x%02x) while waiting for Demand Active", pdu.size(),
-                             pdu.empty() ? 0 : pdu[0]);
-                    continue; // not a data channel message (e.g. a disconnect provider ultimatum would end here)
+                    if (!pdu.empty() && (pdu[0] & 0xFC) == 0x20) // MCS Disconnect Provider Ultimatum
+                    {
+                        LOG_INFO("Rdp", "The server ended the connection before sending its capabilities (%s)",
+                                 BytesToHex(pdu).c_str());
+                        error = serverReason.empty()
+                                    ? "the other computer ended the connection after the login (it gave no reason)"
+                                    : serverReason;
+                        return false;
+                    }
+                    LOG_INFO("Rdp", "Skipping a %zu-byte MCS PDU (%s) while waiting for Demand Active", pdu.size(),
+                             BytesToHex(Bytes(pdu.begin(), pdu.begin() + std::min<size_t>(pdu.size(), 32))).c_str());
+                    continue;
                 }
                 uint8_t licenseType = 0;
                 if (IsLicensingPdu(payload, licenseType))
@@ -417,8 +436,22 @@ namespace Marconi
                              demand.preferredBitsPerPixel);
                     break;
                 }
-                LOG_INFO("Rdp", "Skipping a %zu-byte PDU on channel %u (flags 0x%04x) while waiting for Demand Active",
-                         payload.size(), channel, payload.size() >= 2 ? (payload[0] | (payload[1] << 8)) : 0);
+                ShareDataType dataType;
+                Bytes dataBody;
+                uint32_t errorInfo = 0;
+                if (ReadShareData(payload, dataType, dataBody) &&
+                    static_cast<uint8_t>(dataType) == kPduTypeSetErrorInfo && ParseSetErrorInfo(dataBody, errorInfo) &&
+                    errorInfo != 0)
+                {
+                    serverReason = ErrorInfoText(errorInfo);
+                    LOG_INFO("Rdp", "The server sent error info 0x%08x: %s", errorInfo, serverReason.c_str());
+                    continue;
+                }
+                // Anything else (a Save Session Info with a logon error, a Deactivate All): logged whole, small.
+                LOG_INFO("Rdp", "Skipping a %zu-byte PDU on channel %u while waiting for Demand Active: %s",
+                         payload.size(), channel,
+                         BytesToHex(Bytes(payload.begin(), payload.begin() + std::min<size_t>(payload.size(), 64)))
+                             .c_str());
             }
             if (shareId == 0)
             {

@@ -74,6 +74,12 @@ milestone 1.
     Connect-Response. The Connect-Initial had sent nine INTEGERs per DomainParameters (eight in T.125), the same set
     three times, and an empty callingDomainSelector; xrdp tolerated it. It now sends the target, minimum and maximum
     sets of MS-RDPBCGR 4.1.3 byte for byte (pinned by a test), and logs the start of an unreadable response.
+  - With that (0.7.6) the sequence got through the channel joins, the Client Info and licensing ("the server
+    accepts this client"); then the server sent a 13-byte Share Control PDU (the size of a Deactivate All) and an
+    MCS Disconnect Provider Ultimatum, with no Set Error Info. Cause not yet known. The Client Info now sets
+    INFO_LOGONNOTIFY and INFO_LOGONERRORS, as mstsc does, so the server reports logon problems; while waiting for
+    the Demand Active, a Set Error Info becomes the error shown, the Ultimatum ends the wait with that reason, and
+    every skipped PDU is logged in hex.
 - Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
   (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
   specification.
