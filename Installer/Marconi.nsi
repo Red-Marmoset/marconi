@@ -396,7 +396,16 @@ FunctionEnd
 ; Closes any running ${APP_EXE} so its files can be replaced or removed: first politely (the same as closing its
 ; windows; a connection in the middle of a file transfer may ask and hold things up), then, after ten seconds,
 ; forcibly. Sets $WasRunning when there was one. taskkill and tasklist come with Windows.
-!macro CloseRunningAppFunction PREFIX STRSTR
+; NSIS can't expand a define named by another (${${X}}), so this picks the installer's or uninstaller's StrStr.
+!macro CloseRunningAppStrStr PREFIX OUT IN FIND
+    !if "${PREFIX}" == "un."
+        ${UnStrStr} ${OUT} ${IN} "${FIND}"
+    !else
+        ${StrStr} ${OUT} ${IN} "${FIND}"
+    !endif
+!macroend
+
+!macro CloseRunningAppFunction PREFIX
 Function ${PREFIX}CloseRunningApp
     StrCpy $WasRunning 0
     nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
@@ -405,7 +414,7 @@ Function ${PREFIX}CloseRunningApp
     ${If} $0 != 0
         Return ; tasklist isn't available: carry on as before
     ${EndIf}
-    ${${STRSTR}} $2 $1 "${APP_EXE}"
+    !insertmacro CloseRunningAppStrStr "${PREFIX}" $2 $1 "${APP_EXE}"
     ${If} $2 == ""
         Return
     ${EndIf}
@@ -420,7 +429,7 @@ Function ${PREFIX}CloseRunningApp
         nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
         Pop $0
         Pop $1
-        ${${STRSTR}} $2 $1 "${APP_EXE}"
+        !insertmacro CloseRunningAppStrStr "${PREFIX}" $2 $1 "${APP_EXE}"
         ${If} $2 == ""
             Return
         ${EndIf}
@@ -433,8 +442,8 @@ Function ${PREFIX}CloseRunningApp
     Sleep 1000
 FunctionEnd
 !macroend
-!insertmacro CloseRunningAppFunction "" "StrStr"
-!insertmacro CloseRunningAppFunction "un." "UnStrStr"
+!insertmacro CloseRunningAppFunction ""
+!insertmacro CloseRunningAppFunction "un."
 
 ; Explorer launches Marconi on Setup's behalf, so it runs as the signed-in user. If Explorer isn't running, or is
 ; itself elevated, the plug-in falls back to a plain ShellExecute. The empty action means the default ("open").

@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.2
+
+- Fixed the Windows installer, which couldn't be built in 0.7.1.
+
 ## 0.7.1
 
 - Marconi checks GitHub for a newer version when it starts, and says so with a download button; Settings has a check
