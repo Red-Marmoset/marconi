@@ -64,6 +64,12 @@ milestone 1.
   a real server. Verified against xrdp through the TLS path (it chose TLS 1.3, no NLA); the NLA login is pinned by
   the NTLMv2 vectors and a mirror-server test, and needs a Windows server to confirm end to end. Not yet wired into
   the viewer, which still says RDP is recognised but not supported.
+  - First Windows contact (Windows on "snorkels", TLS 1.3, 0.7.4): a real login was dropped by the server, reported
+    as "the server's CredSSP reply wasn't a TSRequest". Cause: the public-key proof was computed over the whole
+    SubjectPublicKeyInfo, but MS-CSSP 3.1.5 binds to the SubjectPublicKey sub-field; Marconi now uses the BIT
+    STRING's contents (the RSAPublicKey, as FreeRDP does). A nonexistent account gets a clean STATUS_LOGON_FAILURE
+    (0xc000006d) from that server, so legs 1-3 are understood; a successful real login with the fix is still to be
+    confirmed. Login errors now say whether the server hung up, and at which step.
 - Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
   (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
   specification.

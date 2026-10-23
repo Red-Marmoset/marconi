@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.5
+
+- Fixed a Remote Desktop login problem with Windows computers.
+- Remote Desktop login errors say when the other computer ended the connection, and at which step.
+
 ## 0.7.4
 
 - Also looks for VNC on ports 5901 to 5910 when finding how to connect.

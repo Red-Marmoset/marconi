@@ -33,8 +33,8 @@ namespace Marconi
             }
 
             // Reads one TSRequest from the TLS link: a TPKT-less, length-prefixed DER SEQUENCE. We read the outer
-            // tag and length, then exactly that many bytes.
-            bool ReadTsRequest(const SecurityLink& tls, TsRequest& out, std::string& error)
+            // tag and length, then exactly that many bytes. `step` names what was expected, for the error.
+            bool ReadTsRequest(const SecurityLink& tls, TsRequest& out, const char* step, std::string& error)
             {
                 auto readExact = [&](uint8_t* buffer, size_t count) {
                     size_t got = 0;
@@ -50,9 +50,14 @@ namespace Marconi
                     return true;
                 };
                 uint8_t prefix[2];
-                if (!readExact(prefix, 2) || prefix[0] != 0x30)
+                if (!readExact(prefix, 2))
                 {
-                    error = "the server's CredSSP reply wasn't a TSRequest";
+                    error = std::string("the server closed the connection instead of sending ") + step;
+                    return false;
+                }
+                if (prefix[0] != 0x30)
+                {
+                    error = std::string("the server's CredSSP reply (") + step + ") wasn't a TSRequest";
                     return false;
                 }
                 Bytes der = {prefix[0], prefix[1]};
@@ -117,6 +122,12 @@ namespace Marconi
                         uint32_t& errorCode, std::string& error)
         {
             errorCode = 0;
+            Bytes subjectPublicKey;
+            if (!ExtractSubjectPublicKey(serverPublicKey, subjectPublicKey))
+            {
+                error = "the server's TLS certificate has a public key Marconi can't read";
+                return false;
+            }
 
             // Leg 1: NEGOTIATE.
             TsRequest negotiate;
@@ -130,7 +141,7 @@ namespace Marconi
 
             // Leg 2: the server's CHALLENGE.
             TsRequest fromServer;
-            if (!ReadTsRequest(tls, fromServer, error))
+            if (!ReadTsRequest(tls, fromServer, "its NTLM challenge", error))
             {
                 return false;
             }
@@ -189,11 +200,11 @@ namespace Marconi
             Bytes pubKeyAuthData;
             if (negotiatedVersion >= 5)
             {
-                pubKeyAuthData = Sha256(Concat("CredSSP Client-To-Server Binding Hash", nonce, serverPublicKey));
+                pubKeyAuthData = Sha256(Concat("CredSSP Client-To-Server Binding Hash", nonce, subjectPublicKey));
             }
             else
             {
-                pubKeyAuthData = serverPublicKey;
+                pubKeyAuthData = subjectPublicKey;
             }
 
             // Leg 3: AUTHENTICATE plus the sealed public-key proof (and the nonce, for version 5 and up).
@@ -211,7 +222,7 @@ namespace Marconi
             }
 
             // Leg 4: the server's confirmation of the public key.
-            if (!ReadTsRequest(tls, fromServer, error))
+            if (!ReadTsRequest(tls, fromServer, "its public-key confirmation", error))
             {
                 return false;
             }
@@ -242,8 +253,8 @@ namespace Marconi
                 return false;
             }
             Bytes expected = negotiatedVersion >= 5
-                                 ? Sha256(Concat("CredSSP Server-To-Client Binding Hash", nonce, serverPublicKey))
-                                 : serverPublicKey;
+                                 ? Sha256(Concat("CredSSP Server-To-Client Binding Hash", nonce, subjectPublicKey))
+                                 : subjectPublicKey;
             if (negotiatedVersion < 5 && !expected.empty())
             {
                 expected[0] = static_cast<uint8_t>(expected[0] + 1); // legacy: the server returns the key plus one

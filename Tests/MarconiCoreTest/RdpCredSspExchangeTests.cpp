@@ -25,6 +25,12 @@ namespace MarconiTest
     {
         Rdp::Bytes Key(uint8_t fill) { return Rdp::Bytes(16, fill); }
 
+        // A SubjectPublicKeyInfo as TLS hands it over (rsaEncryption, NULL, then the BIT STRING), and the
+        // RSAPublicKey inside it that CredSSP binds to: SEQUENCE { INTEGER modulus, INTEGER 65537 }.
+        const Rdp::Bytes kSpki = {0x30, 0x1a, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
+                                  0x01, 0x05, 0x00, 0x03, 0x09, 0x00, 0x30, 0x06, 0x02, 0x01, 0x7b, 0x02, 0x01, 0x03};
+        const Rdp::Bytes kSubjectPublicKey = {0x30, 0x06, 0x02, 0x01, 0x7b, 0x02, 0x01, 0x03};
+
         // A blocking byte pipe between two threads, one SecurityLink per end.
         class Pipe
         {
@@ -258,17 +264,28 @@ namespace MarconiTest
             CHECK(a != b && a != c && a != d && b != c && b != d && c != d);
         });
 
+        RunTest("The public-key proof uses the key inside the certificate's SubjectPublicKeyInfo", []() {
+            Rdp::Bytes key;
+            CHECK(Rdp::ExtractSubjectPublicKey(kSpki, key) && key == kSubjectPublicKey);
+            Rdp::Bytes truncated(kSpki.begin(), kSpki.end() - 3);
+            CHECK(!Rdp::ExtractSubjectPublicKey(truncated, key));
+            CHECK(!Rdp::ExtractSubjectPublicKey(Rdp::Bytes(64, 0xAB), key));
+            Rdp::Bytes unusedBits = kSpki;
+            unusedBits[19] = 0x01; // the BIT STRING's unused-bits byte
+            CHECK(!Rdp::ExtractSubjectPublicKey(unusedBits, key));
+        });
+
         RunTest("The CredSSP exchange completes against a mirror server and binds to the public key", []() {
             auto pipe = std::make_shared<Pipe>();
-            Rdp::Bytes publicKey(64, 0xAB); // stands in for the TLS SubjectPublicKeyInfo
             bool serverOk = false;
             std::thread server([&]() {
-                MirrorServer(pipe->End(false), publicKey, "alice", "WORK", "secret", &serverOk);
+                // The server proves and checks the key itself, not the whole SubjectPublicKeyInfo (MS-CSSP 3.1.5).
+                MirrorServer(pipe->End(false), kSubjectPublicKey, "alice", "WORK", "secret", &serverOk);
             });
             Rdp::CredSspCredentials credentials{"WORK", "alice", "secret"};
             uint32_t errorCode = 0;
             std::string error;
-            bool clientOk = Rdp::RunCredSsp(pipe->End(true), publicKey, credentials, errorCode, error);
+            bool clientOk = Rdp::RunCredSsp(pipe->End(true), kSpki, credentials, errorCode, error);
             pipe->Close();
             server.join();
             CHECK(clientOk);
@@ -312,11 +329,27 @@ namespace MarconiTest
             Rdp::CredSspCredentials credentials{"WORK", "alice", "wrong"};
             uint32_t errorCode = 0;
             std::string error;
-            bool clientOk = Rdp::RunCredSsp(pipe->End(true), Rdp::Bytes(64, 0xAB), credentials, errorCode, error);
+            bool clientOk = Rdp::RunCredSsp(pipe->End(true), kSpki, credentials, errorCode, error);
             pipe->Close();
             server.join();
             CHECK(!clientOk);
             CHECK(errorCode == 0xC000006D);
+        });
+
+        RunTest("A server that hangs up during the login is reported as such, with the step", []() {
+            auto pipe = std::make_shared<Pipe>();
+            std::thread server([&]() {
+                Rdp::TsRequest request;
+                ReadRequest(pipe->End(false), request); // the NEGOTIATE, then nothing
+                pipe->Close();
+            });
+            Rdp::CredSspCredentials credentials{"WORK", "alice", "secret"};
+            uint32_t errorCode = 0;
+            std::string error;
+            bool clientOk = Rdp::RunCredSsp(pipe->End(true), kSpki, credentials, errorCode, error);
+            server.join();
+            CHECK(!clientOk && error.find("closed the connection") != std::string::npos &&
+                  error.find("challenge") != std::string::npos);
         });
     }
 } // namespace MarconiTest

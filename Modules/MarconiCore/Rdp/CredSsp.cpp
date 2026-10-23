@@ -14,6 +14,7 @@ namespace Marconi
             enum : uint8_t
             {
                 kTagInteger = 0x02,
+                kTagBitString = 0x03,
                 kTagOctetString = 0x04,
                 kTagSequence = 0x30,
                 kContext = 0xA0, // context-specific, constructed: [0] is 0xA0, [1] 0xA1, ...
@@ -300,6 +301,30 @@ namespace Marconi
                 return false;
             }
             return r.ok;
+        }
+
+        bool ExtractSubjectPublicKey(const Bytes& subjectPublicKeyInfo, Bytes& out)
+        {
+            // SubjectPublicKeyInfo ::= SEQUENCE { algorithm AlgorithmIdentifier, subjectPublicKey BIT STRING }
+            Reader top{subjectPublicKeyInfo.data(), subjectPublicKeyInfo.data() + subjectPublicKeyInfo.size()};
+            const uint8_t* body = nullptr;
+            size_t bodyLength = 0;
+            if (!top.ReadTagLength(kTagSequence, body, bodyLength))
+            {
+                return false;
+            }
+            Reader r{body, body + bodyLength};
+            const uint8_t* algorithm = nullptr;
+            size_t algorithmLength = 0;
+            const uint8_t* bits = nullptr;
+            size_t bitsLength = 0;
+            if (!r.ReadTagLength(kTagSequence, algorithm, algorithmLength) ||
+                !r.ReadTagLength(kTagBitString, bits, bitsLength) || bitsLength < 2 || bits[0] != 0)
+            {
+                return false; // a key is always whole bytes: no unused bits
+            }
+            out.assign(bits + 1, bits + bitsLength);
+            return true;
         }
     } // namespace Rdp
 } // namespace Marconi

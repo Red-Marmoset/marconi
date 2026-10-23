@@ -35,5 +35,10 @@ namespace Marconi
         // TSCredentials wrapping a TSPasswordCreds (MS-CSSP 2.2.1.2): domain, user and password, each UTF-16LE.
         // This is what gets encrypted into TSRequest::authInfo once the login has succeeded.
         Bytes EncodeTsCredentials(const std::string& domain, const std::string& user, const std::string& password);
+
+        // The key CredSSP's public-key proof is computed over (MS-CSSP 3.1.5: "the SubjectPublicKey sub-field of
+        // SubjectPublicKeyInfo"): the contents of the certificate's subjectPublicKey BIT STRING, after its
+        // unused-bits byte. For RSA that is the PKCS#1 RSAPublicKey, as FreeRDP sends. False if malformed.
+        bool ExtractSubjectPublicKey(const Bytes& subjectPublicKeyInfo, Bytes& out);
     } // namespace Rdp
 } // namespace Marconi
