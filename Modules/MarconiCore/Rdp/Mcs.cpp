@@ -3,6 +3,8 @@
 
 #include <MarconiCore/Rdp/Mcs.h>
 
+#include <initializer_list>
+
 namespace Marconi
 {
     namespace Rdp
@@ -37,10 +39,11 @@ namespace Marconi
                 PutBerLength(out, contents.size());
                 out.insert(out.end(), contents.begin(), contents.end());
             }
+            // An MCS INTEGER as Windows writes it: the fewest big-endian bytes, with no sign byte (65535 is ff ff,
+            // as in MS-RDPBCGR 4.1.3).
             Bytes BerInteger(uint32_t value)
             {
                 Bytes contents;
-                // Minimal, but keep at least one byte and a leading zero when the top bit is set.
                 Bytes be;
                 uint32_t v = value;
                 do
@@ -48,10 +51,6 @@ namespace Marconi
                     be.push_back(static_cast<uint8_t>(v & 0xFF));
                     v >>= 8;
                 } while (v > 0);
-                if (be.back() & 0x80)
-                {
-                    be.push_back(0);
-                }
                 for (size_t i = be.size(); i > 0; --i)
                 {
                     contents.push_back(be[i - 1]);
@@ -84,11 +83,12 @@ namespace Marconi
                 return p + length <= data.size() ? length : SIZE_MAX;
             }
 
-            // Domain parameters for the Connect-Initial (the values Windows clients send).
-            Bytes DomainParameters()
+            // T.125 DomainParameters: maxChannelIds, maxUserIds, maxTokenIds, numPriorities, minThroughput,
+            // maxHeight, maxMCSPDUsize, protocolVersion.
+            Bytes DomainParameters(std::initializer_list<uint32_t> values)
             {
                 Bytes params;
-                for (uint32_t value : {34u, 2u, 0u, 1u, 0u, 1u, 0u, 0xFFFFu, 2u}) // max channels/users/tokens etc.
+                for (uint32_t value : values)
                 {
                     PutBer(params, {0x02}, BerInteger(value));
                 }
@@ -161,12 +161,13 @@ namespace Marconi
             Bytes gcc = GccConferenceCreateRequest(clientData);
 
             Bytes contents;
-            PutBer(contents, {0x04}, {});                 // callingDomainSelector (empty octet string)
+            PutBer(contents, {0x04}, {0x01});             // callingDomainSelector
             PutBer(contents, {0x04}, {0x01});             // calledDomainSelector
             PutBer(contents, {0x01}, {0xFF});             // upwardFlag: TRUE
-            PutBer(contents, {0x30}, DomainParameters()); // targetParameters
-            PutBer(contents, {0x30}, DomainParameters()); // minimumParameters
-            PutBer(contents, {0x30}, DomainParameters()); // maximumParameters
+            // The values Windows clients send (MS-RDPBCGR 4.1.3).
+            PutBer(contents, {0x30}, DomainParameters({34, 2, 0, 1, 0, 1, 0xFFFF, 2}));                // target
+            PutBer(contents, {0x30}, DomainParameters({1, 1, 1, 1, 0, 1, 0x420, 2}));                  // minimum
+            PutBer(contents, {0x30}, DomainParameters({0xFFFF, 0xFC17, 0xFFFF, 1, 0, 1, 0xFFFF, 2})); // maximum
             PutBer(contents, {0x04}, gcc);                // userData (the GCC request)
 
             Bytes out;

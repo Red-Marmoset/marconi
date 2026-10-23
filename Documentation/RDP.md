@@ -70,6 +70,10 @@ milestone 1.
     STRING's contents (the RSAPublicKey, as FreeRDP does). A nonexistent account gets a clean STATUS_LOGON_FAILURE
     (0xc000006d) from that server, so legs 1-3 are understood; a successful real login with the fix is still to be
     confirmed. Login errors now say whether the server hung up, and at which step.
+  - With that fix the real login was accepted (0.7.5), and the connection then failed reading the MCS
+    Connect-Response. The Connect-Initial had sent nine INTEGERs per DomainParameters (eight in T.125), the same set
+    three times, and an empty callingDomainSelector; xrdp tolerated it. It now sends the target, minimum and maximum
+    sets of MS-RDPBCGR 4.1.3 byte for byte (pinned by a test), and logs the start of an unreadable response.
 - Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
   (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
   specification.

@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.6
+
+- Fixed Remote Desktop connections to Windows computers failing straight after logging in.
+
 ## 0.7.5
 
 - Fixed a Remote Desktop login problem with Windows computers.

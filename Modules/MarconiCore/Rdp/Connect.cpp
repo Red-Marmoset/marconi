@@ -12,9 +12,12 @@
 #include <MarconiCore/Rdp/Pdu.h>
 #include <MarconiCore/Rdp/Security.h>
 #include <MarconiCore/Rdp/Sequence.h>
+#include <MarconiCore/Text.h>
 
 #include <Crypto/Crypto.h>
 #include <Log/Log.h>
+
+#include <algorithm>
 
 namespace Marconi
 {
@@ -339,6 +342,10 @@ namespace Marconi
             ServerData serverData;
             if (!ParseMcsConnectResponse(response, serverUserData) || !ParseServerData(serverUserData, serverData))
             {
+                // Settings, not secrets: the start of it is what's needed to see why.
+                Bytes start(response.begin(), response.begin() + std::min<size_t>(response.size(), 96));
+                LOG_WARNING("Rdp", "Unreadable settings response (%zu bytes): %s", response.size(),
+                            BytesToHex(start).c_str());
                 error = "the server's RDP settings response didn't parse";
                 return false;
             }
