@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.8
+
+- Shows a small dot for the mouse pointer when the other computer hides its own.
+
 ## 0.7.7
 
 - When a Windows computer refuses a Remote Desktop session after the login, Marconi says why if Windows gives a reason.

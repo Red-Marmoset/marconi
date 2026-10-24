@@ -479,13 +479,27 @@ namespace MarconiUI
         const Marconi::Rfb::CursorShape& cursor = m_remoteCursor;
         if (cursor.width <= 0 || cursor.height <= 0)
         {
-            // The server hid its pointer (TightVNC does while you type). An invisible cursor: wxCURSOR_BLANK would
-            // need wxWidgets' own resource file on Windows. Not 1x1: Windows scales tiny cursors up with the
-            // pointer size setting, and the pixel KeepAlphaInUse leaves would show.
-            wxImage blank(32, 32);
-            blank.InitAlpha();
-            memset(blank.GetAlpha(), 0, 32 * 32);
-            SetCursor(MakeCursor(blank, 0, 0));
+            // The server hid its pointer (TightVNC does while you type; Windows does when it sees no mouse). A small
+            // dot, black ringed with white, so the pointer can still be found. Drawn on a 32x32 canvas: Windows
+            // scales smaller cursors up with the pointer size setting.
+            static const char* const kDot[] = {".WWW.", "WBBBW", "WBBBW", "WBBBW", ".WWW."};
+            wxImage dot(32, 32);
+            dot.InitAlpha();
+            memset(dot.GetAlpha(), 0, 32 * 32);
+            for (int y = 0; y < 5; ++y)
+            {
+                for (int x = 0; x < 5; ++x)
+                {
+                    char c = kDot[y][x];
+                    if (c != '.')
+                    {
+                        unsigned char value = c == 'W' ? 255 : 0;
+                        dot.SetRGB(x, y, value, value, value);
+                        dot.SetAlpha(x, y, 255);
+                    }
+                }
+            }
+            SetCursor(MakeCursor(dot, 2, 2));
             return;
         }
 
