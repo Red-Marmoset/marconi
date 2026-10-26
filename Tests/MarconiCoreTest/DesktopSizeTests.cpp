@@ -89,7 +89,15 @@ namespace MarconiTest
             CHECK(s.listener.WaitFor([&]() { return s.listener.screenLayouts == 1; }));
             s.client.RequestDesktopSize(640, 360);
             Rfb::InStream& in = s.server.In();
-            CHECK(in.U8() == Rfb::ClientMessage::SetDesktopSize);
+            // The request goes out from the client's send thread, so what the connection thread sends after each
+            // update (the pixel format again, then the next update request) may come before it.
+            uint8_t type = in.U8();
+            while (type == Rfb::ClientMessage::SetPixelFormat || type == Rfb::ClientMessage::FramebufferUpdateRequest)
+            {
+                in.Skip(type == Rfb::ClientMessage::SetPixelFormat ? 19 : 9);
+                type = in.U8();
+            }
+            CHECK(type == Rfb::ClientMessage::SetDesktopSize);
             in.Skip(1);
             CHECK(in.U16() == 640 && in.U16() == 360);
             CHECK(in.U8() == 1);

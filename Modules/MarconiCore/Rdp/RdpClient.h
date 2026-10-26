@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <MarconiCore/Net/SendQueue.h>
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Rdp/Output.h>
 #include <MarconiCore/RemoteSession.h>
@@ -96,8 +97,9 @@ namespace Marconi
             void ApplyBitmapUpdate(const std::vector<BitmapRect>& rects);
             void ApplyPointerUpdate(const PointerUpdate& update);
             void ResizeDesktop(int width, int height);
-            // Any thread: one or more input events in one Input PDU; dropped while not connected.
+            // The send thread: one or more input events in one Input PDU; dropped while not connected.
             void SendInputEvents(const std::vector<Bytes>& events);
+            void SendPointerNow(int x, int y, uint8_t buttonMask); // the send thread: SendPointerEvent's work
             bool SendPdu(const Bytes& pdu);
             void MarkInput();
 
@@ -115,7 +117,8 @@ namespace Marconi
             // the input senders write to it (a copy of the pointer keeps it alive while they do).
             std::mutex m_connectionMutex;
             std::shared_ptr<Connection> m_connection; // guarded by m_connectionMutex
-            std::mutex m_sendMutex;              // serialises whole PDUs from the UI and worker threads
+            Net::SendQueue m_sendQueue;          // sends the input and requests, so the UI never waits for them
+            std::mutex m_sendMutex;              // serialises whole PDUs from the send and worker threads
             uint32_t m_shareId = 0;              // guarded by m_sendMutex
             uint16_t m_userChannelId = 0;        // guarded by m_sendMutex: the source of the PDUs we send
             uint8_t m_buttons = 0;               // the last pointer button mask sent; guarded by m_sendMutex

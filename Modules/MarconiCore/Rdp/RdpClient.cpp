@@ -26,6 +26,9 @@ namespace Marconi
             // Share Data PDU types beyond the ones Pdu.h names: the server's reasons and session notices.
             constexpr uint8_t kPduTypeSaveSessionInfo = 38;
             constexpr uint8_t kPduTypeSetErrorInfo = 47;
+            // How long a disconnect gives input already queued to go out (such as the keys that lock the other
+            // computer's screen), when the user closes the connection.
+            constexpr int kFlushOnDisconnectMs = 1000;
 
             // The NTSTATUS codes an NLA login fails with when the credentials are the problem.
             bool IsCredentialsStatus(uint32_t ntStatus)
@@ -134,6 +137,11 @@ namespace Marconi
 
         void Client::Disconnect()
         {
+            bool onWorker = m_thread.joinable() && m_thread.get_id() == std::this_thread::get_id();
+            if (m_thread.joinable() && !onWorker)
+            {
+                m_sendQueue.WaitUntilSent(kFlushOnDisconnectMs);
+            }
             m_stopping = true;
             {
                 std::lock_guard<std::mutex> lock(m_connectionMutex);
@@ -144,12 +152,13 @@ namespace Marconi
             }
             if (m_thread.joinable())
             {
-                if (m_thread.get_id() == std::this_thread::get_id())
+                if (onWorker)
                 {
                     m_thread.detach(); // called from a listener callback on the worker thread: can't join itself
                 }
                 else
                 {
+                    m_sendQueue.Stop(); // the shutdown above gets a send waiting on a slow link out
                     m_thread.join();
                 }
             }
@@ -253,6 +262,7 @@ namespace Marconi
             m_lastErrorInfo.clear();
             m_decodeWarnings = 0;
             connection.GetSocket().SetReceiveTimeout(0); // the session waits for the server as long as it takes
+            m_sendQueue.Start();
             m_connected = true;
             Rfb::ServerInit serverInit;
             serverInit.width = width;
@@ -265,6 +275,8 @@ namespace Marconi
             SessionLoop(connection, info);
 
             m_connected = false;
+            connection.Shutdown(); // a send stuck on a slow link mustn't hold up the end: this gets it out
+            m_sendQueue.Stop();
             m_encrypted = false;
             m_listener.OnDisconnected(info);
         }
@@ -566,6 +578,14 @@ namespace Marconi
             {
                 return;
             }
+            // A move may stand in for the queued one before it when both hold the same buttons (it makes the same
+            // button changes); wheel "buttons" are clicks, so those are never merged.
+            uint32_t replaceKey = (buttonMask & 0x78) != 0 ? 0 : 0x100u | buttonMask;
+            m_sendQueue.Post([this, x, y, buttonMask]() { SendPointerNow(x, y, buttonMask); }, replaceKey);
+        }
+
+        void Client::SendPointerNow(int x, int y, uint8_t buttonMask)
+        {
             uint16_t px = static_cast<uint16_t>(std::max(0, x));
             uint16_t py = static_cast<uint16_t>(std::max(0, y));
             std::vector<Bytes> events;
@@ -633,7 +653,7 @@ namespace Marconi
                 event = UnicodeEvent(unit, down);
             }
             ++m_statKeyEvents;
-            SendInputEvents({event});
+            m_sendQueue.Post([this, event]() { SendInputEvents({event}); });
         }
 
         void Client::SendClientCutText(const std::string& /*latin1Text*/)
@@ -653,9 +673,11 @@ namespace Marconi
                 return;
             }
             ++m_statRequests;
-            std::lock_guard<std::mutex> lock(m_sendMutex);
-            SendPdu(BuildRefreshRect(m_shareId, m_userChannelId, static_cast<uint16_t>(m_desktopWidth),
-                                     static_cast<uint16_t>(m_desktopHeight)));
+            m_sendQueue.Post([this]() {
+                std::lock_guard<std::mutex> lock(m_sendMutex);
+                SendPdu(BuildRefreshRect(m_shareId, m_userChannelId, static_cast<uint16_t>(m_desktopWidth),
+                                         static_cast<uint16_t>(m_desktopHeight)));
+            });
         }
 
         void Client::RequestDesktopSize(int /*width*/, int /*height*/)

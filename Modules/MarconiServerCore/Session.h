@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <thread>
 
@@ -43,10 +44,16 @@ namespace Marconi
             // set their own. A grab with nothing changed sends no message.
             void SetFrameIntervalMs(int ms) { m_frameIntervalMs = ms; }
 
+            // Called once the viewer has logged in, before the picture starts (the listener lifts the time limit
+            // it put on the handshake).
+            void SetOnLoggedIn(std::function<void()> onLoggedIn) { m_onLoggedIn = std::move(onLoggedIn); }
+
         private:
             bool Handshake(Wire::MessageReader& reader); // Hello/Welcome/Login/LoginResult; false if refused or lost
-            void RunFrameLoop();                         // this thread: capture and send the picture
-            void RunInputLoop(Wire::MessageReader& reader); // the other thread: read and apply input
+            void RunFrameLoop();                         // this thread: capture and send the picture (and pongs)
+            void RunInputLoop(Wire::MessageReader& reader); // the other thread: read and apply input; never sends,
+                                                            // so a viewer slow to take the picture can't hold it up
+            void SendPendingPong();
             bool Send(const Wire::Bytes& framed);        // one message, serialised against other senders
             void SendFrame(const Capture& capture, bool full);
 
@@ -59,6 +66,9 @@ namespace Marconi
             uint64_t m_frameId = 0;
             int m_frameIntervalMs = 16;
             std::mutex m_writeMutex;
+            std::function<void()> m_onLoggedIn;
+            std::atomic<bool> m_pongPending{false};
+            std::atomic<uint64_t> m_pongToken{0}; // the latest Ping's, answered by the frame loop
             std::atomic<bool> m_stop{false};
         };
     } // namespace Server

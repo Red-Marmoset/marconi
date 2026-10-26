@@ -17,6 +17,16 @@ namespace Marconi
             constexpr uint32_t kMaxCutTextLength = 16 * 1024 * 1024;
             // Refuse absurd desktops from broken or hostile servers (16k x 16k is already 1 GiB of pixels).
             constexpr int kMaxDesktopSide = 16384;
+            // How long a disconnect gives input already queued to go out (such as the keys that lock the other
+            // computer's screen), when the user closes the connection.
+            constexpr int kFlushOnDisconnectMs = 1000;
+
+            // The queue's replace key for a pointer move: a move may stand in for the one before it only when both
+            // hold the same buttons. Wheel "buttons" are clicks, so those are never merged.
+            uint32_t PointerReplaceKey(uint8_t buttonMask)
+            {
+                return (buttonMask & 0x78) != 0 ? 0 : 0x100u | buttonMask;
+            }
 
             void CheckDesktopSize(int width, int height)
             {
@@ -78,6 +88,10 @@ namespace Marconi
 
         void Client::Disconnect()
         {
+            if (m_thread.joinable() && m_thread.get_id() != std::this_thread::get_id())
+            {
+                m_sendQueue.WaitUntilSent(kFlushOnDisconnectMs);
+            }
             m_stopping = true;
             {
                 std::lock_guard<std::mutex> lock(m_socketMutex);
@@ -95,6 +109,7 @@ namespace Marconi
                     m_thread.detach();
                     return;
                 }
+                m_sendQueue.Stop(); // the shutdown above gets a send waiting on a slow link out
                 m_thread.join();
             }
         }
@@ -144,6 +159,8 @@ namespace Marconi
 
         bool Client::SendFileTransferRequest(const Bytes& request)
         {
+            // Called on the file panel's worker thread, which waits for the reply anyway; sending directly keeps a
+            // large upload from piling up in memory faster than the link takes it.
             if (!m_connected || !m_fileTransfer)
             {
                 return false;
@@ -158,15 +175,19 @@ namespace Marconi
             m_fileTransferHandler = std::move(handler);
         }
 
-        void Client::SendIfConnected(const Bytes& data)
+        void Client::SendIfConnected(const Bytes& data, uint32_t replaceKey)
         {
             if (!m_connected)
             {
                 return;
             }
-            std::lock_guard<std::mutex> lock(m_sendMutex);
-            // A failure here is reported by the connection thread when its next read fails.
-            SendRaw(data);
+            m_sendQueue.Post(
+                [this, data]() {
+                    std::lock_guard<std::mutex> lock(m_sendMutex);
+                    // A failure here is reported by the connection thread when its next read fails.
+                    SendRaw(data);
+                },
+                replaceKey);
         }
 
         ptrdiff_t Client::ReadFromConnection(void* buffer, size_t length)
@@ -258,7 +279,7 @@ namespace Marconi
                 .U8(buttonMask)
                 .U16(static_cast<uint16_t>(std::max(x, 0)))
                 .U16(static_cast<uint16_t>(std::max(y, 0)));
-            SendIfConnected(message.Data());
+            SendIfConnected(message.Data(), PointerReplaceKey(buttonMask));
             ++m_statPointerEvents;
             m_lastInputTime = std::chrono::steady_clock::now().time_since_epoch().count();
         }
@@ -547,6 +568,7 @@ namespace Marconi
                 }
                 SendSetupMessages(options);
                 m_detailedUpdates = kDetailedUpdates;
+                m_sendQueue.Start();
                 m_connected = true;
                 info.wasConnected = true;
                 handshaking = false;
@@ -577,6 +599,16 @@ namespace Marconi
 
             m_connected = false;
             m_fileTransfer = false;
+            {
+                // A send stuck on a slow link mustn't hold up the end of the connection: shutting down gets it out.
+                std::lock_guard<std::mutex> socketLock(m_socketMutex);
+                m_socket.Shutdown();
+                if (m_tunnel)
+                {
+                    m_tunnel->Shutdown();
+                }
+            }
+            m_sendQueue.Stop();
             {
                 std::lock_guard<std::mutex> sendLock(m_sendMutex);
                 std::lock_guard<std::mutex> socketLock(m_socketMutex);

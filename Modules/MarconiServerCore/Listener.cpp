@@ -25,6 +25,11 @@ namespace Marconi
 
         namespace
         {
+            // A viewer that goes this long without sending anything before it has logged in is dropped, so one that
+            // stalls (or a stray connection) can't keep the server from the next viewer. It is long because the
+            // viewer may be showing its user the "trust this certificate?" question in the middle of the handshake.
+            constexpr int kHandshakeTimeoutMs = 60000;
+
             std::string ToHex(const std::vector<uint8_t>& bytes)
             {
                 static const char* digits = "0123456789abcdef";
@@ -90,6 +95,25 @@ namespace Marconi
             {
                 return false; // timed out, was shut down, or failed; the caller (or Run) decides what next
             }
+            {
+                std::lock_guard<std::mutex> lock(m_currentMutex);
+                if (m_stop)
+                {
+                    return false;
+                }
+                m_currentSocket = &client;
+            }
+            struct ClearCurrent
+            {
+                Listener& listener;
+                ~ClearCurrent()
+                {
+                    std::lock_guard<std::mutex> lock(listener.m_currentMutex);
+                    listener.m_current = nullptr;
+                    listener.m_currentSocket = nullptr;
+                }
+            } clearCurrent{*this};
+            client.SetReceiveTimeout(kHandshakeTimeoutMs);
 
             // The four-byte marker goes out in the clear, so a probe can tell a Marconi server from anything else on
             // the port, then the connection is upgraded to TLS before any protocol message.
@@ -115,10 +139,20 @@ namespace Marconi
             TlsServerTransport transport(std::move(tls));
             Session session(transport, m_screen, m_input, m_settings, &m_auth);
             session.SetFrameIntervalMs(m_frameIntervalMs);
-            m_current = &session;
+            session.SetOnLoggedIn([&client]() { client.SetReceiveTimeout(0); }); // a viewer may sit idle for hours
+            {
+                std::lock_guard<std::mutex> lock(m_currentMutex);
+                m_current = &session;
+                if (m_stop)
+                {
+                    session.Stop();
+                }
+            }
             session.Run();
-            m_current = nullptr;
-            client.Close();
+            {
+                std::lock_guard<std::mutex> lock(m_currentMutex);
+                m_current = nullptr; // before the session goes out of scope, so Stop() can't reach a dead one
+            }
             return true;
         }
 
@@ -138,10 +172,16 @@ namespace Marconi
         void Listener::Stop()
         {
             m_stop = true;
-            Session* current = m_current.load();
-            if (current != nullptr)
             {
-                current->Stop();
+                std::lock_guard<std::mutex> lock(m_currentMutex);
+                if (m_current != nullptr)
+                {
+                    m_current->Stop();
+                }
+                if (m_currentSocket != nullptr)
+                {
+                    m_currentSocket->Shutdown(); // wakes the session's threads, even one sending to a slow viewer
+                }
             }
             m_listenSocket.Shutdown(); // wake a blocked Accept
         }

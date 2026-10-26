@@ -17,6 +17,10 @@ namespace Marconi
     {
         namespace
         {
+            // How long a disconnect gives input already queued to go out (such as the keys that lock the other
+            // computer's screen), when the user closes the connection.
+            constexpr int kFlushOnDisconnectMs = 1000;
+
             // Carries the protocol over the TLS stream once the handshake succeeded.
             class TlsStreamTransport : public Transport
             {
@@ -77,16 +81,22 @@ namespace Marconi
 
         void Client::Disconnect()
         {
+            bool onWorker = m_thread.joinable() && m_thread.get_id() == std::this_thread::get_id();
+            if (m_thread.joinable() && !onWorker)
+            {
+                m_sendQueue.WaitUntilSent(kFlushOnDisconnectMs);
+            }
             m_stopping = true;
             m_socket.Shutdown();
             if (m_thread.joinable())
             {
-                if (m_thread.get_id() == std::this_thread::get_id())
+                if (onWorker)
                 {
                     m_thread.detach(); // called from a listener callback on the worker thread: can't join itself
                 }
                 else
                 {
+                    m_sendQueue.Stop(); // the shutdown above gets a send waiting on a slow link out
                     m_thread.join();
                 }
             }
@@ -101,6 +111,15 @@ namespace Marconi
                 return false;
             }
             return WriteMessage(*m_transport, framed);
+        }
+
+        void Client::Post(const Bytes& framed, uint32_t replaceKey)
+        {
+            if (!m_connected)
+            {
+                return;
+            }
+            m_sendQueue.Post([this, framed]() { Send(framed); }, replaceKey);
         }
 
         void Client::MarkInput()
@@ -253,6 +272,9 @@ namespace Marconi
                     info.wasConnected = true;
                 }
             }
+            m_connected = false;
+            m_socket.Shutdown(); // a send stuck on a slow link mustn't hold up the end: this gets it out
+            m_sendQueue.Stop();
             {
                 std::lock_guard<std::mutex> lock(m_writeMutex);
                 m_transport.reset();
@@ -320,6 +342,7 @@ namespace Marconi
             serverInit.width = width;
             serverInit.height = height;
             serverInit.name = welcome.serverName;
+            m_sendQueue.Start();
             m_connected = true;
             m_listener.OnConnected(serverInit);
             LOG_INFO("Wire", "Connected to '%s' (%s), desktop %dx%d", welcome.serverName.c_str(),
@@ -424,7 +447,9 @@ namespace Marconi
             pointer.y = y;
             pointer.buttons = buttonMask;
             ++m_statPointerEvents;
-            Send(pointer.Encode());
+            // A move may stand in for the queued one before it when both hold the same buttons; wheel "buttons"
+            // are clicks, so those are never merged.
+            Post(pointer.Encode(), (buttonMask & 0x78) != 0 ? 0 : 0x100u | buttonMask);
         }
 
         void Client::SendKeyEvent(uint32_t keysym, bool down)
@@ -435,7 +460,7 @@ namespace Marconi
             key.scancode = 0; // the viewer sends keysyms today; scancodes arrive with the game-input work
             key.down = down;
             ++m_statKeyEvents;
-            Send(key.Encode());
+            Post(key.Encode());
         }
 
         void Client::SendClientCutText(const std::string& /*latin1Text*/)
@@ -470,7 +495,7 @@ namespace Marconi
             mode.displayId = 0;
             mode.width = width;
             mode.height = height;
-            Send(mode.Encode());
+            Post(mode.Encode());
         }
 
         void Client::SetQuality(int /*compressLevel*/, int /*qualityLevel*/)

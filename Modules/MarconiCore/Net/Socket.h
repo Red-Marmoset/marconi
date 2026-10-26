@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Minimal blocking TCP socket (client connect with timeout, plus listen/accept for tests)
+// Minimal TCP socket (client connect with timeout, plus listen/accept) whose waits can always be interrupted
 
 #pragma once
 
@@ -26,10 +26,10 @@ namespace Marconi
             Socket(Socket&& other) noexcept;
             Socket& operator=(Socket&& other) noexcept;
 
-            // Resolves `host` and connects to the first address that accepts within `timeoutMs`.
-            // Leaves the socket in blocking mode with TCP_NODELAY and TCP keep-alive set (so a dead link is noticed
-            // within a minute or so). On failure `error` describes why.
-            // If `cancel` becomes true while waiting, gives up promptly.
+            // Resolves `host` and connects to the first address that accepts within `timeoutMs`. Leaves the socket
+            // non-blocking (Receive and SendAll wait for it) with TCP_NODELAY and TCP keep-alive set (so a dead link
+            // is noticed within a minute or so). On failure `error` describes why. If `cancel` becomes true while
+            // waiting, gives up promptly, even in the middle of looking the name up.
             bool Connect(const std::string& host, uint16_t port, int timeoutMs, std::string& error,
                          const std::atomic<bool>* cancel = nullptr);
             // As Connect, for numeric addresses tried in the given order (tests; resolving is skipped).
@@ -41,7 +41,8 @@ namespace Marconi
             bool Accept(Socket& outClient, int timeoutMs, std::string& error);
             uint16_t GetLocalPort() const;
 
-            // Blocks until every byte is sent. Returns false if the connection failed.
+            // Waits until every byte is sent. Returns false if the connection failed or Shutdown() was called, which
+            // wakes a send waiting for a slow receiver within ~100ms.
             bool SendAll(const void* data, size_t length);
 
             // Blocks until at least one byte arrives. Returns bytes read, 0 on orderly close or after Shutdown(),
@@ -56,8 +57,9 @@ namespace Marconi
             // True when Receive won't block (data or end of stream is waiting), false after `timeoutMs`.
             bool WaitReadable(int timeoutMs) const;
 
-            // Shuts down both directions and wakes any thread blocked in Receive (within ~100ms; a blocked recv()
-            // isn't reliably woken by shutdown() on Windows, so Receive polls). Safe to call from another thread.
+            // Shuts down both directions and wakes any thread waiting in Receive or SendAll (within ~100ms; a blocked
+            // recv() or send() isn't reliably woken by shutdown() on Windows, so both poll). Safe to call from
+            // another thread.
             void Shutdown();
             void Close();
             bool IsOpen() const;

@@ -12,6 +12,7 @@
 #include <MarconiCore/Net/Socket.h>
 
 #include <atomic>
+#include <mutex>
 #include <string>
 
 namespace Marconi
@@ -41,7 +42,8 @@ namespace Marconi
             // Accepts and serves viewers one after another until Stop().
             void Run();
 
-            // Stops accepting and ends the current viewer's session. Safe to call from another thread.
+            // Stops accepting and ends the current viewer's session, cutting its connection so a send to a slow
+            // viewer can't hold it up. Safe to call from another thread; returns promptly.
             void Stop();
 
             void SetFrameIntervalMs(int ms) { m_frameIntervalMs = ms; }
@@ -64,7 +66,9 @@ namespace Marconi
             std::string m_fingerprint; // the certificate's SHA-256, in hex, for display
             int m_frameIntervalMs = 16;
             std::atomic<bool> m_stop{false};
-            std::atomic<Session*> m_current{nullptr}; // the live session, so Stop() can end it
+            std::mutex m_currentMutex;              // held while m_current or m_currentSocket is used or changed
+            Session* m_current = nullptr;           // the live session, so Stop() can end it
+            Net::Socket* m_currentSocket = nullptr; // its connection, so Stop() can cut it
         };
     } // namespace Server
 } // namespace Marconi

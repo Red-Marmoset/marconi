@@ -12,6 +12,7 @@
 #include <wx/panel.h>
 #include <wx/treebase.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -77,7 +78,10 @@ namespace MarconiUI
         void MakeFolder();
         void RenameSelected();
         void DeleteSelected();
-        bool DeleteTree(const std::string& path, std::string& error);
+        // Runs a change to the files (make, rename, delete) on the worker thread, then reports a failure and
+        // shows the folder again.
+        void Change(std::function<bool(Marconi::Files::FileSource&, std::string&)> change);
+        static bool DeleteTree(Marconi::Files::FileSource& source, const std::string& path, std::string& error);
 
         FilePanel& m_owner;
         bool m_remote = false;

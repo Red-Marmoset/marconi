@@ -90,6 +90,11 @@ namespace Marconi
                 return error == EINPROGRESS || error == EWOULDBLOCK;
             }
 
+            bool IsWouldBlock(int error)
+            {
+                return error == EAGAIN || error == EWOULDBLOCK;
+            }
+
             bool IsInterrupted(int error)
             {
                 return error == EINTR;

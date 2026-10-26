@@ -71,6 +71,11 @@ namespace Marconi
                 return error == WSAEWOULDBLOCK || error == WSAEINPROGRESS;
             }
 
+            bool IsWouldBlock(int error)
+            {
+                return error == WSAEWOULDBLOCK;
+            }
+
             bool IsInterrupted(int error)
             {
                 return error == WSAEINTR;

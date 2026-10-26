@@ -159,12 +159,10 @@ namespace Marconi
                         m_input.TypeText(Wire::Text::Decode(body).utf8);
                         break;
                     case Wire::Type::Ping:
-                    {
-                        Wire::Pong pong;
-                        pong.token = Wire::Ping::Decode(body).token;
-                        Send(pong.Encode());
+                        // The frame loop sends the answer: writing here would wait behind a frame going out.
+                        m_pongToken = Wire::Ping::Decode(body).token;
+                        m_pongPending = true;
                         break;
-                    }
                     case Wire::Type::Bye:
                         m_stop = true;
                         break;
@@ -229,11 +227,26 @@ namespace Marconi
             }
         }
 
+        void Session::SendPendingPong()
+        {
+            if (!m_pongPending.exchange(false))
+            {
+                return;
+            }
+            Wire::Pong pong;
+            pong.token = m_pongToken.load();
+            if (!Send(pong.Encode()))
+            {
+                m_stop = true;
+            }
+        }
+
         void Session::RunFrameLoop()
         {
             bool first = true;
             while (!m_stop)
             {
+                SendPendingPong();
                 Capture capture;
                 if (m_screen.Grab(capture))
                 {
@@ -267,6 +280,10 @@ namespace Marconi
             {
                 LOG_INFO("Server", "Handshake failed: %s", error.what());
                 return;
+            }
+            if (m_onLoggedIn)
+            {
+                m_onLoggedIn();
             }
 
             std::thread input([this, &reader]() { RunInputLoop(reader); });

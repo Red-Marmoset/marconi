@@ -46,6 +46,7 @@ namespace Marconi
 
             int LastError();
             bool IsConnectInProgress(int error);
+            bool IsWouldBlock(int error); // a non-blocking send or receive that has nothing to do yet
             bool IsInterrupted(int error);
             std::string ErrorString(int error);
 

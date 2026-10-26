@@ -5,6 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.9
+
+- Fixed the window freezing while the connection is slow.
+- Making, renaming and deleting files on the other computer no longer freezes the window.
+- Fixed Marconi Server getting stuck when quitting or changing its settings while a viewer is slow to keep up.
+
 ## 0.7.8
 
 - Shows a small dot for the mouse pointer when the other computer hides its own.

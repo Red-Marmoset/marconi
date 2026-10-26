@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <MarconiCore/Net/SendQueue.h>
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/Net/SshTunnel.h>
 #include <MarconiCore/Net/Tls.h>
@@ -92,7 +93,7 @@ namespace Marconi
 
             // TightVNC file transfer on this connection (the server offered it during the Tight login).
             bool HasFileTransfer() const { return m_fileTransfer.load(); }
-            // Any thread. False if not connected.
+            // Any thread but the UI's: it waits for the network. False if not connected.
             bool SendFileTransferRequest(const Bytes& request);
             // Called on the connection thread with each file transfer reply.
             void SetFileTransferHandler(std::function<void(const FileTransfer::Reply&)> handler);
@@ -100,7 +101,8 @@ namespace Marconi
 
             Framebuffer& GetFramebuffer() override { return m_framebuffer; }
 
-            // Input. Safe to call from any thread; silently ignored while not connected.
+            // Input. Safe to call from any thread, and never waits for the network (a queue sends it); silently
+            // ignored while not connected.
             void SendPointerEvent(int x, int y, uint8_t buttonMask) override;
             void SendKeyEvent(uint32_t keysym, bool down) override;
             void SendClientCutText(const std::string& latin1Text) override;
@@ -169,7 +171,8 @@ namespace Marconi
             };
 
             void Send(const Bytes& data) override;
-            void SendIfConnected(const Bytes& data);
+            // Queues `data` for the send thread (see SendQueue::Post for `replaceKey`), so the caller never waits.
+            void SendIfConnected(const Bytes& data, uint32_t replaceKey = 0);
             bool SendRaw(const Bytes& data); // caller holds m_sendMutex
             ptrdiff_t ReadFromConnection(void* buffer, size_t length);
             // Connection thread: connects through SSH (ConnectionOptions::sshTunnel) and sets m_tunnel.
@@ -221,7 +224,8 @@ namespace Marconi
                                               // with assignment
             std::shared_ptr<Net::SshTunnel> m_tunnel; // the connection, when it goes through SSH; set and cleared
                                                       // by the connection thread under m_socketMutex
-            std::mutex m_sendMutex;   // serialises whole messages from the UI and connection threads; guards m_tls
+            std::mutex m_sendMutex;   // serialises whole messages from the send and connection threads; guards m_tls
+            Net::SendQueue m_sendQueue; // sends what other threads ask for, while connected
             Net::Socket m_socket;
             std::unique_ptr<Net::TlsStream> m_tls; // the encrypted stream once the handshake switched to one
             std::atomic<bool> m_connected{false};

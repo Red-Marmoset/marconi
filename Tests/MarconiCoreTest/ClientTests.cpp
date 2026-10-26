@@ -398,5 +398,24 @@ namespace MarconiTest
             s.client.Disconnect();
             CHECK(s.client.GetHealth().waitingMs == -1); // nothing outstanding once the connection is gone
         });
+
+        RunTest("Input and the clipboard don't wait for a server that has stopped reading", []() {
+            ConnectedSession s(4, 3);
+            // The fake server reads nothing more, so a few megabytes in, the connection is full.
+            const std::string text(4 * 1024 * 1024, 'x');
+            auto start = std::chrono::steady_clock::now();
+            for (int i = 0; i < 8; ++i)
+            {
+                s.client.SendClientCutText(text);
+                s.client.SendPointerEvent(i, i, 0);
+                s.client.SendKeyEvent('a', true);
+                s.client.SendKeyEvent('a', false);
+            }
+            CHECK(std::chrono::steady_clock::now() - start < std::chrono::milliseconds(500));
+            // Disconnecting gives what's queued a moment to go out, then cuts the connection.
+            start = std::chrono::steady_clock::now();
+            s.client.Disconnect();
+            CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(3));
+        });
     }
 } // namespace MarconiTest

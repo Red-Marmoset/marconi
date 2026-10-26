@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// Minimal blocking TCP socket (client connect with timeout, plus listen/accept for tests)
+// Minimal TCP socket (client connect with timeout, plus listen/accept) whose waits can always be interrupted
 
 #include <MarconiCore/Net/Socket.h>
 
@@ -8,7 +8,11 @@
 #include <algorithm>
 #include <chrono>
 #include <climits>
+#include <condition_variable>
 #include <cstring>
+#include <memory>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 namespace Marconi
@@ -47,12 +51,69 @@ namespace Marconi
 
             void ConfigureConnected(intptr_t handle)
             {
+                // Non-blocking for good: Receive and SendAll wait in select() themselves, in short slices, so
+                // Shutdown() from another thread always gets them out (a send blocked in the system can't be woken
+                // reliably, on Windows least of all).
+                Platform::SetNonBlocking(handle, true);
                 int on = 1;
                 setsockopt(Native(handle), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&on), sizeof(on));
                 Platform::DisableSigPipe(handle);
                 // A cable pulled or a server that vanished would otherwise go unnoticed until something is sent:
                 // probe after 15 quiet seconds, every 5 seconds, and give up after 4 unanswered probes.
                 Platform::EnableKeepAlive(handle, 15, 5, 4);
+            }
+
+            // getaddrinfo can't be interrupted and can take many seconds when name lookups are slow, so it runs on
+            // a thread of its own. The caller waits for it in slices, so it can give up when cancelled; the thread
+            // then finishes by itself and frees what it found.
+            struct Lookup
+            {
+                std::mutex mutex;
+                std::condition_variable finished;
+                bool done = false;
+                bool abandoned = false;
+                int status = 0;
+                addrinfo* results = nullptr;
+            };
+
+            // Returns getaddrinfo's status, or sets `cancelled` (and returns non-zero) when it gave up.
+            int Resolve(const std::string& host, const std::string& service, const addrinfo& hints,
+                        const std::atomic<bool>* cancel, addrinfo*& results, bool& cancelled)
+            {
+                results = nullptr;
+                cancelled = false;
+                std::shared_ptr<Lookup> lookup = std::make_shared<Lookup>();
+                std::thread([lookup, host, service, hints]() {
+                    addrinfo* found = nullptr;
+                    int status = getaddrinfo(host.c_str(), service.c_str(), &hints, &found);
+                    std::lock_guard<std::mutex> lock(lookup->mutex);
+                    if (lookup->abandoned)
+                    {
+                        if (found != nullptr)
+                        {
+                            freeaddrinfo(found);
+                        }
+                        return;
+                    }
+                    lookup->status = status;
+                    lookup->results = found;
+                    lookup->done = true;
+                    lookup->finished.notify_all();
+                }).detach();
+
+                std::unique_lock<std::mutex> lock(lookup->mutex);
+                while (!lookup->done)
+                {
+                    if (cancel != nullptr && cancel->load())
+                    {
+                        cancelled = true;
+                        lookup->abandoned = true;
+                        return -1;
+                    }
+                    lookup->finished.wait_for(lock, std::chrono::milliseconds(100));
+                }
+                results = lookup->results;
+                return lookup->status;
             }
         } // namespace
 
@@ -100,7 +161,13 @@ namespace Marconi
             hints.ai_protocol = IPPROTO_TCP;
             addrinfo* results = nullptr;
             std::string service = std::to_string(port);
-            int status = getaddrinfo(host.c_str(), service.c_str(), &hints, &results);
+            bool cancelled = false;
+            int status = Resolve(host, service, hints, cancel, results, cancelled);
+            if (cancelled)
+            {
+                error = "Cancelled";
+                return false;
+            }
             if (status != 0 || results == nullptr)
             {
                 error = "Could not resolve '" + host + "'";
@@ -305,7 +372,6 @@ namespace Marconi
                 }
                 return;
             }
-            Platform::SetNonBlocking(winner, false);
             ConfigureConnected(winner);
             m_handle = winner;
             error.clear();
@@ -386,12 +452,27 @@ namespace Marconi
             const char* bytes = static_cast<const char*>(data);
             while (length > 0)
             {
+                if (m_shutdown)
+                {
+                    return false;
+                }
                 int chunk = static_cast<int>(std::min<size_t>(length, INT_MAX));
                 auto sent = send(Native(m_handle), bytes, chunk, Platform::SendFlags());
                 if (sent < 0)
                 {
-                    if (Platform::IsInterrupted(Platform::LastError()))
+                    int error = Platform::LastError();
+                    if (Platform::IsInterrupted(error))
                     {
+                        continue;
+                    }
+                    if (Platform::IsWouldBlock(error))
+                    {
+                        // The other end isn't taking data as fast as it comes: wait for room, in slices, so a
+                        // Shutdown() from another thread is noticed.
+                        if (WaitFor(m_handle, false, 100) < 0 && !Platform::IsInterrupted(Platform::LastError()))
+                        {
+                            return false;
+                        }
                         continue;
                     }
                     return false;
@@ -439,9 +520,10 @@ namespace Marconi
                 }
 
                 auto received = recv(Native(m_handle), static_cast<char*>(buffer), chunk, 0);
-                if (received < 0 && Platform::IsInterrupted(Platform::LastError()))
+                if (received < 0 && (Platform::IsInterrupted(Platform::LastError()) ||
+                                     Platform::IsWouldBlock(Platform::LastError())))
                 {
-                    continue;
+                    continue; // woken without data after all (the socket is non-blocking)
                 }
                 return received < 0 ? -1 : static_cast<ptrdiff_t>(received);
             }

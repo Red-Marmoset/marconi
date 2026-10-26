@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // The server over a real loopback socket: certificate pinning. A viewer that already knows the server's fingerprint
 // connects without being asked about it; a viewer that pins the wrong one, and declines the question it falls back
-// to, never gets in.
+// to, never gets in. And a viewer that stops taking the picture can't keep the server from stopping.
 
 #include "TestSupport.h"
 
@@ -9,6 +9,8 @@
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
+#include <chrono>
+#include <random>
 #include <thread>
 
 namespace MarconiServerTest
@@ -33,6 +35,59 @@ namespace MarconiServerTest
             }
             return bytes;
         }
+
+        // A screen that changes completely on every grab, to noise zlib can't shrink, so a viewer that stops
+        // reading is soon further behind than the connection can hold.
+        class NoiseScreen : public Server::ScreenSource
+        {
+        public:
+            std::vector<Wire::Display> GetDisplays() override
+            {
+                Wire::Display display;
+                display.id = 0;
+                display.width = kSide;
+                display.height = kSide;
+                return {display};
+            }
+
+            bool Grab(Server::Capture& out) override
+            {
+                out.width = kSide;
+                out.height = kSide;
+                out.pixels.resize(static_cast<size_t>(kSide) * kSide);
+                for (uint32_t& pixel : out.pixels)
+                {
+                    pixel = m_random() & 0x00FFFFFFu;
+                }
+                out.dirty = {{0, 0, kSide, kSide}};
+                return true;
+            }
+
+        private:
+            static constexpr int32_t kSide = 512; // a megabyte a frame
+            std::minstd_rand m_random{1};
+        };
+
+        // Holds the client's worker in its first picture callback until released, so it stops reading.
+        class StallingClientListener : public RecordingClientListener
+        {
+        public:
+            void OnFramebufferUpdated(const std::vector<Rfb::Rect>& rects) override
+            {
+                RecordingClientListener::OnFramebufferUpdated(rects);
+                std::unique_lock<std::mutex> lock(mutex);
+                changed.wait(lock, [this]() { return released; });
+            }
+
+            void Release()
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                released = true;
+                changed.notify_all();
+            }
+
+            bool released = false; // guarded by mutex
+        };
     } // namespace
 
     void RunListenerTests()
@@ -118,6 +173,37 @@ namespace MarconiServerTest
             client.Disconnect();
             listener.Stop();
             serverThread.join();
+        });
+
+        RunTest("Stopping the server doesn't wait for a viewer that has stopped taking the picture", []() {
+            NoiseScreen screen;
+            RecordingInput input;
+            Server::Settings settings;
+            settings.port = 0;
+            Server::Listener listener(screen, input, settings);
+            listener.SetFrameIntervalMs(1);
+            std::string error;
+            CHECK(listener.Start(error, "127.0.0.1"));
+            std::thread serverThread([&]() { listener.ServeOne(5000); });
+
+            StallingClientListener clientListener;
+            Wire::Client client(clientListener);
+            Wire::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = listener.GetPort();
+            client.Connect(options);
+            CHECK(clientListener.WaitFor([&]() { return clientListener.updates >= 1; }));
+            // The viewer is stuck in its callback: give the server time to fill the connection and get stuck too.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+
+            auto start = std::chrono::steady_clock::now();
+            listener.Stop();
+            serverThread.join();
+            auto elapsed = std::chrono::steady_clock::now() - start;
+            CHECK(elapsed < std::chrono::seconds(2));
+
+            clientListener.Release();
+            client.Disconnect();
         });
     }
 } // namespace MarconiServerTest

@@ -72,7 +72,10 @@ its phases in order, and keep it current (decisions, measurements, finished step
     `CallAfter`.
   - Decoders write into `Framebuffer` under its mutex, through a scratch `PixelBuffer`, and never hold the lock
     while reading the network.
-  - Input senders are thread-safe.
+  - Input senders are thread-safe and never wait for the network: each client hands them to a `Net::SendQueue`,
+    which sends on its own thread. Nothing on the UI thread may wait for the network.
+  - `Net::Socket` stays non-blocking once connected; `Receive` and `SendAll` wait in short slices, so `Shutdown()`
+    from another thread always gets them out, even a send stuck on a slow link.
 - `OnCredentialsRequired` and `OnUntrustedCertificate` block the worker until the UI answers (`ViewerFrame::AskUser`).
   `ViewerFrame` releases it if the window closes.
 - Encryption: `Net/Tls.h` is the TLS stream interface; `Net/Tls.cpp` returns nothing until a platform implementation

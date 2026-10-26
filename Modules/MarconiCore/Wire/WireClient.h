@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <MarconiCore/Net/SendQueue.h>
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Wire/WireChannel.h>
@@ -77,6 +78,9 @@ namespace Marconi
             void HandleMove(const Move& move);
             void ApplyDisplays(const std::vector<Display>& displays, bool initial);
             bool Send(const Bytes& framed); // one message, serialised; false if not connected or the write failed
+            // Queues one message for the send thread, so the caller (the UI) never waits for the network. Dropped
+            // while not connected. See SendQueue::Post for `replaceKey`.
+            void Post(const Bytes& framed, uint32_t replaceKey = 0);
             void MarkInput();
 
             SessionListener& m_listener;
@@ -84,11 +88,12 @@ namespace Marconi
 
             std::thread m_thread;
             Net::Socket m_socket;
-            std::mutex m_writeMutex;       // serialises whole messages from the UI and worker threads
+            std::mutex m_writeMutex;       // serialises whole messages from the send and worker threads
             std::unique_ptr<Net::TlsStream> m_tls;   // the encrypted stream once the handshake succeeded
             std::unique_ptr<Transport> m_transport;  // over the TLS stream; guarded by m_writeMutex for Send
             std::atomic<bool> m_connected{false};
             std::atomic<bool> m_encrypted{false};
+            Net::SendQueue m_sendQueue; // sends the input and requests, while connected
             mutable std::mutex m_nameMutex;
             std::string m_encryptionName; // guarded by m_nameMutex
             std::atomic<bool> m_stopping{false};

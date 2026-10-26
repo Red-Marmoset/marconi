@@ -657,12 +657,10 @@ namespace MarconiUI
         {
             return;
         }
-        std::string error;
-        if (!m_source->MakeFolder(Marconi::Files::JoinPath(m_folder, name.utf8_string()), error))
-        {
-            wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
-        }
-        Reload();
+        std::string path = Marconi::Files::JoinPath(m_folder, name.utf8_string());
+        Change([path](Marconi::Files::FileSource& source, std::string& error) {
+            return source.MakeFolder(path, error);
+        });
     }
 
     void FilePane::RenameSelected()
@@ -678,12 +676,11 @@ namespace MarconiUI
         {
             return;
         }
-        std::string error;
-        if (!m_source->Rename(paths[0], Marconi::Files::JoinPath(m_folder, name.utf8_string()), error))
-        {
-            wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
-        }
-        Reload();
+        std::string from = paths[0];
+        std::string to = Marconi::Files::JoinPath(m_folder, name.utf8_string());
+        Change([from, to](Marconi::Files::FileSource& source, std::string& error) {
+            return source.Rename(from, to, error);
+        });
     }
 
     void FilePane::DeleteSelected()
@@ -700,41 +697,66 @@ namespace MarconiUI
         {
             return;
         }
-        for (const std::string& path : paths)
-        {
-            std::string error;
-            if (!DeleteTree(path, error))
+        Change([paths](Marconi::Files::FileSource& source, std::string& error) {
+            for (const std::string& path : paths)
             {
-                wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
-                break;
+                if (!DeleteTree(source, path, error))
+                {
+                    return false;
+                }
             }
-        }
-        Reload();
+            return true;
+        });
     }
 
-    bool FilePane::DeleteTree(const std::string& path, std::string& error)
+    void FilePane::Change(std::function<bool(Marconi::Files::FileSource&, std::string&)> change)
+    {
+        if (m_source == nullptr)
+        {
+            return;
+        }
+        // On the worker thread, like a listing: the source may be the other computer, over a slow link.
+        Marconi::Files::FileSource* source = m_source;
+        m_work.Post([this, source, change]() {
+            std::string error;
+            bool ok = change(*source, error);
+            CallAfter([this, source, ok, error]() {
+                if (source != m_source)
+                {
+                    return; // the pane shows something else now
+                }
+                if (!ok)
+                {
+                    wxMessageBox(wxString::FromUTF8(error), "Marconi", wxOK | wxICON_WARNING, this);
+                }
+                Reload();
+            });
+        });
+    }
+
+    bool FilePane::DeleteTree(Marconi::Files::FileSource& source, const std::string& path, std::string& error)
     {
         Marconi::Files::FileEntry entry;
-        if (!m_source->Stat(path, entry, error))
+        if (!source.Stat(path, entry, error))
         {
             return false;
         }
         if (!entry.isFolder)
         {
-            return m_source->Remove(path, error);
+            return source.Remove(path, error);
         }
         std::vector<Marconi::Files::FileEntry> children;
-        if (!m_source->List(path, children, error))
+        if (!source.List(path, children, error))
         {
             return false;
         }
         for (const auto& child : children)
         {
-            if (!DeleteTree(Marconi::Files::JoinPath(path, child.name), error))
+            if (!DeleteTree(source, Marconi::Files::JoinPath(path, child.name), error))
             {
                 return false;
             }
         }
-        return m_source->RemoveFolder(path, error);
+        return source.RemoveFolder(path, error);
     }
 } // namespace MarconiUI

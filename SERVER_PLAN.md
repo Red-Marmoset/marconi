@@ -70,6 +70,11 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
   Built and run on Linux under a virtual display (test-pattern mode): it makes its identity, starts listening, and
   answers a client with the `MRCN` greeting. The Windows screen path still needs a run on a real Windows machine,
   as 1.6/1.7 note.
+- **A slow viewer can't stall the server** (0.7.9): `Listener::Stop` cuts the current viewer's connection, so
+  quitting or changing settings in the tray never waits on a viewer that has stopped taking the picture; a viewer
+  that sends nothing for 60 seconds before logging in is dropped (long enough for its user to answer the "trust this
+  certificate?" question mid-handshake); the input thread never writes, so input isn't held up behind a frame
+  going out. Tested in `MarconiServerTest` with a viewer that stops reading.
 - **Version** is bumped to **0.6.0** with changelog and README entries for the server.
 - **Naming:** the tray project is `MarconiServerTray` (output `Build/MarconiServerTray`) so it doesn't clash with
   the console `MarconiServer`. The installer phase decides the shipped program's name.
