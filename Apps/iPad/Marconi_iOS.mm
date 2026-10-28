@@ -400,13 +400,13 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     }
 }
 
-- (void)press:(int)button
+- (void)pressButton:(int)button
 {
     _buttons |= button;
     [self.controller pointerX:_pointerX y:_pointerY buttons:_buttons];
 }
 
-- (void)release:(int)button
+- (void)releaseButton:(int)button
 {
     _buttons &= ~button;
     [self.controller pointerX:_pointerX y:_pointerY buttons:_buttons];
@@ -415,8 +415,8 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 - (void)click:(UIGestureRecognizer*)recognizer button:(int)button
 {
     [self moveTo:recognizer];
-    [self press:button];
-    [self release:button];
+    [self pressButton:button];
+    [self releaseButton:button];
 }
 
 - (void)tapped:(UITapGestureRecognizer*)recognizer
@@ -444,7 +444,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     {
         case UIGestureRecognizerStateBegan:
             [self moveTo:recognizer];
-            [self press:1];
+            [self pressButton:1];
             break;
         case UIGestureRecognizerStateChanged:
             [self moveTo:recognizer];
@@ -453,7 +453,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
         case UIGestureRecognizerStateCancelled:
         case UIGestureRecognizerStateFailed:
             [self moveTo:recognizer];
-            [self release:1];
+            [self releaseButton:1];
             break;
         default:
             break;
@@ -624,6 +624,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     UIToolbar* _toolbar;
     NSArray<UIBarButtonItem*>* _modifierItems;
     BOOL _leaving;
+    CGSize _lastScreenSize;
 }
 
 - (instancetype)initWithAddress:(NSString*)address username:(NSString*)username password:(NSString*)password
@@ -686,10 +687,9 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 - (void)viewDidLayoutSubviews
 {
     [super viewDidLayoutSubviews];
-    static CGSize lastSize;
-    if (!CGSizeEqualToSize(lastSize, _screen.bounds.size))
+    if (!CGSizeEqualToSize(_lastScreenSize, _screen.bounds.size))
     {
-        lastSize = _screen.bounds.size;
+        _lastScreenSize = _screen.bounds.size;
         [_screen fitPicture];
     }
 }
@@ -991,7 +991,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 
 // --- The connect screen ---
 
-@interface ConnectController : UIViewController
+@interface ConnectController : UIViewController <UITextFieldDelegate>
 - (void)connectTo:(NSString*)address;
 @end
 
@@ -1023,7 +1023,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     _username = field(@"User name (optional)", @"username");
     _password = field(@"Password (optional)", @"");
     _password.secureTextEntry = YES;
-    _password.delegate = (id<UITextFieldDelegate>)self;
+    _password.delegate = self;
     _password.returnKeyType = UIReturnKeyGo;
 
     UIButton* connect = [UIButton buttonWithType:UIButtonTypeSystem];
