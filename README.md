@@ -3,7 +3,8 @@
 **M**ulti-protocol **A**ccess and **R**emote **CON**trol **I**nterface.
 
 Marconi lets you see and control another computer's screen from your own, as if you were sitting in front of it.
-It's free, and runs on Windows, macOS and Linux.
+It's free, and runs on Windows, macOS and Linux, with apps for Android and for iPad and iPhone (see
+`Apps/`).
 
 It works with:
 
@@ -300,6 +301,11 @@ You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildT
 To open `vnc://` links in Marconi on Linux, copy `Installer/Linux/marconi.desktop` to
 `~/.local/share/applications/`, change its `Exec` line to the path of the `Marconi` you built (keeping the `%u`),
 then run `xdg-mime default marconi.desktop x-scheme-handler/vnc`.
+
+**Android, iPad and iPhone.** The viewer core builds for both with the same engine; the apps are in `Apps/`.
+`Apps/Android/README.md` explains the Android build (the Una BuildTool with the Android NDK, then Gradle for the
+app) and `Apps/iPad/README.md` the iOS one (an Xcode project generated through Una, built on a Mac). Both apps do
+VNC, VNC through SSH and Marconi connections, not Remote Desktop yet.
 
 Incremental builds rely on BuildTool's header dependency tracking (engine commit 3d0ce07 or later). With an older
 BuildTool, build with `-Clean` after editing a header.

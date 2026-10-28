@@ -17,6 +17,7 @@ namespace Test
         MarconiTest::RunClientTests();
         MarconiTest::RunDecoderTests();
         MarconiTest::RunVersionTests();
+        MarconiTest::RunQuickConnectTests();
         MarconiTest::RunSocketTests();
         MarconiTest::RunProbeTests();
         MarconiTest::RunChoiceTests();

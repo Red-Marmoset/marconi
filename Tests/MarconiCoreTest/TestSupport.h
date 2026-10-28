@@ -139,6 +139,7 @@ namespace MarconiTest
     void RunClientTests();
     void RunDecoderTests();
     void RunVersionTests();
+    void RunQuickConnectTests();
     void RunSocketTests();
     void RunProbeTests();
     void RunChoiceTests();

@@ -1,0 +1,10 @@
+{
+    "name": "Marconi",
+    "type": "tool",
+    "version": "0.1.0",
+    "description": "Marconi for Android: the viewer core and its bridge as libMarconi.so, which the app in this folder loads.",
+    "modules": ["MarconiAndroid"],
+    "android": {
+        "apiLevel": 24
+    }
+}

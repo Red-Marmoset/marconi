@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Marconi</string>
+    <string name="address_hint">Computer, for example studio-pc, 192.168.1.20:1 or marconi://host</string>
+    <string name="username_hint">User name (optional)</string>
+    <string name="password_hint">Password (optional)</string>
+    <string name="connect">Connect</string>
+    <string name="connecting">Connecting to %1$s…</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="keyboard">Keyboard</string>
+    <string name="help_gestures">Tap to click, double-tap to double-click, touch and hold for a right click. Double-tap and hold to drag. Two fingers move and zoom the picture.</string>
+    <string name="credentials_password">This computer asks for a password.</string>
+    <string name="credentials_account">This computer asks for a user name and password.</string>
+    <string name="credentials_ssh">The computer\'s SSH login.</string>
+    <string name="trust_certificate_title">Not a certificate this phone trusts</string>
+    <string name="trust_certificate_message">Issued to: %1$s\nIssued by: %2$s\nValid until: %3$s\n\n%4$s\n\nSHA-256 fingerprint:\n%5$s\n\nConnect anyway? Marconi remembers this certificate for this computer.</string>
+    <string name="trust_ssh_title">Unknown SSH server key</string>
+    <string name="trust_ssh_message">%1$s offers a %2$s key with fingerprint\n%3$s\n\n%4$s\nTrust it and connect?</string>
+    <string name="trust_ssh_changed">The key trusted before was\n%1$s\n\nA changed key can mean another computer is answering.</string>
+    <string name="trust">Trust and connect</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="connection_lost">The connection was lost</string>
+    <string name="connection_failed">Couldn\'t connect</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="wrong_password">The password was refused</string>
+    <string name="encrypted">Encrypted (%1$s)</string>
+    <string name="not_encrypted">Not encrypted</string>
+</resources>

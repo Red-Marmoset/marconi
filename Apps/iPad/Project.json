@@ -1,0 +1,18 @@
+{
+    "name": "Marconi",
+    "type": "tool",
+    "version": "0.1.0",
+    "description": "Marconi for iPad and iPhone: the viewer core with a UIKit screen, generated as an Xcode project.",
+    "compiler": "clang",
+    "modules": ["MarconiCore"],
+    "sources": ["Marconi_iOS.mm"],
+    "xcode": {
+        "infoPlist": "Info.plist",
+        "bundleIdentifier": "com.redmarmoset.Marconi.iOS",
+        "deploymentTarget": "15.0",
+        "deviceFamily": "1,2",
+        "objcArc": true,
+        "frameworks": ["UIKit", "Foundation", "CoreGraphics"],
+        "includePaths": ["../../Modules"]
+    }
+}

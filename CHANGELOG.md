@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.8.0
+
+- Marconi runs on Android phones and tablets (`Apps/Android`) and on iPad and iPhone (`Apps/iPad`), for VNC, VNC through SSH and Marconi servers.
+
 ## 0.7.8
 
 - Shows a small dot for the mouse pointer when the other computer hides its own.

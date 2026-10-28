@@ -1,0 +1,11 @@
+{
+    "name": "MarconiAndroid",
+    "version": "0.1.0",
+    "type": "Engine",
+    "description": "The bridge between the Android app (Kotlin, Apps/Android) and MarconiCore: a native session per NativeSession object, with the picture copied into an Android bitmap and the prompts answered by the app.",
+    "dependencies": ["MarconiCore", "Platform", "Log"],
+    "platformLibraries": {
+        "Android": ["jnigraphics", "log"]
+    },
+    "platforms": ["Android"]
+}

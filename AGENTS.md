@@ -21,6 +21,8 @@ its phases in order, and keep it current (decisions, measurements, finished step
 
 - **App:** `.\Build.ps1 [-Config Debug] [-Clean]` (Windows) or `./Build.sh` (macOS/Linux). Output goes to
   `Build/Marconi/<Config>/`.
+- **Android:** `./gradlew assembleDebug` in `Apps/Android` (runs `Build.sh`/`Build.ps1` with `--platform Android`
+  first; needs `ANDROID_HOME` or `ANDROID_NDK_HOME`). **iPad:** `bash Apps/iPad/GenerateProject.sh`, then Xcode.
 - **Tests:** `.\Build.ps1 -Project Tests\MarconiCoreTest\Project.json -Config Debug -Clean`, then run
   `Build\MarconiCoreTest\Debug\MarconiCoreTest.exe`. The exit code is the number of failures.
 - **Building an engine test from here:** `-Project C:\code\engine\Tests\CryptoTest\Project.json` works too; output
@@ -67,6 +69,11 @@ its phases in order, and keep it current (decisions, measurements, finished step
 - `RemoteSession` (`RemoteSession.h`) is what the viewer drives; `Rfb::Client` (VNC), `Wire::Client` (the Marconi
   protocol) and `Rdp::Client` (Remote Desktop) implement it. The viewer picks one from the address's protocol or
   the probe. Each runs its protocol on a worker thread.
+- The phone and tablet apps (`Apps/Android`, `Apps/iPad`) drive `RemoteSession` through `QuickConnect`
+  (`MarconiCore/QuickConnect.h`), which picks the client from the address without the probe. The Android app is
+  Kotlin over the JNI bridge in `Modules/MarconiAndroid`; the iOS app is one UIKit file, `Apps/iPad/Marconi_iOS.mm`.
+  Neither has `MarconiUI` (wxWidgets has no usable port there). `MOBILE_PLAN.md` records the decisions and what
+  is still unchecked; read it before working on either app.
 - `Rfb::Client` runs the protocol on a worker thread.
   - Its `ClientListener` callbacks arrive on that thread; `ViewerFrame` passes them to the UI thread with
     `CallAfter`.
