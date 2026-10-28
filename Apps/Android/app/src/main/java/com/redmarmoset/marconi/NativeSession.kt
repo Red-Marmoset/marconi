@@ -24,11 +24,13 @@ class NativeSession(private val listener: Listener) {
 
     private var handle: Long = create()
 
+    // Every call checks the handle: a picture update queued on the main thread can arrive after close().
+
     /** Starts connecting; the outcome arrives through the listener. Returns a message if the address can't be used. */
     fun connect(address: String, username: String, password: String, trustedCertificateHex: String): String? =
-        connect(handle, address, username, password, trustedCertificateHex)
+        if (handle == 0L) "The session is closed." else connect(handle, address, username, password, trustedCertificateHex)
 
-    fun disconnect() = disconnect(handle)
+    fun disconnect() { if (handle != 0L) disconnect(handle) }
 
     /** Frees the native session. Disconnects first; the listener gets no more callbacks afterwards. */
     fun close() {
@@ -40,17 +42,17 @@ class NativeSession(private val listener: Listener) {
 
     /** Copies a rectangle of the picture into [bitmap], which must be ARGB_8888 and the picture's size. */
     fun copyFramebuffer(bitmap: Bitmap, x: Int, y: Int, width: Int, height: Int): Boolean =
-        copyFramebuffer(handle, bitmap, x, y, width, height)
+        handle != 0L && copyFramebuffer(handle, bitmap, x, y, width, height)
 
-    fun framebufferWidth(): Int = framebufferWidth(handle)
-    fun framebufferHeight(): Int = framebufferHeight(handle)
+    fun framebufferWidth(): Int = if (handle == 0L) 0 else framebufferWidth(handle)
+    fun framebufferHeight(): Int = if (handle == 0L) 0 else framebufferHeight(handle)
 
     /** Pointer in picture coordinates; buttons is the RFB mask (1 left, 2 middle, 4 right, 8 wheel up, 16 wheel down). */
-    fun sendPointer(x: Int, y: Int, buttons: Int) = sendPointer(handle, x, y, buttons)
-    fun sendKey(keysym: Int, down: Boolean) = sendKey(handle, keysym, down)
-    fun requestFullUpdate() = requestFullUpdate(handle)
-    fun isEncrypted(): Boolean = isEncrypted(handle)
-    fun encryptionName(): String = encryptionName(handle)
+    fun sendPointer(x: Int, y: Int, buttons: Int) { if (handle != 0L) sendPointer(handle, x, y, buttons) }
+    fun sendKey(keysym: Int, down: Boolean) { if (handle != 0L) sendKey(handle, keysym, down) }
+    fun requestFullUpdate() { if (handle != 0L) requestFullUpdate(handle) }
+    fun isEncrypted(): Boolean = handle != 0L && isEncrypted(handle)
+    fun encryptionName(): String = if (handle == 0L) "" else encryptionName(handle)
 
     // Called from the native side, on the connection thread.
     @Suppress("unused") private fun onConnected(width: Int, height: Int, name: String) = listener.onConnected(width, height, name)
