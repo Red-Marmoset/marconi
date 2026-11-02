@@ -723,6 +723,30 @@ namespace MarconiTest
                 CHECK(framebuffer.GetPixel(8, 8) == 0 && framebuffer.GetPixel(20, 20) == 0x0000FF);
             }
 
+            // A classic bitmap update at 32 bits is planar-compressed, rows bottom first: a 2x2 at 30,30.
+            {
+                Rdp::Bytes inner;
+                P16(inner, 0x0001); // updateType: bitmap
+                P16(inner, 1);
+                P16(inner, 30); P16(inner, 30); P16(inner, 31); P16(inner, 31); // inclusive destination
+                P16(inner, 2); P16(inner, 2); P16(inner, 32);
+                P16(inner, 0x0001 | 0x0400); // compressed, no compressed-data header
+                Rdp::Bytes planar = {0x30, 0x20, 10, 20, 0x20, 4, 1, 0x20, 50, 60, 0x20, 0, 0, 0x20, 200, 100, 0x20, 2, 2};
+                P16(inner, static_cast<uint16_t>(planar.size()));
+                inner.insert(inner.end(), planar.begin(), planar.end());
+                Rdp::Bytes updates = {0x01};
+                P16(updates, static_cast<uint16_t>(inner.size()));
+                updates.insert(updates.end(), inner.begin(), inner.end());
+                Rdp::Bytes packet = {0x00, static_cast<uint8_t>(2 + updates.size())};
+                packet.insert(packet.end(), updates.begin(), updates.end());
+                int before = listener.updates;
+                server.GetClientSocket().SendAll(packet.data(), packet.size());
+                CHECK(listener.WaitFor([&]() { return listener.updates > before; }));
+                Rfb::Framebuffer& framebuffer = client.GetFramebuffer();
+                std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
+                CHECK(framebuffer.GetPixel(30, 30) == 0x0C32C9 && framebuffer.GetPixel(31, 31) == 0x143C64);
+            }
+
             // A pointer shape too big for one fast-path update comes in pieces: first, then last.
             Rdp::Bytes shape = ColourPointer(2, 4, 4, 0x00FFFF, {0, 0, 0, 0});
             size_t cut = shape.size() / 2;

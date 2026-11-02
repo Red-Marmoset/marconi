@@ -14,7 +14,8 @@ namespace Marconi
 {
     namespace Rdp
     {
-        // Colour depths the classic bitmap path carries. 32-bit pictures use a different codec (planar), not this.
+        // Colour depths the classic bitmap path carries. Compressed 32-bit pictures use a different codec (planar,
+        // Rdp/Planar); uncompressed ones are decoded here.
         // `palette` is needed for 8 bits per pixel only: 256 entries of 0x00RRGGBB.
         //
         // Both functions fill `out` with width * height pixels, top row first (RDP sends rows bottom first). False

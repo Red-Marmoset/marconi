@@ -3,6 +3,8 @@
 
 #include <MarconiCore/Rdp/GfxRenderer.h>
 
+#include <MarconiCore/Rdp/Planar.h>
+
 #include <Log/Log.h>
 
 #include <algorithm>
@@ -28,6 +30,7 @@ namespace Marconi
         {
             m_surfaces.clear();
             m_cache.clear();
+            m_clear.reset();
         }
 
         bool GfxRenderer::Handle(const std::vector<GfxPdu>& pdus, Result& result, std::string& error)
@@ -88,6 +91,33 @@ namespace Marconi
             result.changed.push_back(dest);
         }
 
+        void GfxRenderer::Blit(Surface& surface, const GfxRect& rect, const uint32_t* pixels, int stride,
+                               Result& result)
+        {
+            GfxRect clipped = rect;
+            if (!Clip(surface, clipped))
+            {
+                return;
+            }
+            for (int y = clipped.top; y < clipped.bottom; ++y)
+            {
+                const uint32_t* src = pixels + static_cast<size_t>(y - rect.top) * stride + (clipped.left - rect.left);
+                std::copy(src, src + clipped.Width(),
+                          surface.pixels.data() + static_cast<size_t>(y) * surface.width + clipped.left);
+            }
+            Present(surface, clipped, result);
+        }
+
+        void GfxRenderer::WarnSkipped(const char* codec, const std::string& why)
+        {
+            if (m_skipWarnings < 10)
+            {
+                ++m_skipWarnings;
+                LOG_WARNING("Rdp", "Skipping a %s picture that didn't decode: %s%s", codec, why.c_str(),
+                            m_skipWarnings == 10 ? " (no more of these will be logged)" : "");
+            }
+        }
+
         void GfxRenderer::WarnOnce(uint16_t codecId)
         {
             if (m_warnedCodecs.insert(codecId).second)
@@ -111,32 +141,61 @@ namespace Marconi
                 case GfxCodec::Uncompressed:
                 {
                     // 32-bit pixels, B, G, R and X or A, row after row.
-                    GfxRect rect = pdu.rect;
-                    int width = rect.Width();
-                    int height = rect.Height();
+                    int width = pdu.rect.Width();
+                    int height = pdu.rect.Height();
                     if (width <= 0 || height <= 0 ||
                         pdu.data.size() != static_cast<size_t>(width) * static_cast<size_t>(height) * 4)
                     {
                         LOG_WARNING("Rdp", "An uncompressed picture whose size doesn't match its rectangle");
                         return true;
                     }
-                    GfxRect clipped = rect;
-                    if (!Clip(surface, clipped))
+                    std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
+                    const uint8_t* src = pdu.data.data();
+                    for (uint32_t& pixel : pixels)
                     {
+                        pixel = (static_cast<uint32_t>(src[2]) << 16) | (static_cast<uint32_t>(src[1]) << 8) | src[0];
+                        src += 4;
+                    }
+                    Blit(surface, pdu.rect, pixels.data(), width, result);
+                    return true;
+                }
+                case GfxCodec::Alpha:
+                    // Transparency for the surface (MS-RDPEGFX 2.2.4.3). The desktop shows no transparency, so
+                    // there is nothing to draw; the picture's colour is what earlier commands left.
+                    return true;
+                case GfxCodec::ClearCodec:
+                {
+                    if (!m_clear)
+                    {
+                        m_clear = std::make_unique<ClearDecoder>();
+                    }
+                    const GfxRect& rect = pdu.rect;
+                    if (!m_clear->Decode(pdu.data.data(), pdu.data.size(), surface.pixels.data(), surface.width,
+                                         surface.height, rect.left, rect.top, rect.Width(), rect.Height(), error))
+                    {
+                        WarnSkipped("ClearCodec", error);
+                        error.clear();
                         return true;
                     }
-                    for (int y = clipped.top; y < clipped.bottom; ++y)
+                    GfxRect drawn = rect;
+                    if (Clip(surface, drawn))
                     {
-                        const uint8_t* src = pdu.data.data() + (static_cast<size_t>(y - rect.top) * width +
-                                                                (clipped.left - rect.left)) * 4;
-                        uint32_t* dst = surface.pixels.data() + static_cast<size_t>(y) * surface.width;
-                        for (int x = clipped.left; x < clipped.right; ++x, src += 4)
-                        {
-                            dst[x] = (static_cast<uint32_t>(src[2]) << 16) | (static_cast<uint32_t>(src[1]) << 8) |
-                                     src[0];
-                        }
+                        Present(surface, drawn, result);
                     }
-                    Present(surface, clipped, result);
+                    return true;
+                }
+                case GfxCodec::Planar:
+                {
+                    std::vector<uint32_t> pixels;
+                    if (!DecodePlanar(pdu.data.data(), pdu.data.size(), pdu.rect.Width(), pdu.rect.Height(), false,
+                                      pixels, error))
+                    {
+                        // One picture: the rest of the session is unaffected, so it is skipped, not fatal.
+                        WarnSkipped("planar", error);
+                        error.clear();
+                        return true;
+                    }
+                    Blit(surface, pdu.rect, pixels.data(), pdu.rect.Width(), result);
                     return true;
                 }
                 case GfxCodec::Progressive:
@@ -178,10 +237,15 @@ namespace Marconi
                         return false;
                     }
                     LOG_INFO("Rdp", "Graphics reset: desktop %ux%u", pdu.width, pdu.height);
-                    // As Windows' and FreeRDP's clients do: the surfaces stay, their codec state goes.
+                    // As Windows' and FreeRDP's clients do: the surfaces stay, their codec state goes (except
+                    // ClearCodec's caches, which outlive a reset; only its sequence starts again).
                     for (auto& entry : m_surfaces)
                     {
                         entry.second.progressive = ProgressiveSurface();
+                    }
+                    if (m_clear)
+                    {
+                        m_clear->ResetSequence();
                     }
                     m_resize(static_cast<int>(pdu.width), static_cast<int>(pdu.height));
                     return true;

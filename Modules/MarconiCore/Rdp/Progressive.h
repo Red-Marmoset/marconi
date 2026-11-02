@@ -56,9 +56,5 @@ namespace Marconi
         bool DecodeProgressive(const uint8_t* data, size_t size, ProgressiveSurface& surface, uint32_t* pixels,
                                int width, int height, int stride, std::vector<ProgressiveRect>& updated,
                                std::string& error);
-
-        // The RLGR1 entropy decoder RemoteFX uses (MS-RDPRFX 3.1.8.1.7.3): fills `out` (zeros past what the data
-        // codes). Exposed for tests.
-        void DecodeRlgr1(const uint8_t* data, size_t size, int16_t* out, size_t count);
     } // namespace Rdp
 } // namespace Marconi

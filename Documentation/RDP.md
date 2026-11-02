@@ -113,8 +113,11 @@ milestone 1.
     take: Windows sizes the session to the client, a shared physical screen keeps its own.
   - Fast-path output is advertised (since 0.8.0: GNOME refuses clients without it), with a Multifragment Update
     capability of 8 MB, and fast-path updates split into fragments are put back together.
-  - 16 bits per pixel is asked for; 32-bit rectangles (planar) are not decoded, so a server insisting on them shows
-    a logged warning and no picture: milestone 8.
+  - 16 bits per pixel is asked for. A server that sends 32-bit rectangles anyway is drawn too (since 0.9.0):
+    compressed ones are planar (`Rdp/Planar`, rows bottom first), uncompressed ones B, G, R and a spare byte.
+  - A compressed rectangle's length is the body size from its 8-byte header, not `bitmapLength`: servers built on
+    FreeRDP put only the body's length in `bitmapLength`, and Marconi before 0.9.0 refused any whose was under 8,
+    which threw away FreeRDP's shadow server's whole picture (one bad rectangle fails its update).
   - No keepalive yet: a dead link is noticed when the next send fails or the socket closes.
   - Tested in `RdpClientTests` against a scripted loopback server with a passthrough stand-in for TLS (the
     connection sequence, both update paths, pointers, input, a desktop change and the server's error info),
@@ -142,14 +145,31 @@ milestone 1.
     passes; known answers in `RdpGfxTests`.
   - `Rdp/GfxRenderer`: surfaces, mapping to the desktop, solid fills, surface-to-surface copies, the bitmap cache,
     uncompressed pictures, Reset Graphics (resizes the desktop), and a Frame Acknowledge for every End Frame
-    (KRdp stops sending after two unacknowledged frames). Pictures in other codecs (ClearCodec, planar, H.264,
-    alpha) are skipped with one logged warning each.
+    (KRdp stops sending after two unacknowledged frames). Pictures in codecs Marconi doesn't decode (H.264, and
+    classic RemoteFX) are skipped with one logged warning each; a picture that fails to decode is skipped and
+    logged (the first ten times) without ending the session.
   - Tested end to end: the scripted server in `RdpClientTests` (channel setup, a frame split over DataFirst/Data,
     the acknowledgement, a pointer in fast-path fragments); FreeRDP's shadow server limited to Progressive; and
     GNOME Remote Desktop 46.3 (Ubuntu 24.04's) headless with NLA, its wallpaper arriving intact.
-  - Not yet: ClearCodec and planar, which Windows uses alongside Progressive when the pipeline is on, so a Windows
-    server would now show gaps where it uses them (text, mostly). Turning the pipeline off for Windows, or adding
-    those two codecs, is the open decision. H.264 stays off.
+  - The other codecs Windows sends over the pipeline (0.9.0):
+    - `Rdp/Planar` (codec 0x000A, MS-RDPEGDI 2.2.2.5.1): RGB or YCoCg at any colour loss level, half-size chroma,
+      raw or run-length planes, alpha read past. Equal to FreeRDP's decoder on 422 cases (its encoder's
+      pictures, lossless against the source, and synthetic streams in every header combination).
+    - `Rdp/Clear` (codec 0x0008, MS-RDPEGFX 2.2.4.1): residual runs, bands from the two bar caches, subcodecs
+      (uncompressed, NSCodec via `Rdp/Nsc`, palette run-length), the glyph cache and the sequence number. One
+      decoder for the whole channel (its caches outlive Reset Graphics; only the sequence restarts, as FreeRDP
+      does). Equal to FreeRDP on the specification's three Windows-made samples, on NSCodec pictures from
+      FreeRDP's encoder, and on 2400 synthetic messages in sessions (both refuse the same 720, the rest give the
+      same surface).
+    - Alpha (codec 0x000C): accepted and ignored; the desktop shows no transparency.
+    - Not decoded: H.264 (kept off in the Caps Advertise, so not sent) and classic RemoteFX (codec 0x0003),
+      which servers only send to clients announcing RemoteFX in a Bitmap Codecs capability set, and Marconi
+      sends none (FreeRDP's shadow server checks for exactly that).
+    - Not confirmed against a real Windows server yet: the codecs are checked against FreeRDP's decoders and the
+      specification's samples only.
+  - Live checks (0.9.0), FreeRDP's shadow server on an Xvfb screen in each mode: Progressive only (48 dB against
+    the screen), planar only and uncompressed only (both pixel for pixel equal to the screen), and the pipeline
+    off (the classic path, 41 dB at 16 bits); GNOME Remote Desktop 46.3 and xrdp 0.9.24 unchanged from 0.8.0.
 
 ## What RDP needs that VNC didn't
 
@@ -208,8 +228,8 @@ against a real server (the Linux `xrdp` in the dev container, and the owner's Wi
 5. **Scancode + mouse input.** `KeyMapper`'s scancode path and the input PDUs: a session you can drive.
 6. **Clipboard** over `cliprdr` (UTF-16 text).
 7. **Multiple monitors and dynamic resize** (RDP has both natively).
-8. **Graphics pipeline codecs**: the pipeline and RemoteFX Progressive are done (see "Already here"); ClearCodec
-   and planar (for Windows) and H.264 remain.
+8. **Graphics pipeline codecs**: the pipeline, RemoteFX Progressive, planar, ClearCodec (with NSCodec) and alpha
+   are done (see "Already here"); H.264 remains, which needs a video decoder.
 
 Milestones 1 to 5 with NLA on (so 1 to 5 including 2) are the first real, usable checkpoint: reached, see "Already
 here". Next in order: 6 (clipboard), 7 (resize and multiple monitors), 8 (codecs).

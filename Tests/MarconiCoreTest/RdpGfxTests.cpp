@@ -4,9 +4,12 @@
 
 #include "TestSupport.h"
 
+#include <MarconiCore/Rdp/Clear.h>
 #include <MarconiCore/Rdp/Dvc.h>
 #include <MarconiCore/Rdp/Gfx.h>
 #include <MarconiCore/Rdp/GfxRenderer.h>
+#include <MarconiCore/Rdp/Nsc.h>
+#include <MarconiCore/Rdp/Planar.h>
 #include <MarconiCore/Rdp/Progressive.h>
 #include <MarconiCore/Rdp/Zgfx.h>
 
@@ -79,6 +82,29 @@ namespace MarconiTest
                                      "\x04\x66\x6F\x78\x20\x6A\x75\x6D\x70\x73\x20\x6F\x76\x65\x10\x00"
                                      "\x00\x00\x24\x39\x08\x0E\x91\xF8\xD8\x61\x3D\x1E\x44\x06\x43\x79"
                                      "\x9C\x02";
+
+        // ClearCodec samples from MS-RDPEGFX 4.1.1.1 (examples 2 to 4, made by Windows). The expected pictures are
+        // FreeRDP 3.32's decode of them (Tools/RdpCodecCheck/clear_check.cpp compares the two decoders).
+        const char kClearExample2[] =
+            "\x00\x0d\x00\x00\x00\x00\x00\x00\x00\x00\x82\x00\x00\x00\x00\x00\x00\x00\x4e\x00\x11\x00\x75\x00\x00\x00"
+            "\x02\x0e\xff\xff\xff\x00\x00\x00\xdb\xff\xff\x00\x3a\x90\xff\xb6\x66\x66\xb6\xff\xb6\x66\x00\x90\xdb\xff"
+            "\x00\x00\x3a\xdb\x90\x3a\x3a\x90\xdb\x66\x00\x00\xff\xff\xb6\x64\x64\x64\x11\x04\x11\x4c\x11\x4c\x11\x4c"
+            "\x11\x4c\x11\x4c\x00\x47\x13\x00\x01\x01\x04\x00\x01\x00\x00\x47\x16\x00\x11\x02\x00\x47\x29\x00\x11\x01"
+            "\x00\x49\x0a\x00\x01\x00\x04\x00\x01\x00\x00\x4a\x0a\x00\x09\x00\x01\x00\x00\x47\x05\x00\x01\x01\x1c\x00"
+            "\x01\x00\x11\x4c\x11\x4c\x11\x4c\x00\x47\x0d\x4d\x00\x4d";
+        const char kClearExample3[] =
+            "\x00\xdf\x0e\x00\x00\x00\x8b\x00\x00\x00\x00\x00\x00\x00\xfe\xfe\xfe\xff\x80\x05\xff\xff\xff\x40\xfe\xfe"
+            "\xfe\x40\x00\x00\x3f\x00\x03\x00\x0b\x00\xfe\xfe\xfe\xc5\xd0\xc6\xd0\xc7\xd0\x68\xd4\x69\xd4\x6a\xd4\x6b"
+            "\xd4\x6c\xd4\x6d\xd4\x1a\xd4\x1a\xd4\xa6\xd0\x6e\xd4\x6f\xd4\x70\xd4\x71\xd4\x72\xd4\x73\xd4\x74\xd4\x21"
+            "\xd4\x22\xd4\x23\xd4\x24\xd4\x25\xd4\xd9\xd0\xda\xd0\xdb\xd0\xc5\xd0\xc5\xd0\xdc\xd0\xc2\xd0\x21\xd4\x22"
+            "\xd4\x23\xd4\x24\xd4\x25\xd4\xc9\xd0\xca\xd0\x5a\xd4\x2b\xd1\x28\xd1\x2c\xd1\x75\xd4\x27\xd4\x28\xd4\x29"
+            "\xd4\x2a\xd4\x1a\xd4\x1a\xd4\x1a\xd4\xb7\xd0\xb8\xd0\xb9\xd0\xba\xd0\xbb\xd0\xbc\xd0\xbd\xd0\xbe\xd0\xbf"
+            "\xd0\xc0\xd0\xc1\xd0\xc2\xd0\xc3\xd0\xc4\xd0";
+        const char kClearExample4[] =
+            "\x01\x0b\x78\x00\x00\x00\x00\x00\x46\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06\x00\x00\x00\x0e\x00\x00\x00"
+            "\x00\x00\x0f\xff\xff\xff\xff\xff\xff\xff\xff\xff\xb6\xff\xff\xff\xff\xff\xff\xff\xff\xff\xb6\x66\xff\xff"
+            "\xff\xff\xff\xff\xff\xb6\x66\xdb\x90\x3a\xff\xff\xb6\xff\xff\xff\xff\xff\xff\xff\xff\xff\x46\x91\x47\x91"
+            "\x48\x91\x49\x91\x4a\x91\x1b\x91";
 
         // Progressive known answers made with FreeRDP 3.32. kEncodedTile is a 64x48 gradient with a dark square
         // from its encoder (what GNOME and KRdp send); kFirstPass and kUpgradePass are a first pass at a lower
@@ -312,6 +338,148 @@ namespace MarconiTest
             Rdp::ProgressiveSurface other;
             CHECK(!Rdp::DecodeProgressive(broken.data(), broken.size(), other, pixels.data(), 64, 64, 64, updated,
                                           error) && !error.empty());
+        });
+
+        RunTest("Planar: run-length planes with row deltas, raw YCoCg, and rows stored bottom first", []() {
+            // 2x2 RGB, run-length, no alpha. Red: row 0 raw 10, 20; row 1 deltas +2, -1. Green: 50 then a run of
+            // 50 is not possible at width 2, so raw 50, 60 then deltas 0, 0. Blue: 200, 100 then +1, +1.
+            Rdp::Bytes data = {0x30, 0x20, 10, 20, 0x20, 4, 1, 0x20, 50, 60, 0x20, 0, 0,
+                               0x20, 200, 100, 0x20, 2, 2};
+            std::vector<uint32_t> pixels;
+            std::string error;
+            CHECK(Rdp::DecodePlanar(data.data(), data.size(), 2, 2, false, pixels, error));
+            CHECK(pixels.size() == 4 && pixels[0] == 0x0A32C8 && pixels[1] == 0x143C64);
+            CHECK(pixels[2] == 0x0C32C9 && pixels[3] == 0x133C65);
+            // The same bitmap stored bottom first (classic bitmap updates) comes out flipped.
+            CHECK(Rdp::DecodePlanar(data.data(), data.size(), 2, 2, true, pixels, error));
+            CHECK(pixels[0] == 0x0C32C9 && pixels[2] == 0x0A32C8);
+            // 1x1 raw YCoCg at colour loss level 1, no alpha: Y 100, Co 10, Cg 20, then the pad byte.
+            Rdp::Bytes ycocg = {0x21, 100, 10, 20, 0};
+            CHECK(Rdp::DecodePlanar(ycocg.data(), ycocg.size(), 1, 1, false, pixels, error));
+            CHECK(pixels.size() == 1 && pixels[0] == ((70u << 16) | (120u << 8) | 90u));
+            // A row longer than the picture, and half-size chroma with RGB, are refused.
+            Rdp::Bytes longRow = {0x30, 0x30, 1, 2, 3};
+            CHECK(!Rdp::DecodePlanar(longRow.data(), longRow.size(), 2, 1, false, pixels, error) && !error.empty());
+            Rdp::Bytes rgbHalf = {0x38, 0, 0, 0, 0};
+            CHECK(!Rdp::DecodePlanar(rgbHalf.data(), rgbHalf.size(), 1, 1, false, pixels, error));
+        });
+
+        RunTest("NSCodec: raw and run-length planes, colour loss, and a missing alpha plane", []() {
+            // 16x1: luma run-length coded (5 repeated 12 times, then four stored bytes), chroma raw, alpha absent.
+            Rdp::Bytes data;
+            P32(data, 7); P32(data, 16); P32(data, 16); P32(data, 0);
+            data.push_back(2); // colour loss level 2: chroma shifted left by one
+            data.push_back(0); // no subsampling
+            data.push_back(0); data.push_back(0);
+            data.insert(data.end(), {5, 5, 10, 100, 100, 100, 100});
+            data.insert(data.end(), 16, 5);   // Co: 5 << 1 = 10
+            data.insert(data.end(), 16, 0xFE); // Cg: (0xFE << 1) as a signed byte = -4
+            std::vector<uint32_t> pixels;
+            std::string error;
+            CHECK(Rdp::DecodeNsc(data.data(), data.size(), 16, 1, pixels, error));
+            // Y 5: R = 5 + 10 + 4 = 19, G = 5 - 4 = 1, B = 5 - 10 + 4 = -1 -> 0.
+            CHECK(pixels.size() == 16 && pixels[0] == ((19u << 16) | (1u << 8)) && pixels[11] == pixels[0]);
+            CHECK(pixels[15] == ((114u << 16) | (96u << 8) | 94u));
+            // A colour loss level outside 1..7 is refused.
+            data[16] = 0;
+            CHECK(!Rdp::DecodeNsc(data.data(), data.size(), 16, 1, pixels, error));
+        });
+
+        RunTest("ClearCodec: the specification's samples decode as FreeRDP decodes them", []() {
+            struct Sample
+            {
+                const char* data;
+                size_t size;
+                int width;
+                int height;
+                uint32_t hash;
+            };
+            const Sample samples[] = {
+                {kClearExample2, sizeof(kClearExample2) - 1, 78, 17, 0xd600050d},
+                {kClearExample3, sizeof(kClearExample3) - 1, 64, 24, 0x437e13c5},
+                {kClearExample4, sizeof(kClearExample4) - 1, 7, 15, 0x6aa0cf30},
+            };
+            for (const Sample& sample : samples)
+            {
+                Rdp::ClearDecoder decoder;
+                std::vector<uint32_t> pixels(static_cast<size_t>(sample.width) * sample.height, 0);
+                std::string error;
+                CHECK(decoder.Decode(reinterpret_cast<const uint8_t*>(sample.data), sample.size, pixels.data(),
+                                     sample.width, sample.height, 0, 0, sample.width, sample.height, error));
+                CHECK(PictureHash(pixels) == sample.hash);
+            }
+        });
+
+        RunTest("ClearCodec: sequence numbers, glyphs kept and reused, and pictures clipped at the edge", []() {
+            Rdp::ClearDecoder decoder;
+            std::vector<uint32_t> surface(8 * 8, 0);
+            std::string error;
+            // A 2x2 glyph stored at index 3: residual layer, one red run of 4.
+            Rdp::Bytes store = {0x01, 0x07, 0x03, 0x00};
+            P32(store, 4); P32(store, 0); P32(store, 0);
+            store.insert(store.end(), {0x00, 0x00, 0xFF, 4});
+            CHECK(decoder.Decode(store.data(), store.size(), surface.data(), 8, 8, 1, 1, 2, 2, error));
+            CHECK(surface[1 * 8 + 1] == 0xFF0000 && surface[2 * 8 + 2] == 0xFF0000 && surface[0] == 0);
+            // The glyph again elsewhere, by index alone (sequence 8 follows 7).
+            Rdp::Bytes hit = {0x03, 0x08, 0x03, 0x00};
+            CHECK(decoder.Decode(hit.data(), hit.size(), surface.data(), 8, 8, 5, 5, 2, 2, error));
+            CHECK(surface[5 * 8 + 5] == 0xFF0000 && surface[6 * 8 + 6] == 0xFF0000);
+            // Out of sequence: refused.
+            Rdp::Bytes stale = {0x03, 0x08, 0x03, 0x00};
+            CHECK(!decoder.Decode(stale.data(), stale.size(), surface.data(), 8, 8, 5, 5, 2, 2, error));
+            // A 4x1 residual hanging off the right edge at x 6: two pixels land, the rest are clipped.
+            Rdp::Bytes edge = {0x00, 0x09};
+            P32(edge, 4); P32(edge, 0); P32(edge, 0);
+            edge.insert(edge.end(), {0xFF, 0x00, 0x00, 4});
+            CHECK(decoder.Decode(edge.data(), edge.size(), surface.data(), 8, 8, 6, 0, 4, 1, error));
+            CHECK(surface[6] == 0x0000FF && surface[7] == 0x0000FF && surface[8] == 0);
+            // After a reset of the sequence (Reset Graphics), any number starts it again.
+            decoder.ResetSequence();
+            Rdp::Bytes again = {0x03, 0x40, 0x03, 0x00};
+            CHECK(decoder.Decode(again.data(), again.size(), surface.data(), 8, 8, 0, 6, 2, 2, error));
+            CHECK(surface[6 * 8] == 0xFF0000);
+        });
+
+        RunTest("The graphics renderer draws planar and ClearCodec pictures, and accepts alpha ones", []() {
+            Rfb::Framebuffer framebuffer;
+            framebuffer.Resize(16, 16);
+            Rdp::GfxRenderer renderer(framebuffer, [&](int width, int height) { framebuffer.Resize(width, height); });
+            std::vector<Rdp::GfxPdu> pdus(2);
+            pdus[0].command = Rdp::GfxCommand::CreateSurface;
+            pdus[0].surfaceId = 2;
+            pdus[0].width = 16;
+            pdus[0].height = 16;
+            pdus[1].command = Rdp::GfxCommand::MapSurfaceToOutput;
+            pdus[1].surfaceId = 2;
+            Rdp::GfxPdu planar;
+            planar.command = Rdp::GfxCommand::WireToSurface1;
+            planar.surfaceId = 2;
+            planar.codecId = static_cast<uint16_t>(Rdp::GfxCodec::Planar);
+            planar.rect = {4, 4, 6, 6};
+            planar.data = {0x30, 0x20, 10, 20, 0x20, 4, 1, 0x20, 50, 60, 0x20, 0, 0, 0x20, 200, 100, 0x20, 2, 2};
+            pdus.push_back(planar);
+            Rdp::GfxPdu clear = planar;
+            clear.codecId = static_cast<uint16_t>(Rdp::GfxCodec::ClearCodec);
+            clear.rect = {14, 0, 17, 1}; // hangs one pixel over the right edge
+            clear.data = {0x00, 0x01};
+            P32(clear.data, 4); P32(clear.data, 0); P32(clear.data, 0);
+            clear.data.insert(clear.data.end(), {0x00, 0xFF, 0x00, 3});
+            pdus.push_back(clear);
+            Rdp::GfxPdu alpha = planar;
+            alpha.codecId = static_cast<uint16_t>(Rdp::GfxCodec::Alpha);
+            alpha.data = {0x4C, 0x41, 0x00, 0x00, 1, 2, 3, 4};
+            pdus.push_back(alpha);
+            Rdp::GfxRenderer::Result result;
+            std::string error;
+            CHECK(renderer.Handle(pdus, result, error));
+            CHECK(framebuffer.GetPixel(4, 4) == 0x0A32C8 && framebuffer.GetPixel(5, 5) == 0x133C65);
+            CHECK(framebuffer.GetPixel(14, 0) == 0x00FF00 && framebuffer.GetPixel(15, 0) == 0x00FF00);
+            CHECK(framebuffer.GetPixel(13, 0) == 0 && framebuffer.GetPixel(14, 1) == 0);
+            // A planar picture that doesn't decode is skipped; the session goes on.
+            Rdp::GfxPdu broken = planar;
+            broken.data.resize(5);
+            Rdp::GfxRenderer::Result again;
+            CHECK(renderer.Handle({broken}, again, error) && again.changed.empty());
         });
 
         RunTest("The graphics renderer draws surfaces into the framebuffer and acknowledges frames", []() {

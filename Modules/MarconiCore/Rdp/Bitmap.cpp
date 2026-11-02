@@ -99,14 +99,15 @@ namespace Marconi
                 }
             }
 
-            bool CheckArguments(int width, int height, int bitsPerPixel, const uint32_t* palette, std::string& error)
+            bool CheckArguments(int width, int height, int bitsPerPixel, const uint32_t* palette, std::string& error,
+                                bool allow32 = false)
             {
                 if (width <= 0 || height <= 0 || static_cast<size_t>(width) * static_cast<size_t>(height) > kMaxPixels)
                 {
                     error = "The server sent a bitmap with an impossible size";
                     return false;
                 }
-                if (BytesPerPixel(bitsPerPixel) == 0)
+                if (BytesPerPixel(bitsPerPixel) == 0 && !(allow32 && bitsPerPixel == 32))
                 {
                     error = "The server sent a bitmap in a colour depth Marconi doesn't decode (" +
                             std::to_string(bitsPerPixel) + " bits)";
@@ -461,11 +462,12 @@ namespace Marconi
         bool DecodeUncompressedBitmap(const uint8_t* data, size_t length, int width, int height, int bitsPerPixel,
                                       const uint32_t* palette, std::vector<uint32_t>& out, std::string& error)
         {
-            if (!CheckArguments(width, height, bitsPerPixel, palette, error))
+            if (!CheckArguments(width, height, bitsPerPixel, palette, error, true))
             {
                 return false;
             }
-            const size_t bytesPerPixel = static_cast<size_t>(BytesPerPixel(bitsPerPixel));
+            // 32-bit pixels are B, G, R and an unused byte.
+            const size_t bytesPerPixel = bitsPerPixel == 32 ? 4 : static_cast<size_t>(BytesPerPixel(bitsPerPixel));
             const size_t tight = static_cast<size_t>(width) * bytesPerPixel;
             const size_t padded = (tight + 3) & ~static_cast<size_t>(3);
             size_t stride = 0;

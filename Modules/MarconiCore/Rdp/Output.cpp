@@ -62,9 +62,10 @@ namespace Marconi
                     size_t dataLength = bitmapLength;
                     if (rect.compressed && (flags & kNoBitmapCompressionHeader) == 0)
                     {
-                        // An 8-byte compressed-data header precedes the stream; skip it (its cbCompMainBodySize is
-                        // the real length, but bitmapLength already covers header + body).
-                        if (p + 8 > data.size() || bitmapLength < 8)
+                        // An 8-byte compressed-data header precedes the stream; its cbCompMainBodySize is the
+                        // length to use. bitmapLength should cover header and body, but servers built on FreeRDP
+                        // put only the body's length there (FreeRDP's own client reads it this way too).
+                        if (p + 8 > data.size())
                         {
                             error = "a compressed bitmap was shorter than its header";
                             return false;

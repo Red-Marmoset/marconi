@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <MarconiCore/Rdp/Clear.h>
 #include <MarconiCore/Rdp/Gfx.h>
 #include <MarconiCore/Rdp/Progressive.h>
 #include <MarconiCore/Rfb/Framebuffer.h>
@@ -12,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -66,16 +68,22 @@ namespace Marconi
             bool WireToSurface(const GfxPdu& pdu, Result& result, std::string& error);
             // Clips `rect` to the surface; false if nothing is left.
             static bool Clip(const Surface& surface, GfxRect& rect);
+            // Copies `pixels` (`stride` per row, the size of `rect`) onto the surface at `rect`, clipped, and shows it.
+            void Blit(Surface& surface, const GfxRect& rect, const uint32_t* pixels, int stride, Result& result);
             // Copies a changed area of a surface to the framebuffer if the surface is on the desktop.
             void Present(const Surface& surface, const GfxRect& area, Result& result);
             void WarnOnce(uint16_t codecId);
+            // Logs a picture that didn't decode, the first few times.
+            void WarnSkipped(const char* codec, const std::string& why);
 
             Rfb::Framebuffer& m_framebuffer;
             std::function<void(int, int)> m_resize;
             std::map<uint16_t, Surface> m_surfaces;
             std::map<uint16_t, CacheEntry> m_cache;
             std::set<uint16_t> m_warnedCodecs;
+            std::unique_ptr<ClearDecoder> m_clear; // made on first use; its caches belong to the whole channel
             uint32_t m_framesDecoded = 0;
+            int m_skipWarnings = 0;
         };
     } // namespace Rdp
 } // namespace Marconi

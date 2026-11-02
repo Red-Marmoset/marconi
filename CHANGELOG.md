@@ -5,6 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.0
+
+- Shows the other picture formats Windows can send over Remote Desktop.
+- Shows 32-bit pictures over Remote Desktop's older way of sending the picture.
+- Fixed no picture from some Linux Remote Desktop servers that use the older way of sending it.
+
 ## 0.8.0
 
 - Connects to GNOME desktops on Linux over Remote Desktop.

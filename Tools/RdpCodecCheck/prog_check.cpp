@@ -5,7 +5,8 @@
 //     built from random coefficient streams, decoded by both.
 // Not built by BuildTool. From the Marconi root, with freerdp3-dev installed (Linux):
 //   g++ -std=c++20 -O1 -IModules -I/usr/include/freerdp3 -I/usr/include/winpr3
-//       Tools/RdpCodecCheck/prog_check.cpp Modules/MarconiCore/Rdp/Progressive.cpp -lfreerdp3 -lwinpr3 -o prog_check
+//       Tools/RdpCodecCheck/prog_check.cpp Modules/MarconiCore/Rdp/Progressive.cpp
+//       Modules/MarconiCore/Rdp/RemoteFx.cpp -lfreerdp3 -lwinpr3 -o prog_check
 #include <MarconiCore/Rdp/Progressive.h>
 extern "C" {
 #include <freerdp/codec/progressive.h>

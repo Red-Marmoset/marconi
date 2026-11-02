@@ -110,6 +110,24 @@ namespace MarconiTest
             CHECK(Rdp::ParseBitmapUpdate(body, rects, error));
             CHECK(rects.size() == 1 && rects[0].compressed);
             CHECK(rects[0].data == Rdp::Bytes({0xAA, 0xBB, 0xCC})); // just the body, header stripped
+
+            // Servers built on FreeRDP give only the body's length in bitmapLength (3 here, under the header's 8);
+            // the header's own body size is what counts, then the next rectangle follows.
+            Rdp::Bytes freerdp;
+            auto f16 = [&](uint16_t v) { freerdp.push_back(static_cast<uint8_t>(v)); freerdp.push_back(static_cast<uint8_t>(v >> 8)); };
+            f16(2);
+            for (int i = 0; i < 2; ++i)
+            {
+                f16(0); f16(0); f16(63); f16(63);
+                f16(64); f16(64); f16(16);
+                f16(0x0001);
+                f16(3);
+                f16(0); f16(3); f16(128); f16(8192);
+                freerdp.insert(freerdp.end(), {0x11, 0x22, static_cast<uint8_t>(0x33 + i)});
+            }
+            rects.clear();
+            CHECK(Rdp::ParseBitmapUpdate(freerdp, rects, error));
+            CHECK(rects.size() == 2 && rects[1].data == Rdp::Bytes({0x11, 0x22, 0x34}));
         });
 
         RunTest("A fast-path bitmap update is recognised and parsed", []() {
