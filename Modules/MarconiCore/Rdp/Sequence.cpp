@@ -79,6 +79,8 @@ namespace Marconi
                 kCapSound = 12,
                 kCapShare = 9,
                 kCapColorCache = 10,
+                kCapVirtualChannel = 20,
+                kCapMultifragmentUpdate = 26,
             };
 
             // One capability set: its type, then the total length (header included), then the body.
@@ -99,7 +101,9 @@ namespace Marconi
                 PutU16(body, 0x0200); // protocolVersion: TS_CAPS_PROTOCOLVERSION
                 PutU16(body, 0);  // pad
                 PutU16(body, 0);  // generalCompressionTypes
-                PutU16(body, 0x0004); // extraFlags: NO_BITMAP_COMPRESSION_HDR is cleared; FASTPATH not asked here
+                // extraFlags: FASTPATH_OUTPUT_SUPPORTED (servers built on FreeRDP, such as GNOME's, refuse clients
+                // without it) and LONG_CREDENTIALS_SUPPORTED.
+                PutU16(body, 0x0001 | 0x0004);
                 PutU16(body, 0);  // updateCapabilityFlag
                 PutU16(body, 0);  // remoteUnshareFlag
                 PutU16(body, 0);  // generalCompressionLevel
@@ -168,6 +172,23 @@ namespace Marconi
                 PutU16(body, 0); // nodeId (filled by server for its own; 0 from client)
                 PutU16(body, 0); // pad
                 return CapabilitySet(kCapShare, body);
+            }
+
+            Bytes VirtualChannelCapabilitySet()
+            {
+                Bytes body;
+                PutU32(body, 0);    // flags: VCCAPS_NO_COMPR
+                PutU32(body, 1600); // VCChunkSize: what the client sends in (and is happy to receive)
+                return CapabilitySet(kCapVirtualChannel, body);
+            }
+
+            Bytes MultifragmentUpdateCapabilitySet()
+            {
+                // The largest fast-path update the client will put together from fragments. A server drops
+                // anything bigger (a large pointer, say) instead of sending it.
+                Bytes body;
+                PutU32(body, 8 * 1024 * 1024);
+                return CapabilitySet(kCapMultifragmentUpdate, body);
             }
 
             Bytes SmallCapabilitySet(uint16_t type, size_t bodyBytes)
@@ -322,6 +343,8 @@ namespace Marconi
             add(SmallCapabilitySet(kCapGlyphCache, 48));
             add(SmallCapabilitySet(kCapSound, 4));
             add(SmallCapabilitySet(kCapColorCache, 4));
+            add(VirtualChannelCapabilitySet());
+            add(MultifragmentUpdateCapabilitySet());
 
             Bytes body;
             PutU32(body, shareId);

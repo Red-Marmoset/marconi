@@ -14,6 +14,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace Marconi
 {
@@ -54,6 +55,9 @@ namespace Marconi
             const ConnectOutcome& Outcome() const { return m_outcome; }
             uint16_t UserChannelId() const { return m_userChannelId; }
 
+            // Ask for the "drdynvc" channel and offer the graphics pipeline in the client data (set before Activate).
+            bool offerGraphicsPipeline = false;
+
             // Makes the encrypted stream once the negotiation chooses TLS. Empty means Net::CreateTlsStream; tests
             // substitute their own.
             std::function<std::unique_ptr<Net::TlsStream>(Net::Socket&, const Net::TlsOptions&)> createTlsStream;
@@ -85,6 +89,14 @@ namespace Marconi
             // Makes any blocked read or write fail, so another thread can end the session.
             void Shutdown();
 
+            // The MCS channel of the "drdynvc" static channel once joined (0 if the server didn't give one).
+            uint16_t DrdynvcChannelId() const { return m_drdynvcChannelId; }
+            // Sends a whole static channel message on `channelId`, in chunks. Same threading as SendPdu.
+            bool SendChannelMessage(uint16_t channelId, const Bytes& message, std::string& error);
+            // Static channel PDUs (MCS Send Data Indications) that arrived while Activate was still waiting for the
+            // end of the connection sequence; the session handles them first.
+            std::vector<Bytes> TakeEarlyChannelPdus() { return std::move(m_earlyChannelPdus); }
+
         private:
             // Answers a licensing message during Activate (MS-RDPELE); false with `error` when the server refuses.
             bool HandleLicensing(const Bytes& pdu, uint8_t messageType, const std::string& user,
@@ -96,6 +108,8 @@ namespace Marconi
 
             uint16_t m_userChannelId = 0;
             uint16_t m_ioChannelId = 0;
+            uint16_t m_drdynvcChannelId = 0;
+            std::vector<Bytes> m_earlyChannelPdus;
 
             std::unique_ptr<Net::Socket> m_socket;
             std::unique_ptr<Net::TlsStream> m_tls;

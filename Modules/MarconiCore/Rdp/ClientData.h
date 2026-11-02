@@ -23,6 +23,9 @@ namespace Marconi
             uint32_t keyboardLayout = 0x409;   // US; the OS layout id
             std::string clientName;            // this computer's name, trimmed to 15 characters
             uint32_t serverSelectedProtocol = 0; // the protocol the negotiation chose, echoed back (required)
+            // Offer the graphics pipeline (RNS_UD_CS_SUPPORT_DYNVC_GFX_PROTOCOL), and with it 32-bit colour, which
+            // servers that use it require.
+            bool graphicsPipeline = false;
         };
 
         struct ChannelDefinition

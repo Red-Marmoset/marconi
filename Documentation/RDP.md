@@ -80,6 +80,12 @@ milestone 1.
     INFO_LOGONNOTIFY and INFO_LOGONERRORS, as mstsc does, so the server reports logon problems; while waiting for
     the Demand Active, a Set Error Info becomes the error shown, the Ultimatum ends the wait with that reason, and
     every skipped PDU is logged in hex.
+  - Correction (0.8.0): snorkels is probably not Windows. That way of closing (a Deactivate All, then the
+    Ultimatum) is what FreeRDP's server code sends, and the servers built on it, GNOME Remote Desktop and KDE's
+    KRdp, refuse any client that doesn't offer the graphics pipeline, at exactly that point (GNOME's
+    `rdp_peer_capabilities`, after licensing, before the Demand Active). snorkels also runs VNC on display 1 (port
+    5901), which is usual on Linux. Not yet confirmed on the machine itself; the graphics pipeline below is the fix
+    if it is GNOME or KDE.
 - Milestone 4's picture decoding: `Rdp/Bitmap` decodes uncompressed and interleaved-RLE bitmap rectangles at 8
   (with a palette), 15, 16 and 24 bits into top-down 0x00RRGGBB pixels. Tested with streams built from the
   specification.
@@ -105,8 +111,8 @@ milestone 1.
   - The desktop size asked for is the display the window is on (width rounded down to a multiple of 4; 1024x768
     headless). The server's Demand Active may name another size, which the framebuffer and the Confirm Active then
     take: Windows sizes the session to the client, a shared physical screen keeps its own.
-  - Fast-path output is not advertised in the General capability set (slow path is enough and is what every server
-    falls back to), but fast-path PDUs are read all the same in case a server sends them.
+  - Fast-path output is advertised (since 0.8.0: GNOME refuses clients without it), with a Multifragment Update
+    capability of 8 MB, and fast-path updates split into fragments are put back together.
   - 16 bits per pixel is asked for; 32-bit rectangles (planar) are not decoded, so a server insisting on them shows
     a logged warning and no picture: milestone 8.
   - No keepalive yet: a dead link is noticed when the next send fails or the socket closes.
@@ -116,6 +122,34 @@ milestone 1.
     really sends). `MARCONI_RDP_TEST=host:port` runs the client against a real server; against xrdp 0.9.24 on
     Linux the session comes up over TLS 1.3 and its login window decodes correctly (checked by eye from the
     `MARCONI_RDP_SNAPSHOT` picture). A Windows server and NLA end to end are still to be confirmed.
+- **The graphics pipeline** (0.8.0; MS-RDPEDYC, MS-RDPEGFX), which servers built on FreeRDP (GNOME Remote Desktop,
+  KDE's KRdp) require and which xrdp 0.10 and Windows use when offered:
+  - The client data offers it (`RNS_UD_CS_SUPPORT_DYNVC_GFX_PROTOCOL`, and 32-bit colour, which GNOME requires
+    alongside) and asks for the `drdynvc` static channel; the client joins it after the I/O channel.
+    `ClientOptions::graphicsPipeline` (on by default) turns all of this off.
+  - `Rdp/Dvc`: static channel chunking, and the dynamic channel PDUs. The client answers the capability request
+    with version 2 at most (version 3 adds compressed channel data, which isn't decoded), accepts only
+    `Microsoft::Windows::RDS::Graphics`, declines the rest, and answers closes.
+  - `Rdp/Zgfx`: RDP 8.0 bulk decompression, the 2.5 MB history kept per channel. FreeRDP's servers only send stored
+    segments; Windows compresses. Checked against the specification's sample and against FreeRDP's decoder on
+    random compressed streams.
+  - `Rdp/Gfx`: the messages. The Caps Advertise offers versions 10.7, 10.0, 8.1 and 8.0 with H.264 off and scaled
+    output mapping off, so GNOME and KRdp both choose RemoteFX Progressive.
+  - `Rdp/Progressive`: the RemoteFX Progressive decoder: RLGR1, both inverse wavelets (the classic RemoteFX one,
+    which GNOME and FreeRDP's encoder use, and reduce-extrapolate), quality levels, refinement ("upgrade") passes,
+    difference tiles, YCbCr to RGB. Pixel for pixel equal to FreeRDP 3.32's decoder (its plain C routines; its
+    SIMD ones round a channel by 1 now and then) on FreeRDP-encoded pictures and on synthetic first and upgrade
+    passes; known answers in `RdpGfxTests`.
+  - `Rdp/GfxRenderer`: surfaces, mapping to the desktop, solid fills, surface-to-surface copies, the bitmap cache,
+    uncompressed pictures, Reset Graphics (resizes the desktop), and a Frame Acknowledge for every End Frame
+    (KRdp stops sending after two unacknowledged frames). Pictures in other codecs (ClearCodec, planar, H.264,
+    alpha) are skipped with one logged warning each.
+  - Tested end to end: the scripted server in `RdpClientTests` (channel setup, a frame split over DataFirst/Data,
+    the acknowledgement, a pointer in fast-path fragments); FreeRDP's shadow server limited to Progressive; and
+    GNOME Remote Desktop 46.3 (Ubuntu 24.04's) headless with NLA, its wallpaper arriving intact.
+  - Not yet: ClearCodec and planar, which Windows uses alongside Progressive when the pipeline is on, so a Windows
+    server would now show gaps where it uses them (text, mostly). Turning the pipeline off for Windows, or adding
+    those two codecs, is the open decision. H.264 stays off.
 
 ## What RDP needs that VNC didn't
 
@@ -174,7 +208,8 @@ against a real server (the Linux `xrdp` in the dev container, and the owner's Wi
 5. **Scancode + mouse input.** `KeyMapper`'s scancode path and the input PDUs: a session you can drive.
 6. **Clipboard** over `cliprdr` (UTF-16 text).
 7. **Multiple monitors and dynamic resize** (RDP has both natively).
-8. **Graphics pipeline codecs** (RemoteFX / planar / NSCodec / H.264): speed, after correctness.
+8. **Graphics pipeline codecs**: the pipeline and RemoteFX Progressive are done (see "Already here"); ClearCodec
+   and planar (for Windows) and H.264 remain.
 
 Milestones 1 to 5 with NLA on (so 1 to 5 including 2) are the first real, usable checkpoint: reached, see "Already
 here". Next in order: 6 (clipboard), 7 (resize and multiple monitors), 8 (codecs).
@@ -186,6 +221,11 @@ here". Next in order: 6 (clipboard), 7 (resize and multiple monitors), 8 (codecs
   get known-answer vectors in `CryptoTest`, as the existing primitives do.
 - `xrdp` on Linux (in the dev container) and a real Windows PC are the end-to-end checks. `xrdp` negotiates TLS and,
   configured for it, NLA, so milestones 1 to 3 can be exercised against it on loopback.
+- For the graphics pipeline: `freerdp-shadow-cli3 -auth -gfx-rfx -gfx-planar -gfx-avc420 -gfx-avc444 -rfx` on an Xvfb
+  display (give it a certificate with a subject: the one it makes has none, and mbedTLS refuses it), and GNOME
+  Remote Desktop headless (`gnome-shell --headless --virtual-monitor`, `grdctl --headless rdp ...`; in a container
+  without systemd it also needs a system D-Bus and no `/run/systemd/seats`). `Tools/RdpCodecCheck/` compares the
+  decoders with FreeRDP's (needs `freerdp3-dev`).
 
 ## Scope notes
 

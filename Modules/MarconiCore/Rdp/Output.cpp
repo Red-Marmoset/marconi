@@ -170,46 +170,47 @@ namespace Marconi
                     error = "a fast-path update ran past the end";
                     return false;
                 }
-                (void)fragmentation; // single-fragment updates only for now
                 FastPathUpdate update;
                 update.code = code;
+                update.fragmentation = fragmentation;
                 update.data.assign(payload.begin() + p, payload.begin() + p + size);
-                if (code == 0x01 || code == 0x02) // FASTPATH_UPDATETYPE_BITMAP / _PALETTE
+                if (fragmentation == 0 && !InterpretFastPathUpdate(update, error))
                 {
-                    // The payload is a TS_UPDATE_BITMAP / TS_UPDATE_PALETTE: a 2-byte updateType then the data.
-                    if (update.data.size() < 2)
-                    {
-                        error = "a fast-path update was too short";
-                        return false;
-                    }
-                    Bytes afterType(update.data.begin() + 2, update.data.end());
-                    if (code == 0x01)
-                    {
-                        update.type = FastPathUpdateType::Bitmap;
-                        if (!ParseBitmapUpdate(afterType, update.rects, error))
-                        {
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        update.type = FastPathUpdateType::Palette;
-                        if (!ParsePaletteUpdate(afterType, update.palette, error))
-                        {
-                            return false;
-                        }
-                    }
-                }
-                else if (code >= 0x05 && code <= 0x0C && code != 0x07) // pointer updates: PTR_NULL to LARGE_POINTER
-                {
-                    update.type = FastPathUpdateType::Pointer;
-                }
-                else
-                {
-                    update.type = FastPathUpdateType::Other;
+                    return false;
                 }
                 out.push_back(std::move(update));
                 p += size;
+            }
+            return true;
+        }
+
+        bool InterpretFastPathUpdate(FastPathUpdate& update, std::string& error)
+        {
+            uint8_t code = update.code;
+            if (code == 0x01 || code == 0x02) // FASTPATH_UPDATETYPE_BITMAP / _PALETTE
+            {
+                // The payload is a TS_UPDATE_BITMAP / TS_UPDATE_PALETTE: a 2-byte updateType then the data.
+                if (update.data.size() < 2)
+                {
+                    error = "a fast-path update was too short";
+                    return false;
+                }
+                Bytes afterType(update.data.begin() + 2, update.data.end());
+                if (code == 0x01)
+                {
+                    update.type = FastPathUpdateType::Bitmap;
+                    return ParseBitmapUpdate(afterType, update.rects, error);
+                }
+                update.type = FastPathUpdateType::Palette;
+                return ParsePaletteUpdate(afterType, update.palette, error);
+            }
+            if (code >= 0x05 && code <= 0x0C && code != 0x07) // pointer updates: PTR_NULL to LARGE_POINTER
+            {
+                update.type = FastPathUpdateType::Pointer;
+            }
+            else
+            {
+                update.type = FastPathUpdateType::Other;
             }
             return true;
         }

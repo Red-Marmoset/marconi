@@ -92,8 +92,10 @@ namespace Marconi
             PutU16(out, 1);                          // clientProductId
             PutU32(out, 0);                          // serialNumber
             PutU16(out, core.highColorDepth);        // highColorDepth
-            PutU16(out, 0x0007);                     // supportedColorDepths: 24/16/15
-            PutU16(out, 0x0001);                     // earlyCapabilityFlags: RNS_UD_CS_SUPPORT_ERRINFO_PDU
+            // supportedColorDepths: 24/16/15, and 32 with the graphics pipeline.
+            PutU16(out, static_cast<uint16_t>(0x0007 | (core.graphicsPipeline ? 0x0008 : 0)));
+            // earlyCapabilityFlags: RNS_UD_CS_SUPPORT_ERRINFO_PDU, and RNS_UD_CS_SUPPORT_DYNVC_GFX_PROTOCOL.
+            PutU16(out, static_cast<uint16_t>(0x0001 | (core.graphicsPipeline ? 0x0100 : 0)));
             out.insert(out.end(), 64, 0);            // clientDigProductId: 64 bytes
             out.push_back(0);                        // connectionType
             out.push_back(0);                        // pad1octet

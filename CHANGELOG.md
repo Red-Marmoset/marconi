@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.8.0
+
+- Connects to GNOME desktops on Linux over Remote Desktop.
+
 ## 0.7.8
 
 - Shows a small dot for the mouse pointer when the other computer hides its own.

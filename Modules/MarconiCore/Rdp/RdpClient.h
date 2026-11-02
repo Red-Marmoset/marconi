@@ -6,7 +6,10 @@
 #pragma once
 
 #include <MarconiCore/Net/Tls.h>
+#include <MarconiCore/Rdp/Dvc.h>
+#include <MarconiCore/Rdp/GfxRenderer.h>
 #include <MarconiCore/Rdp/Output.h>
+#include <MarconiCore/Rdp/Zgfx.h>
 #include <MarconiCore/RemoteSession.h>
 
 #include <array>
@@ -44,6 +47,9 @@ namespace Marconi
             // before). Any other certificate this computer doesn't trust goes to the listener's
             // OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
+            // Offer the graphics pipeline (RemoteFX Progressive pictures over a dynamic channel). Servers built
+            // on FreeRDP, such as GNOME's and KDE's, accept nothing else.
+            bool graphicsPipeline = true;
             // Makes the encrypted stream. Empty means Net::CreateTlsStream; tests substitute their own.
             std::function<std::unique_ptr<Net::TlsStream>(Net::Socket&, const Net::TlsOptions&)> createTlsStream;
         };
@@ -93,6 +99,13 @@ namespace Marconi
             void SessionLoop(Connection& connection, DisconnectInfo& info);
             void HandleMcsPdu(Connection& connection, const Bytes& mcsPdu, DisconnectInfo& info, bool& finished);
             void HandleFastPath(const Bytes& payload);
+            void HandleFastPathUpdate(const FastPathUpdate& update);
+            // The "drdynvc" static channel: dynamic channel management and the graphics pipeline riding on it.
+            void HandleDrdynvc(const Bytes& payload, DisconnectInfo& info, bool& finished);
+            void HandleDynamicMessage(const DvcPdu& pdu, DisconnectInfo& info, bool& finished);
+            void HandleGfxMessage(const Bytes& message, DisconnectInfo& info, bool& finished);
+            // Any thread: sends a DRDYNVC message on the static channel; false if not connected.
+            bool SendDrdynvc(const Bytes& message);
             void ApplyBitmapUpdate(const std::vector<BitmapRect>& rects);
             void ApplyPointerUpdate(const PointerUpdate& update);
             void ResizeDesktop(int width, int height);
@@ -127,6 +140,17 @@ namespace Marconi
             std::array<CursorShape, kPointerCacheSize> m_pointerCache;
             std::string m_lastErrorInfo; // the server's reason for ending the connection, if it sent one
             int m_decodeWarnings = 0;    // how many bitmap decode failures have been logged
+            Bytes m_fastPathPieces;      // a fast-path update arriving in fragments, so far
+            bool m_fastPathInPieces = false;
+
+            // Connection thread only: the dynamic channels and the graphics pipeline.
+            uint16_t m_drdynvcChannel = 0; // the static channel's MCS id; also read by SendDrdynvc under m_sendMutex
+            ChannelReassembler m_drdynvcChunks;
+            DvcReassembler m_dvcPieces;
+            uint32_t m_gfxChannelId = 0;
+            bool m_gfxOpen = false;
+            std::unique_ptr<ZgfxDecompressor> m_zgfx;
+            std::unique_ptr<GfxRenderer> m_gfx;
 
             std::atomic<std::chrono::steady_clock::rep> m_lastInputTime{0};
             std::atomic<int> m_statUpdates{0};

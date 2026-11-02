@@ -4,6 +4,8 @@
 
 #include "TestSupport.h"
 
+#include <MarconiCore/Rdp/Dvc.h>
+#include <MarconiCore/Rdp/Gfx.h>
 #include <MarconiCore/Rdp/Input.h>
 #include <MarconiCore/Rdp/Mcs.h>
 #include <MarconiCore/Rdp/Negotiation.h>
@@ -74,12 +76,21 @@ namespace MarconiTest
             return packet;
         }
 
-        // An MCS Connect-Response carrying server data with I/O channel 1003 and no virtual channels.
-        Rdp::Bytes ConnectResponse()
+        // An MCS Connect-Response carrying server data with I/O channel 1003 and, when `dynamicChannel` isn't 0,
+        // that channel for the client's one virtual channel request ("drdynvc").
+        Rdp::Bytes ConnectResponse(uint16_t dynamicChannel = 0)
         {
             Rdp::Bytes serverData;
             P16(serverData, 0x0C01); P16(serverData, 12); P32(serverData, 0x00080004); P32(serverData, 0);
-            P16(serverData, 0x0C03); P16(serverData, 8); P16(serverData, 1003); P16(serverData, 0);
+            if (dynamicChannel == 0)
+            {
+                P16(serverData, 0x0C03); P16(serverData, 8); P16(serverData, 1003); P16(serverData, 0);
+            }
+            else
+            {
+                P16(serverData, 0x0C03); P16(serverData, 12); P16(serverData, 1003); P16(serverData, 1);
+                P16(serverData, dynamicChannel); P16(serverData, 0); // padded to a multiple of 4
+            }
             Rdp::Bytes gcc = {0x00, 0x05, 0x00, 0x14, 0x7c, 0x00, 0x01};
             gcc.insert(gcc.end(), serverData.begin(), serverData.end());
             Rdp::Bytes inner = {0x0a, 0x01, 0x00, 0x04, static_cast<uint8_t>(gcc.size())};
@@ -89,10 +100,11 @@ namespace MarconiTest
             return response;
         }
 
-        // A Send Data Indication (server to client) carrying `pdu` on channel 1003.
-        Rdp::Bytes Indication(const Rdp::Bytes& pdu)
+        // A Send Data Indication (server to client) carrying `pdu` on `channel` (the I/O channel, 1003, unless
+        // given).
+        Rdp::Bytes Indication(const Rdp::Bytes& pdu, uint16_t channel = 1003)
         {
-            Rdp::Bytes out = {0x68, 0x00, 0x06, 0x03, 0xEB, 0x70};
+            Rdp::Bytes out = {0x68, 0x00, 0x06, static_cast<uint8_t>(channel >> 8), static_cast<uint8_t>(channel), 0x70};
             if (pdu.size() < 0x80)
             {
                 out.push_back(static_cast<uint8_t>(pdu.size()));
@@ -186,7 +198,11 @@ namespace MarconiTest
         // The server side of the loopback session: raw TPKT frames on the accepted socket.
         struct ScriptedRdpServer
         {
+            explicit ScriptedRdpServer(Net::Socket& clientSocket) : socket(clientSocket) {}
+
             Net::Socket& socket;
+            uint16_t dynamicChannel = 0;  // give the client a "drdynvc" channel on this MCS id (0: none)
+            Rdp::Bytes connectInitial;    // what the client sent, for checks
 
             bool ReadExact(uint8_t* buffer, size_t count)
             {
@@ -228,16 +244,40 @@ namespace MarconiTest
             // The RDP PDU inside the next Send Data Request.
             Rdp::Bytes ReadRequest()
             {
+                uint16_t channel = 0;
+                return ReadRequestOn(channel);
+            }
+            Rdp::Bytes ReadRequestOn(uint16_t& channel)
+            {
                 Rdp::Bytes mcs = ReadMcs();
                 if (mcs.size() < 7 || (mcs[0] & 0xFC) != 0x64)
                 {
                     return {};
                 }
                 mcs[0] = 0x68; // read it as an indication: the layout is the same
-                uint16_t channel = 0;
                 Rdp::Bytes pdu;
                 Rdp::StripSendData(mcs, channel, pdu);
                 return pdu;
+            }
+            // A whole message for the "drdynvc" channel, in chunks.
+            void SendDynamic(const Rdp::Bytes& message)
+            {
+                for (const Rdp::Bytes& chunk : Rdp::BuildChannelChunks(message))
+                {
+                    SendMcs(Indication(chunk, dynamicChannel));
+                }
+            }
+            // The client's next message on the "drdynvc" channel (one chunk), without its chunk header.
+            Rdp::Bytes ReadDynamic()
+            {
+                uint16_t channel = 0;
+                Rdp::Bytes chunk = ReadRequestOn(channel);
+                if (channel != dynamicChannel || chunk.size() < 8)
+                {
+                    printf("  expected a message on the dynamic channel\n");
+                    return {};
+                }
+                return Rdp::Bytes(chunk.begin() + 8, chunk.end());
             }
             void SendMcs(const Rdp::Bytes& mcs)
             {
@@ -294,17 +334,17 @@ namespace MarconiTest
                 }
                 Rdp::Bytes confirm = ConnectionConfirm(Rdp::kTls);
                 socket.SendAll(confirm.data(), confirm.size());
-                Rdp::Bytes connectInitial = ReadMcs();
+                connectInitial = ReadMcs();
                 if (connectInitial.size() < 2 || connectInitial[0] != 0x7f || connectInitial[1] != 0x65)
                 {
                     printf("  expected an MCS Connect-Initial\n");
                     return false;
                 }
-                SendMcs(ConnectResponse());
+                SendMcs(ConnectResponse(dynamicChannel));
                 ReadMcs(); // erect domain
                 ReadMcs(); // attach user
                 SendMcs({0x2E, 0x00, 0x00, 0x06}); // attach user confirm: user id 1007
-                for (int i = 0; i < 2; ++i)
+                for (int i = 0; i < (dynamicChannel != 0 ? 3 : 2); ++i)
                 {
                     Rdp::Bytes join = ReadMcs();
                     if (join.size() < 5 || (join[0] & 0xFC) != 0x38)
@@ -569,6 +609,143 @@ namespace MarconiTest
             CHECK(!client.IsConnected());
         });
 
+        RunTest("Rdp::Client opens the graphics pipeline on a dynamic channel and draws what it sends", []() {
+            FakeServer server;
+            RecordingListener listener;
+            listener.trustCertificate = true;
+            Net::TlsCertificate certificate;
+            certificate.sha256.assign(32, 0x5A);
+            Rdp::Client client(listener);
+            Rdp::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = server.GetPort();
+            options.credentials = {"bob", "secret"};
+            options.createTlsStream = [certificate](Net::Socket& socket, const Net::TlsOptions& tlsOptions) {
+                return std::unique_ptr<Net::TlsStream>(new PassthroughTls(socket, tlsOptions, certificate));
+            };
+            client.Connect(options);
+            CHECK(server.AcceptClient());
+            server.GetClientSocket().SetReceiveTimeout(5000);
+            ScriptedRdpServer script{server.GetClientSocket()};
+            script.dynamicChannel = 1004;
+            const uint32_t shareId = 0x000A0001;
+            Rdp::Bytes clientInfo;
+            CHECK(script.RunConnectionSequence(shareId, 64, 48, clientInfo));
+            CHECK(listener.WaitFor([&]() { return listener.connected; }));
+            // The client data asked for "drdynvc" and offered the pipeline (RNS_UD_CS_SUPPORT_DYNVC_GFX_PROTOCOL).
+            const std::string drdynvc = "drdynvc";
+            CHECK(std::search(script.connectInitial.begin(), script.connectInitial.end(), drdynvc.begin(),
+                              drdynvc.end()) != script.connectInitial.end());
+
+            // Dynamic channels: the client answers version 3 with 2, declines a channel it doesn't know, and opens
+            // the graphics one, advertising its capabilities on it.
+            script.SendDynamic({0x50, 0x00, 0x03, 0x00, 0, 0, 0, 0, 0, 0, 0, 0});
+            CHECK(script.ReadDynamic() == Rdp::Bytes({0x50, 0x00, 0x02, 0x00}));
+            Rdp::Bytes audio = {0x10, 0x05};
+            for (char c : std::string("AUDIO_PLAYBACK_DVC"))
+            {
+                audio.push_back(static_cast<uint8_t>(c));
+            }
+            audio.push_back(0);
+            script.SendDynamic(audio);
+            CHECK(script.ReadDynamic() == Rdp::Bytes({0x10, 0x05, 0x01, 0x00, 0x00, 0xC0}));
+            Rdp::Bytes create = {0x10, 0x06};
+            for (char c : std::string(Rdp::kGfxChannelName))
+            {
+                create.push_back(static_cast<uint8_t>(c));
+            }
+            create.push_back(0);
+            script.SendDynamic(create);
+            CHECK(script.ReadDynamic() == Rdp::Bytes({0x10, 0x06, 0, 0, 0, 0}));
+            Rdp::Bytes advertise = script.ReadDynamic();
+            CHECK(advertise.size() > 10 && advertise[0] == 0x30 && advertise[1] == 0x06 && advertise[2] == 0x12);
+
+            // One frame: reset to 64x48, a surface mapped at the origin, a green square, a blue pixel. Sent as one
+            // stored RDP 8.0 segment, split across a DataFirst and a Data PDU.
+            auto gfxPdu = [](Rdp::GfxCommand command, const Rdp::Bytes& body) {
+                Rdp::Bytes out;
+                P16(out, static_cast<uint16_t>(command));
+                P16(out, 0);
+                P32(out, static_cast<uint32_t>(8 + body.size()));
+                out.insert(out.end(), body.begin(), body.end());
+                return out;
+            };
+            Rdp::Bytes frame = {0xE0, 0x04};
+            auto add = [&](const Rdp::Bytes& pdu) { frame.insert(frame.end(), pdu.begin(), pdu.end()); };
+            Rdp::Bytes body;
+            P32(body, Rdp::kGfxCapVersion107); P32(body, 4); P32(body, Rdp::kGfxCapsAvcDisabled);
+            add(gfxPdu(Rdp::GfxCommand::CapsConfirm, body));
+            body.clear();
+            P32(body, 64); P32(body, 48); P32(body, 1);
+            P32(body, 0); P32(body, 0); P32(body, 63); P32(body, 47); P32(body, 1); // the monitor
+            add(gfxPdu(Rdp::GfxCommand::ResetGraphics, body));
+            body.clear();
+            P16(body, 1); P16(body, 64); P16(body, 48); body.push_back(0x20);
+            add(gfxPdu(Rdp::GfxCommand::CreateSurface, body));
+            body.clear();
+            P16(body, 1); P16(body, 0); P32(body, 0); P32(body, 0);
+            add(gfxPdu(Rdp::GfxCommand::MapSurfaceToOutput, body));
+            body.clear();
+            P32(body, 0); P32(body, 7);
+            add(gfxPdu(Rdp::GfxCommand::StartFrame, body));
+            body.clear();
+            P16(body, 1);
+            body.insert(body.end(), {0x00, 0xFF, 0x00, 0xFF});
+            P16(body, 1); P16(body, 0); P16(body, 0); P16(body, 8); P16(body, 8);
+            add(gfxPdu(Rdp::GfxCommand::SolidFill, body));
+            body.clear();
+            P16(body, 1); P16(body, 0); body.push_back(0x20);
+            P16(body, 20); P16(body, 20); P16(body, 21); P16(body, 21);
+            P32(body, 4);
+            body.insert(body.end(), {0xFF, 0x00, 0x00, 0x00});
+            add(gfxPdu(Rdp::GfxCommand::WireToSurface1, body));
+            body.clear();
+            P32(body, 7);
+            add(gfxPdu(Rdp::GfxCommand::EndFrame, body));
+            size_t half = frame.size() / 2;
+            Rdp::Bytes first = {0x24, 0x06};
+            P16(first, static_cast<uint16_t>(frame.size()));
+            first.insert(first.end(), frame.begin(), frame.begin() + half);
+            Rdp::Bytes rest = {0x30, 0x06};
+            rest.insert(rest.end(), frame.begin() + half, frame.end());
+            script.SendDynamic(first);
+            script.SendDynamic(rest);
+            // The frame is acknowledged, and drawn.
+            Rdp::Bytes ack = script.ReadDynamic();
+            CHECK(ack.size() == 2 + 20 && ack[0] == 0x30 && ack[2] == 0x0D);
+            CHECK(ack.size() == 22 && ack[2 + 12] == 7 && ack[2 + 16] == 1);
+            CHECK(listener.WaitFor([&]() { return listener.updates >= 1; }));
+            {
+                Rfb::Framebuffer& framebuffer = client.GetFramebuffer();
+                std::lock_guard<std::mutex> lock(framebuffer.GetMutex());
+                CHECK(framebuffer.GetWidth() == 64 && framebuffer.GetHeight() == 48);
+                CHECK(framebuffer.GetPixel(0, 0) == 0x00FF00 && framebuffer.GetPixel(7, 7) == 0x00FF00);
+                CHECK(framebuffer.GetPixel(8, 8) == 0 && framebuffer.GetPixel(20, 20) == 0x0000FF);
+            }
+
+            // A pointer shape too big for one fast-path update comes in pieces: first, then last.
+            Rdp::Bytes shape = ColourPointer(2, 4, 4, 0x00FFFF, {0, 0, 0, 0});
+            size_t cut = shape.size() / 2;
+            auto fastPath = [&](uint8_t header, const Rdp::Bytes& data) {
+                Rdp::Bytes update = {header};
+                P16(update, static_cast<uint16_t>(data.size()));
+                update.insert(update.end(), data.begin(), data.end());
+                Rdp::Bytes packet = {0x00, static_cast<uint8_t>(2 + update.size())};
+                packet.insert(packet.end(), update.begin(), update.end());
+                server.GetClientSocket().SendAll(packet.data(), packet.size());
+            };
+            fastPath(0x09 | (2 << 4), Rdp::Bytes(shape.begin(), shape.begin() + cut)); // colour pointer, first
+            fastPath(0x09 | (1 << 4), Rdp::Bytes(shape.begin() + cut, shape.end()));   // and last
+            CHECK(listener.WaitFor([&]() { return listener.cursorUpdates == 1; }));
+            CHECK(listener.cursor.width == 4 && listener.cursor.argb[0] == 0xFF00FFFF);
+
+            // The server closes the graphics channel: the client answers.
+            script.SendDynamic({0x40, 0x06});
+            CHECK(script.ReadDynamic() == Rdp::Bytes({0x40, 0x06}));
+            client.Disconnect();
+            server.Close();
+        });
+
         RunTest("A server that refuses the session after the login says why, and the Client Info asks it to", []() {
             FakeServer server;
             RecordingListener listener;
@@ -676,6 +853,7 @@ namespace MarconiTest
                        listener.serverInit.height, client.GetEncryptionName().c_str(),
                        listener.certificateQuestions ? "certificate asked" : "certificate trusted");
                 CHECK(listener.WaitFor([&]() { return listener.updates > 0 || listener.disconnected; }, 15000));
+                listener.WaitFor([&]() { return listener.disconnected; }, 2000); // let the rest of the picture arrive
                 TrafficStats stats = client.TakeTrafficStats();
                 printf("  %d updates with %d rectangles, %d pointer shapes%s\n", stats.updates, stats.rectangles,
                        listener.cursorUpdates, listener.disconnected ? " (then disconnected)" : "");

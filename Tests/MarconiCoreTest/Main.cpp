@@ -44,6 +44,7 @@ namespace Test
         MarconiTest::RunRdpLicenseTests();
         MarconiTest::RunUpdateTests();
         MarconiTest::RunRdpPointerTests();
+        MarconiTest::RunRdpGfxTests();
         MarconiTest::RunRdpClientTests();
 
         printf("\nMarconiCoreTest: %d passed, %d failed\n", MarconiTest::g_passed, MarconiTest::g_failed);

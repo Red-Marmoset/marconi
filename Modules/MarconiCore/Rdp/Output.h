@@ -73,6 +73,9 @@ namespace Marconi
         {
             FastPathUpdateType type = FastPathUpdateType::Other;
             uint8_t code = 0; // the updateCode
+            // 0: the whole update; 1, 2, 3: the last, first or a middle piece of one split across PDUs. A piece is
+            // left as raw `data` (type Other) for the caller to put together and hand to InterpretFastPathUpdate.
+            uint8_t fragmentation = 0;
             std::vector<BitmapRect> rects;
             std::vector<uint32_t> palette;
             Bytes data; // the update's payload, for the kinds not parsed here
@@ -81,5 +84,8 @@ namespace Marconi
         // Parses the updates inside a fast-path output PDU's payload (everything after its header). A payload may
         // carry several updates; each is returned. False if malformed.
         bool ParseFastPathUpdates(const Bytes& payload, std::vector<FastPathUpdate>& out, std::string& error);
+
+        // Works out what a whole update (`code` and `data` set) carries: fills in its type and parsed contents.
+        bool InterpretFastPathUpdate(FastPathUpdate& update, std::string& error);
     } // namespace Rdp
 } // namespace Marconi

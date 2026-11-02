@@ -6,6 +6,7 @@
 
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/Rdp/ClientData.h>
+#include <MarconiCore/Rdp/Dvc.h>
 #include <MarconiCore/Rdp/License.h>
 #include <MarconiCore/Rdp/Mcs.h>
 #include <MarconiCore/Rdp/Negotiation.h>
@@ -251,6 +252,23 @@ namespace Marconi
                    SendPdu(BuildFontList(shareId, m_userChannelId), error);
         }
 
+        bool Connection::SendChannelMessage(uint16_t channelId, const Bytes& message, std::string& error)
+        {
+            if (!m_tls)
+            {
+                error = "not connected";
+                return false;
+            }
+            for (const Bytes& chunk : BuildChannelChunks(message))
+            {
+                if (!SendFramed(BuildSendDataRequest(m_userChannelId, channelId, chunk), error))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         void Connection::Shutdown()
         {
             m_socket->Shutdown();
@@ -333,7 +351,14 @@ namespace Marconi
             core.highColorDepth = 16;
             core.clientName = clientName;
             core.serverSelectedProtocol = m_outcome.selectedProtocol;
-            Bytes clientData = BuildClientData(core, {});
+            core.graphicsPipeline = offerGraphicsPipeline;
+            std::vector<ChannelDefinition> channels;
+            if (offerGraphicsPipeline)
+            {
+                channels.push_back({kDrdynvcChannelName,
+                                    kChannelOptionInitialized | kChannelOptionEncryptRdp | kChannelOptionCompressRdp});
+            }
+            Bytes clientData = BuildClientData(core, channels);
             if (!SendFramed(BuildMcsConnectInitial(clientData), error))
             {
                 return false;
@@ -356,6 +381,11 @@ namespace Marconi
             }
             m_ioChannelId = serverData.ioChannelId != 0 ? serverData.ioChannelId : 1003;
             m_outcome.ioChannelId = m_ioChannelId;
+            m_drdynvcChannelId = 0;
+            if (!channels.empty() && !serverData.channelIds.empty())
+            {
+                m_drdynvcChannelId = serverData.channelIds[0]; // 0 means the server turned the channel down
+            }
             LOG_INFO("Rdp", "MCS settings exchanged (I/O channel %u, %zu virtual channels)", m_ioChannelId,
                      serverData.channelIds.size());
 
@@ -374,7 +404,12 @@ namespace Marconi
             {
                 return false;
             }
-            LOG_INFO("Rdp", "MCS channels joined (user %u, I/O %u)", m_userChannelId, m_ioChannelId);
+            if (m_drdynvcChannelId != 0 && !JoinChannel(m_drdynvcChannelId, error))
+            {
+                return false;
+            }
+            LOG_INFO("Rdp", "MCS channels joined (user %u, I/O %u, dynamic channels %u)", m_userChannelId,
+                     m_ioChannelId, m_drdynvcChannelId);
 
             // Client Info (credentials), on the I/O channel.
             if (!SendFramed(BuildSendDataRequest(m_userChannelId, m_ioChannelId, BuildClientInfo(logon)), error))
@@ -483,6 +518,11 @@ namespace Marconi
                 Bytes payload;
                 if (!StripSendData(pdu, channel, payload))
                 {
+                    continue;
+                }
+                if (channel != m_ioChannelId && channel != 0)
+                {
+                    m_earlyChannelPdus.push_back(pdu); // a virtual channel already talking: the session takes it
                     continue;
                 }
                 ShareDataType type2;

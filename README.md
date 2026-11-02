@@ -241,8 +241,8 @@ again afterwards.
 - **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.
 - **SSH** connections (recognised, but not supported yet).
 - Over **Remote Desktop**: the clipboard, changing the other computer's screen size, the server's pointer when it
-  uses the newest large pointer shapes, and the faster picture formats (the plain ones are used, which need more
-  bandwidth).
+  uses the newest large pointer shapes, video-style picture compression (H.264), and two picture formats Windows
+  can use for parts of the screen (so with Windows, some areas may not show yet).
 - Copying text in some languages and symbols with servers that don't support the newer clipboard messages (Macs,
   TightVNC): with those, the clipboard only carries Western European characters, and Marconi says so when some
   can't be sent.
