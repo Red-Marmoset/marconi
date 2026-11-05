@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.9
+
+- Fixed the toolbar staying small and missing buttons on connections saved with an older version.
+
 ## 0.7.8
 
 - Shows a small dot for the mouse pointer when the other computer hides its own.
