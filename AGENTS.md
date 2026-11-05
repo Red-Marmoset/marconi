@@ -56,6 +56,11 @@ its phases in order, and keep it current (decisions, measurements, finished step
 - **macOS disk image:** `./Package.sh` builds Release, wraps the binary in `Marconi.app` (`Installer/macOS/Info.plist`,
   `Marconi.icns`, fonts in `Contents/Resources`), signs it ad-hoc or with `MARCONI_SIGN_IDENTITY`, and writes
   `Build/Installer/Marconi-<version>-macos-<arch>.dmg`. BuildTool itself makes a bare executable, not a bundle.
+- **Linux package:** `./Package.sh` on Linux builds Release and makes a Debian package,
+  `Build/Installer/Marconi-<version>-linux-<arch>.deb`: the app as `/usr/bin/marconi`,
+  `Installer/Linux/marconi.desktop`, the icons from `Installer/Linux/icons` (also made by `make_app_icon.py`), the
+  fonts in `/usr/share/marconi`. Its dependencies come from `dpkg-shlibdeps` (package `dpkg-dev`); its maintainer
+  is the owner's address in `Package.sh` unless `MARCONI_DEB_MAINTAINER` overrides it.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
   logs every input event it receives. `Tools/fake_vencrypt_server.py` is the same for encrypted (VeNCrypt over TLS)
   connections, and `Tools/TlsStream_OpenSSL.cpp` is the reference TLS stream it was checked against (not built).

@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.7.10
+
+- Marconi now comes as a package for Ubuntu and Debian.
+
 ## 0.7.9
 
 - Fixed the toolbar staying small and missing buttons on connections saved with an older version.

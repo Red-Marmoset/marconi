@@ -2,7 +2,8 @@
 Type=Application
 Name=Marconi
 Comment=See and control another computer's screen
-Exec=Marconi %u
+Exec=marconi %u
+Icon=marconi
 Terminal=false
 Categories=Network;RemoteAccess;
 MimeType=x-scheme-handler/vnc;
