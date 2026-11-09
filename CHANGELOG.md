@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.8.1
+
+- Setup is now built with the una engine's shared packaging script. The installer itself is unchanged.
+
 ## 0.8.0
 
 - The Ubuntu and Debian package is finished.

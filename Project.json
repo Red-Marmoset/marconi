@@ -1,11 +1,38 @@
 {
     "name": "Marconi",
     "type": "windowed",
-    "version": "0.8.0",
+    "version": "0.8.1",
     "description": "Marconi - cross-platform VNC client",
     "modules": [
         "MarconiCore",
         "MarconiUI"
     ],
-    "compiler": "msvc"
+    "compiler": "msvc",
+    "package": {
+        "displayName": "Marconi",
+        "publisher": "Red Marmoset Studios Ltd.",
+        "build": "Build.ps1",
+        "files": [
+            {
+                "from": "Assets/Fonts/NebulaSans-Black.ttf",
+                "to": "NebulaSans-Black.ttf"
+            },
+            {
+                "from": "Assets/Fonts/NebulaSans-Semibold.ttf",
+                "to": "NebulaSans-Semibold.ttf"
+            },
+            {
+                "from": "Assets/Fonts/NebulaSans-LICENSE.txt",
+                "to": "NebulaSans-LICENSE.txt"
+            }
+        ],
+        "license": "LICENSE",
+        "installerScript": "Installer/Marconi.nsi",
+        "nsisPlugins": [
+            "ShellExecAsUser"
+        ],
+        "outputDir": "Build/Installer",
+        "zip": false,
+        "signEnv": "MARCONI_SIGN_THUMBPRINT"
+    }
 }

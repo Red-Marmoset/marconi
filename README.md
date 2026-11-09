@@ -328,6 +328,10 @@ clone gets a revision that is too low.
 
 ## Releasing (Windows)
 
+`Package.ps1` runs the una engine's `Packaging\PackageProject.ps1`, the packaging script every una project shares,
+so the engine (`UNA_ENGINE_PATH`, `C:\code\engine` by default) needs to be up to date. What goes in the installer is
+the `package` section of `Project.json`.
+
 The installer is built with [NSIS 3.08 or newer](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`). It also
 needs the [ShellExecAsUser plug-in](https://nsis.sourceforge.io/ShellExecAsUser_plug-in), which lets the installer
 start Marconi, or open its source code on GitHub, as you rather than as administrator when you tick "Start Marconi
