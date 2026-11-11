@@ -40,9 +40,17 @@ val buildNativeTasks = marconiAbis.map { abi ->
         }
     }
 }
-val buildMarconiNative = tasks.register("buildMarconiNative") {
-    description = "Builds libMarconi.so for every ABI in marconiAbis"
+// BuildTool writes Build/Marconi/Android/<Config>/libMarconi.so for arm64-v8a and Build/Marconi/Android-<abi>/<Config>/
+// for the other ABIs; the app wants them as <abi>/libMarconi.so, so they are copied into one folder.
+val jniLibsDir: File = layout.buildDirectory.dir("marconiJniLibs").get().asFile
+val buildMarconiNative = tasks.register<Copy>("buildMarconiNative") {
+    description = "Builds libMarconi.so for every ABI in marconiAbis and gathers them for the app"
     dependsOn(buildNativeTasks)
+    for (abi in marconiAbis) {
+        val folder = if (abi == "arm64-v8a") "Android" else "Android-$abi"
+        from(File(marconiRoot, "Build/Marconi/$folder/$marconiConfig/libMarconi.so")) { into(abi) }
+    }
+    into(jniLibsDir)
 }
 tasks.named("preBuild") { dependsOn(buildMarconiNative) }
 
@@ -63,8 +71,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            // Build/Marconi/<Config>/Android/<abi>/libMarconi.so, as BuildTool lays it out
-            jniLibs.srcDirs(File(marconiRoot, "Build/Marconi/$marconiConfig/Android"))
+            jniLibs.srcDirs(jniLibsDir)
         }
     }
 

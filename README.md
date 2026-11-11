@@ -20,8 +20,8 @@ It works with:
 - Remember the computers you connect to, with their passwords kept safely in your system's password store (Windows
   Credential Manager, the macOS Keychain, or your Linux desktop's keyring), plus notes, favourites, groups, and
   where each one's window was.
-- Open `vnc://` links from other programs (Windows and macOS do this once Marconi is installed; on Linux, see
-  Building).
+- Open `vnc://` links from other programs (Windows and macOS do this once Marconi is installed; on Linux, install
+  the package or see Building).
 - Connect through SSH, so the whole session is encrypted even with servers that don't encrypt.
 - Find computers on your home or office network by itself.
 - Copy files to and from the other computer, by dragging them or with Upload and Download buttons.
@@ -298,9 +298,9 @@ You need the una engine (`C:\code\engine`, or set `UNA_ENGINE_PATH`) with BuildT
                      libxxf86vm-dev libxtst-dev libsm-dev
     ./Build.sh
 
-To open `vnc://` links in Marconi on Linux, copy `Installer/Linux/marconi.desktop` to
-`~/.local/share/applications/`, change its `Exec` line to the path of the `Marconi` you built (keeping the `%u`),
-then run `xdg-mime default marconi.desktop x-scheme-handler/vnc`.
+To open `vnc://` links in Marconi on Linux without installing the package (see Releasing (Linux)), copy
+`Installer/Linux/marconi.desktop` to `~/.local/share/applications/`, change its `Exec` line to the path of the
+`Marconi` you built (keeping the `%u`), then run `xdg-mime default marconi.desktop x-scheme-handler/vnc`.
 
 **Android, iPad and iPhone.** The viewer core builds for both with the same engine; the apps are in `Apps/`.
 `Apps/Android/README.md` explains the Android build (the Una BuildTool with the Android NDK, then Gradle for the
@@ -333,6 +333,10 @@ in the executable's properties. A build without git history (such as a source zi
 clone gets a revision that is too low.
 
 ## Releasing (Windows)
+
+`Package.ps1` runs the una engine's `Packaging\PackageProject.ps1`, the packaging script every una project shares,
+so the engine (`UNA_ENGINE_PATH`, `C:\code\engine` by default) needs to be up to date. What goes in the installer is
+the `package` section of `Project.json`.
 
 The installer is built with [NSIS 3.08 or newer](https://nsis.sourceforge.io) (`winget install NSIS.NSIS`). It also
 needs the [ShellExecAsUser plug-in](https://nsis.sourceforge.io/ShellExecAsUser_plug-in), which lets the installer
@@ -382,8 +386,8 @@ installer accepts `/S`, `/D=<folder>`, and `/CURRENTUSER` or `/ALLUSERS` to choo
 with neither picks the kind already installed, or everyone when run as administrator, or otherwise just you.
 
 `Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico` and
-`Marconi.icns`, are rendered by `python Tools/make_app_icon.py` from the same drawing as the window icon in
-`AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from
+`Marconi.icns` and the Linux package's PNGs in `Installer/Linux/icons`, are rendered by
+`python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from
 `python Tools/make_installer_art.py`.
 
 ## Releasing (macOS)
@@ -400,6 +404,22 @@ downloaded copy the first time. Try to open it, then click *Open Anyway* in *Sys
 Copies shared by AirDrop or USB stick may be blocked too. For a release, set `MARCONI_SIGN_IDENTITY` to a Developer
 ID Application certificate, and set `MARCONI_NOTARY_PROFILE` to a profile from `xcrun notarytool store-credentials`.
 `Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the ticket.
+
+## Releasing (Linux)
+
+    ./Package.sh                      # -> Build/Installer/Marconi-0.2.0.48-linux-amd64.deb
+
+It builds the Release app and makes a Debian package, which installs on Ubuntu, Debian and the distributions based
+on them:
+
+    sudo apt install ./Build/Installer/Marconi-0.2.0.48-linux-amd64.deb
+
+The package puts Marconi in the applications menu, registers it for `vnc://` links, and installs the icon, Nebula
+Sans and the licence. `sudo apt remove marconi` takes it out again. `Package.sh` takes `--clean`, `--skip-build`
+and `--allow-dirty`, which work like the Windows options, and needs the `dpkg-dev` package. The package depends on
+the system libraries the app links against, at the versions on the build machine, so build it on the oldest release
+it should install on. Its `Maintainer` field is Sem Essessi's address unless `MARCONI_DEB_MAINTAINER` (`Name <email>`) says
+otherwise. The package is not signed.
 
 ## Testing
 

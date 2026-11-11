@@ -5,9 +5,25 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
-## 0.8.0
+## 0.9.0
 
 - Marconi runs on Android phones and tablets (`Apps/Android`) and on iPad and iPhone (`Apps/iPad`), for VNC, VNC through SSH and Marconi servers.
+
+## 0.8.1
+
+- Setup is now built with the una engine's shared packaging script. The installer itself is unchanged.
+
+## 0.8.0
+
+- The Ubuntu and Debian package is finished.
+
+## 0.7.10
+
+- Marconi now comes as a package for Ubuntu and Debian.
+
+## 0.7.9
+
+- Fixed the toolbar staying small and missing buttons on connections saved with an older version.
 
 ## 0.7.8
 

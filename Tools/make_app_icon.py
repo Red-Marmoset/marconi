@@ -5,6 +5,9 @@
 #   Modules/MarconiUI/Resources/Marconi.ico    embedded in the Windows executable and installer
 #   Modules/MarconiUI/Resources/Marconi.icns   the macOS app bundle's icon (Package.sh), the same mark on a white
 #                                              rounded-square plate as macOS icons expect
+#   Installer/Linux/icons/hicolor/<size>x<size>/apps/marconi.png
+#                                              the Linux package's icons (Package.sh), one PNG per size in the layout
+#                                              /usr/share/icons expects
 #
 # It draws the same picture as Modules/MarconiUI/AppIcon.cpp (the runtime window icon), so keep the two in step.
 # Needs Pillow: pip install pillow
@@ -17,6 +20,7 @@ from PIL import Image, ImageDraw
 
 SIZES = [16, 20, 24, 32, 48, 64, 96, 128, 256]
 MAC_SIZES = [16, 32, 64, 128, 256, 512, 1024]
+LINUX_SIZES = [16, 24, 32, 48, 64, 128, 256]
 SUPERSAMPLE = 8
 MAC_SUPERSAMPLE = 4
 
@@ -72,6 +76,13 @@ def main():
     images = [draw_mac_icon(size) for size in MAC_SIZES]
     images[-1].save(icns, format="ICNS", append_images=images[:-1])
     print("Wrote " + icns)
+
+    for size in LINUX_SIZES:
+        folder = os.path.join(root, "Installer", "Linux", "icons", "hicolor", "%dx%d" % (size, size), "apps")
+        os.makedirs(folder, exist_ok=True)
+        png = os.path.join(folder, "marconi.png")
+        draw_icon(size).save(png, format="PNG", optimize=True)
+        print("Wrote " + png)
 
 
 if __name__ == "__main__":

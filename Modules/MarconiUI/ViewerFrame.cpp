@@ -491,6 +491,15 @@ namespace MarconiUI
                 panes[i].Dock();
             }
         }
+        // The layout says where the toolbar goes, but its size has to come from the toolbar as it is now: one saved
+        // by a version with smaller buttons would otherwise squash the buttons and cut off the end of the row.
+        wxAuiPaneInfo& toolbar = m_aui.GetPane("Toolbar");
+        toolbar.best_size = m_toolBar->GetHintSize(toolbar.IsDocked() ? toolbar.dock_direction : wxAUI_DOCK_TOP);
+        toolbar.floating_size = wxDefaultSize;
+        toolbar.floating_client_size = wxDefaultSize;
+        m_aui.Update();
+        // The first Update still uses the saved height for the toolbar's row, and only then knows the row holds just
+        // a toolbar, whose height it works out afresh each time. The second one does that.
         m_aui.Update();
     }
 

@@ -1,11 +1,11 @@
 {
     "repository": "https://github.com/Red-Marmoset/engine.git",
-    "branch": "claude/stoic-dirac-ezkwpl",
-    "commit": "a755f11ba42a534da7ff99c6562763fe51fadd59",
+    "branch": "main",
+    "commit": "5c599847d478ca2165c43c3b8dd7660ea8d48bda",
     "buildTool": {
         "path": "Modules/BuildTool",
         "repository": "https://github.com/Red-Marmoset/engine-build-tool.git",
-        "branch": "claude/stoic-dirac-ezkwpl",
-        "commit": "a745b304ad9a32eb39df022afc617cb80c46a500"
+        "branch": "main",
+        "commit": "3d37d8bcb97be0428657729452a4e88a4cee5839"
     }
 }

@@ -23,8 +23,8 @@ Gradle (the wrapper in this folder fetches 8.14).
 
    Gradle first runs `Build.sh` (or `Build.ps1`) with `Apps/Android/Project.json`, `--platform Android` and
    `--abi` for each ABI in `gradle.properties` (`marconiAbis`, `arm64-v8a` by default; add `x86_64` for the
-   emulator), which writes `Build/Marconi/Release/Android/<abi>/libMarconi.so`; the app's `jniLibs` folder points
-   there. The APK lands in `app/build/outputs/apk/debug/app-debug.apk`.
+   emulator), which writes `Build/Marconi/Android/Release/libMarconi.so` (and `Build/Marconi/Android-<abi>/...`
+   for the other ABIs), then gathers them for the app. The APK lands in `app/build/outputs/apk/debug/app-debug.apk`.
 3. Plug the phone in with USB debugging on, and install:
 
    ```sh
