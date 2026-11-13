@@ -34,5 +34,13 @@ namespace Marconi
 
         // "Folder", "PDF file", or "File" when there's no extension.
         std::string TypeName(const FileEntry& entry);
+
+        // How a path is shown to people. A Windows path, which is kept as "/C:/Users/Sam/Desktop" inside Marconi, shows
+        // as "C:\Users\Sam\Desktop"; any other path is shown as it is.
+        std::string ToDisplayPath(const std::string& path);
+        // The reverse, for a path someone typed: "C:\Users\Sam", "C:/Users/Sam" and "/C:/Users/Sam" all become
+        // "/C:/Users/Sam" (a drive letter alone, "C:", becomes "/C:/"). A path that doesn't start with a drive
+        // letter is returned as typed, apart from trimmed spaces.
+        std::string FromTypedPath(const std::string& typed);
     } // namespace Files
 } // namespace Marconi

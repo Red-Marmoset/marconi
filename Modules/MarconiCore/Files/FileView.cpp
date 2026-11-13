@@ -99,5 +99,64 @@ namespace Marconi
                            [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
             return extension + " file";
         }
+
+        namespace
+        {
+            bool IsSeparator(char c)
+            {
+                return c == '/' || c == '\\';
+            }
+
+            // Where the drive letter sits in `path` if it starts with one ("C:" or "/C:"), else npos.
+            size_t DriveLetterAt(const std::string& path)
+            {
+                size_t at = (!path.empty() && IsSeparator(path[0])) ? 1 : 0;
+                if (path.size() >= at + 2 && std::isalpha(static_cast<unsigned char>(path[at])) && path[at + 1] == ':' &&
+                    (path.size() == at + 2 || IsSeparator(path[at + 2])))
+                {
+                    return at;
+                }
+                return std::string::npos;
+            }
+        } // namespace
+
+        std::string ToDisplayPath(const std::string& path)
+        {
+            // Inside Marconi a Windows path always starts with a slash; only those are changed.
+            if (path.empty() || path[0] != '/' || DriveLetterAt(path) != 1)
+            {
+                return path;
+            }
+            std::string shown = path.substr(1);
+            std::replace(shown.begin(), shown.end(), '/', '\\');
+            if (shown.size() == 2)
+            {
+                shown += '\\'; // "C:" is a drive; "C:\" is how it is written
+            }
+            return shown;
+        }
+
+        std::string FromTypedPath(const std::string& typed)
+        {
+            size_t first = typed.find_first_not_of(" \t");
+            if (first == std::string::npos)
+            {
+                return std::string();
+            }
+            size_t last = typed.find_last_not_of(" \t");
+            std::string text = typed.substr(first, last - first + 1);
+            size_t at = DriveLetterAt(text);
+            if (at == std::string::npos)
+            {
+                return text;
+            }
+            std::string path = "/" + text.substr(at);
+            std::replace(path.begin(), path.end(), '\\', '/');
+            if (path.size() == 3)
+            {
+                path += '/';
+            }
+            return path;
+        }
     } // namespace Files
 } // namespace Marconi

@@ -620,8 +620,9 @@ namespace MarconiUI
             {
                 wxString folder = wxGetTextFromUser(
                     "Files dropped on " + m_remote.displayName + "'s screen are copied to this folder on it. "
-                    "The Public Desktop shows on everyone's desktop.",
-                    "Where should dropped files go?", "/C:/Users/Public/Desktop", this);
+                    "The Public Desktop shows on everyone's desktop, but only an administrator can copy into it; "
+                    "use a signed-in user's own Desktop (C:\\Users\\NAME\\Desktop) if that is refused.",
+                    "Where should dropped files go?", "C:\\Users\\Public\\Desktop", this);
                 if (folder.empty())
                 {
                     return;
@@ -648,7 +649,7 @@ namespace MarconiUI
             m_desktopCopy.folder = desktop;
         }
         SetMessage(wxString::Format("Copying %zu item%s to ", localPaths.size(), localPaths.size() == 1 ? "" : "s") +
-                   wxString::FromUTF8(desktop));
+                   wxString::FromUTF8(Marconi::Files::ToDisplayPath(desktop)));
     }
 
     std::vector<int> FilePanel::StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
@@ -669,8 +670,9 @@ namespace MarconiUI
 
     void FilePanel::RememberDropFolder(const wxString& chosen)
     {
-        wxString folder = chosen;
-        folder.Replace("\\", "/");
+        // Typed as C:\Users\Sam\Desktop (or with slashes, or a leading slash); kept as /C:/Users/Sam/Desktop, which is how
+        // the file transfer names it.
+        wxString folder = wxString::FromUTF8(Marconi::Files::FromTypedPath(chosen.utf8_string()));
         m_remote.dropFolder = folder;
         if (!m_remote.savedId.empty())
         {
@@ -687,7 +689,7 @@ namespace MarconiUI
     void FilePanel::OfferAnotherDropFolder()
     {
         const std::vector<std::string> paths = m_desktopCopy.paths;
-        const wxString refused = wxString::FromUTF8(m_desktopCopy.folder);
+        const wxString refused = wxString::FromUTF8(Marconi::Files::ToDisplayPath(m_desktopCopy.folder));
         m_desktopCopy = DesktopCopy();
         if (paths.empty() || m_closing)
         {
@@ -697,7 +699,7 @@ namespace MarconiUI
             m_remote.displayName + " would not let Marconi copy into\n\n" + refused + "\n\nThat usually means the "
             "file transfer there runs as an ordinary user, which can't write to a folder only an administrator can "
             "change (the Public Desktop is one). Type a folder that the signed-in user can write to, for example "
-            "their own Desktop: /C:/Users/NAME/Desktop",
+            "their own Desktop: C:\\Users\\NAME\\Desktop",
             "Where should dropped files go?", refused, this);
         if (folder.empty())
         {
