@@ -750,6 +750,44 @@ namespace MarconiServerTest
                 unsetenv("MARCONI_WAYLAND_PORTAL");
             });
         }
+
+        // Against a real compositor's own stream, without the portal: MARCONI_PIPEWIRE_NODE is the PipeWire node a
+        // compositor (mutter's own ScreenCast interface, for example) publishes, and MARCONI_PIPEWIRE_COLOUR the hex
+        // colour its screen is painted. Tools/wayland/RunMutterCaptureCheck.sh sets both up.
+        void LiveNodeTest()
+        {
+            const char* node = std::getenv("MARCONI_PIPEWIRE_NODE");
+            if (node == nullptr || *node == '\0')
+            {
+                return;
+            }
+            TimedTest("Wayland live: a real compositor's PipeWire stream is read", [&]() {
+                PipeWireCapture capture;
+                std::string error;
+                CHECK(capture.Start(-1, static_cast<uint32_t>(std::strtoul(node, nullptr, 10)), true, error));
+                std::vector<uint32_t> pixels;
+                int32_t width = 0;
+                int32_t height = 0;
+                uint64_t sequence = 0;
+                bool got = Eventually([&]() { return capture.GetLatest(pixels, width, height, sequence); }, 20000);
+                CHECK(got);
+                if (!got)
+                {
+                    printf("  (state %d: %s)\n", static_cast<int>(capture.GetState()), capture.GetFailure().c_str());
+                    return;
+                }
+                printf("  live stream: %dx%d, centre %06X, top left %06X\n", width, height,
+                       pixels[static_cast<size_t>(height / 2) * width + width / 2], pixels[0]);
+                const char* colour = std::getenv("MARCONI_PIPEWIRE_COLOUR");
+                if (colour != nullptr)
+                {
+                    uint32_t expected = static_cast<uint32_t>(std::strtoul(colour, nullptr, 16));
+                    CHECK(pixels[static_cast<size_t>(height / 2) * width + width / 2] == expected);
+                    CHECK(pixels[0] == expected);
+                    CHECK(pixels.back() == expected);
+                }
+            });
+        }
     } // namespace
 
     void RunWaylandTests()
@@ -779,6 +817,7 @@ namespace MarconiServerTest
             return;
         }
         StreamTests(bus);
+        LiveNodeTest();
         LiveTest();
     }
 } // namespace MarconiServerTest
