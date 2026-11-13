@@ -43,6 +43,7 @@ class ConnectionsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_connections)
+        findViewById<android.view.View>(android.R.id.content).padForSystemBars()
         setSupportActionBar(findViewById<MaterialToolbar>(R.id.toolbar))
         supportActionBar?.setDisplayShowTitleEnabled(false)
         store = SavedConnections(this)

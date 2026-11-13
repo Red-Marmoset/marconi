@@ -80,6 +80,7 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_viewer)
+        findViewById<android.view.View>(android.R.id.content).padForSystemBars()
         WindowCompat.setDecorFitsSystemWindows(window, true)
         store = SavedConnections(this)
         remote = findViewById(R.id.remote)

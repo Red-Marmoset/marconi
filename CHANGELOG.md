@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.9
+
+- On Android, the top of each screen and the button at the bottom no longer sit under the phone's status bar and navigation buttons.
+
 ## 0.9.8
 
 - The Android, iPad and Mac apps are now identified as com.redmarmosetstudios.marconi.

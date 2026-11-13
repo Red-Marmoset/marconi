@@ -40,6 +40,7 @@ class EditConnectionActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_edit_connection)
+        findViewById<android.view.View>(android.R.id.content).padForSystemBars()
         store = SavedConnections(this)
         val existing = intent.getStringExtra(EXTRA_ID)?.let { store.load(it) }
         isNew = existing == null
