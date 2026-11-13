@@ -8,6 +8,8 @@
 ;                              before it's embedded and on the setup executable once written (needs NSIS 3.08+).
 ; Paths are absolute; makensis runs from this folder, so the relative ones below are relative to it.
 ;
+; The AI tools page (AiTools.nsh) includes DetectApps.nsh from the engine's Packaging\Include, which PackageProject.ps1
+; adds to makensis's include folders, and registers through MarconiMcp.exe; /AITOOLS= does it in a silent install.
 ; "Start Marconi now" and "Open the source code on GitHub" on the finish page need the ShellExecAsUser plug-in in the
 ; NSIS installation's Plugins\x86-unicode folder (see Package.ps1, which checks for it).
 ;
@@ -91,6 +93,9 @@ Var RadioUser
 Var RadioAll
 Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started again at the end)
 
+; The "Connect Marconi to your AI tools" page and its uninstall side (needs the variables above).
+!include "AiTools.nsh"
+
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
 !define MUI_ABORTWARNING
@@ -135,6 +140,7 @@ Page custom ModePageCreate ModePageLeave
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+Page custom AiToolsPageCreate AiToolsPageLeave
 !insertmacro MUI_PAGE_FINISH
 
 !define MUI_WELCOMEPAGE_TEXT "This will remove ${APP_NAME} from your computer.$\r$\n$\r$\nYour saved connections, stored passwords and logs are kept unless you choose to remove them too, two pages on.$\r$\n$\r$\nIf ${APP_NAME} is running, it is closed first. Click Next to continue."
@@ -476,6 +482,9 @@ FunctionEnd
 ; A silent install has no finish page, so a ${APP_NAME} that Setup closed is started again here.
 Function .onInstSuccess
     ${If} ${Silent}
+        Call AiToolsSilent
+    ${EndIf}
+    ${If} ${Silent}
     ${AndIf} $WasRunning == 1
         Call LaunchAsUser
     ${EndIf}
@@ -642,6 +651,8 @@ SectionEnd
 Section "un.${APP_NAME}" SecUnApp
     SectionIn RO
     Call un.CloseRunningApp
+    ; Out of the AI tools first: it needs MarconiMcp.exe, which the files below include.
+    Call un.AiToolsRemove
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
     Delete "$SMPROGRAMS\${SOURCE_SHORTCUT}"
     Delete "$DESKTOP\${APP_NAME}.lnk"

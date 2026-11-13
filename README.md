@@ -332,6 +332,35 @@ server has to run inside your signed-in desktop, because that is where the scree
 start it every time you sign in, run `systemctl --user enable --now marconi-server.service` as yourself. It shares an
 X11 desktop; a Wayland-only desktop can't be shared yet.
 
+## Letting AI tools use another computer
+
+AI tools such as Claude Code, Codex and Claude Desktop can use Marconi to connect to another computer, look at its
+screen, and use its mouse, keyboard and clipboard. The tool still asks before each step unless you tell it not to,
+and you can watch what it does by connecting to the same computer with Marconi as usual.
+
+**Connecting your AI tools.** The Windows installer offers it on a page of its own, for the AI tools it finds on
+the computer. Any time later, open **Settings > AI tools** in Marconi: it lists Claude Code, Codex and Claude
+Desktop, says which can use Marconi, and adds or removes Marconi for each. For Claude Desktop, Add opens Claude so
+you can confirm the extension; to remove it, use Claude's own settings, under Extensions.
+
+**Using it.** Ask the AI tool to connect to a computer by its address, as you would type it in Marconi, and then to
+do something there. If the computer needs a password, the AI tool can be given it, or, to keep it out of the
+conversation, set it in the `MARCONI_PASSWORD` environment variable for MarconiMcp (Claude Desktop asks for it in
+the extension's settings).
+
+**By hand.** The part the AI tools start is a program called MarconiMcp (`marconi-mcp` on Linux), installed beside
+Marconi:
+
+- `MarconiMcp --register claude-code` (or `codex`, `claude-desktop`) adds it to that tool; `--unregister` removes it;
+  `--status` shows which tools are installed and which can use it.
+- `MarconiMcp --read-only` lets an AI tool look but not touch: no mouse, keyboard or clipboard changes.
+- A silent Windows install connects it with `/AITOOLS=all` or a list such as `/AITOOLS=claude-code,codex`.
+- To add it to Claude Code yourself:
+  `claude mcp add --scope user marconi -e MARCONI_PASSWORD=... -- /path/to/MarconiMcp` (leave out `-e ...` if the
+  computers need no password).
+
+It keeps a log beside Marconi's own (see "If something goes wrong").
+
 ## Keeping Marconi up to date
 
 When Marconi starts it asks GitHub whether a newer version has been released (it sends nothing about you; GitHub

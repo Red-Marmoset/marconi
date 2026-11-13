@@ -11,6 +11,9 @@ its phases in order, and keep it current (decisions, measurements, finished step
 `ROADMAP.md` lists every feature with its status (done, planned, idea) and the plan that covers it. Keep it current
 when a feature is finished or the owner adds an idea; ideas wait for the owner's go-ahead before anyone plans them.
 
+Letting AI tools (Claude Code, Codex, Claude Desktop) drive Marconi is planned in `MCP_PLAN.md`, the same way: read
+it before working on that, follow its phases in order, and keep it current.
+
 ## Working with the owner
 
 - **Don't fill gaps with assumptions** (the owner's rule). When you notice you're assuming something about what the
@@ -58,6 +61,9 @@ when a feature is finished or the owner adds an idea; ideas wait for the owner's
   follow (the owner's rule). No jargon-metaphors such as load-bearing, seam, cadence, substrate, spine, blast radius,
   anchored, byte-identical, "that's not nothing", surface (as a verb), land (for merge), plumbing, footgun or happy
   path, and no technical names a reader may not know (say what it does instead).
+- **AI tools (MarconiMcp):** `MCP_PLAN.md`. The app's build also builds `Mcp/Project.json` and puts `MarconiMcp` and
+  the engine's `Packaging/Apps.json` beside Marconi; the installer's AI tools page is `Installer/AiTools.nsh`, which
+  includes the engine's `Packaging/Include/DetectApps.nsh`.
 - **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
   `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local. Its branding bitmaps (`Installer/Art/`) come from
   `python Tools/make_installer_art.py`; rerun it after changing the icon, accent colour or fonts.
@@ -70,7 +76,8 @@ when a feature is finished or the owner adds an idea; ideas wait for the owner's
   server"). Opening a Finder window takes focus, so don't run it while the owner is typing without saying so.
 - **Linux package:** `./Package.sh` on Linux builds Release and makes a Debian package,
   `Build/Installer/Marconi-<version>-linux-<arch>.deb`: the app as `/usr/bin/marconi`,
-  `Installer/Linux/marconi.desktop`, the icons from `Installer/Linux/icons` (also made by `make_app_icon.py`), the
+  `/usr/bin/marconi-mcp` (MarconiMcp) with `Apps.json` in `/usr/share/marconi`, `Installer/Linux/marconi.desktop`, the
+  icons from `Installer/Linux/icons` (also made by `make_app_icon.py`), the
   fonts in `/usr/share/marconi`. Its dependencies come from `dpkg-shlibdeps` (package `dpkg-dev`); its maintainer
   is the owner's address in `Package.sh` unless `MARCONI_DEB_MAINTAINER` overrides it.
 - **Android app package:** `Package.ps1` and `Package.sh` end by running `Apps/Android/Package.ps1` or `.sh`, which

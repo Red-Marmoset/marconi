@@ -1,0 +1,11 @@
+{
+    "name": "MarconiMcpApp",
+    "version": "0.1.0",
+    "type": "console",
+    "description": "The MarconiMcp program: an MCP server on standard input and output that AI tools start, plus registering with those tools from the command line.",
+    "dependencies": ["MarconiMcp", "MarconiCore", "Platform", "Log", "Process", "AppDetect"],
+    "platformLibraries": {
+        "Windows": ["user32.lib"]
+    },
+    "platforms": ["Windows", "Linux", "macOS"]
+}
