@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.5
+
+- The iPad and iPhone app has Marconi's icon, carries the version number, and signs with the team set on the Mac.
+
 ## 0.9.4
 
 - The package scripts also build the Android app, next to the installer, disk image or package, when the Android tools are installed.

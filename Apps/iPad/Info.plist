@@ -8,14 +8,14 @@
     <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.9.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Marconi connects to computers on your local network to show their screens.</string>
     <key>CFBundleURLTypes</key><array>
         <dict>
-            <key>CFBundleURLName</key><string>com.redmarmoset.Marconi.iOS</string>
+            <key>CFBundleURLName</key><string>com.RedMarmosetStudios.Marconi</string>
             <key>CFBundleURLSchemes</key><array>
                 <string>vnc</string>
                 <string>marconi</string>
