@@ -22,9 +22,15 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - AI tools such as Claude Code and Codex can use other computers through Marconi: connect, see the screen, and use the mouse, keyboard and clipboard.
 - The Windows installer offers to connect Marconi to the AI tools it finds on the computer.
 
-## 0.10.2
+## 0.10.3
 
 - Fixed the picture freezing or staying black on some VNC servers, such as x11vnc on Linux.
+
+## 0.10.2
+
+- Send Keys has a menu for each of Windows, Mac and Linux, sorted by what the shortcuts do.
+- Send Keys can send the Mac's screenshot shortcuts, lock the screen, and send more Mac and Linux shortcuts.
+- When the other computer is a Mac using its own screen sharing, Send Keys shows only the Mac shortcuts.
 
 ## 0.10.1
 

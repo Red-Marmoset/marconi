@@ -28,7 +28,7 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   Marconi viewer on a second, view-only port watched. Two things found on the way (findings 10 and 11): screenshots
   now wait for the screen's answer to input and ask for the whole desktop each time, and x11vnc stopped sending
   Marconi pictures because of a loop in `Rfb::Client` (section 7, decision 4).
-- **Phase 2 done** 2026-11-13: the loop is fixed in `Rfb::Client` as the owner chose (decision 4 (b), 0.10.2, with a
+- **Phase 2 done** 2026-11-13: the loop is fixed in `Rfb::Client` as the owner chose (decision 4 (b), 0.10.3, with a
   test in `DesktopSizeTests`). On x11vnc, three connections in a row then all got a picture (before, the second got
   none), and the session log held two size notices instead of thousands. Claude Code clicked into the terminal,
   typed `echo` with a random word, and its one screenshot straight after showed the command and its output, as did
