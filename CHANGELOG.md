@@ -5,6 +5,9 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server: shows each of the computer's screens separately, sends only the one you choose, and can change its screen size to fit your window and put it back when you leave.
+- Marconi Server: sends the mouse pointer's shape and position as they change.
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.
