@@ -356,6 +356,55 @@ namespace MarconiServerTest
                 CHECK(Eventually([&]() { return portal.Calls().size() >= 4; }));
             });
 
+            TimedTest("Wayland: when the person has said no, no screen is made and the input doesn't ask again", [&]() {
+                FakePortalConfig config;
+                config.approve = false;
+                FakePortal portal(config);
+                CHECK(portal.Start(bus.Address()));
+                SetWaylandPortalOptions(OptionsFor(bus, TempFile("token")));
+                setenv("MARCONI_WAYLAND_PORTAL", "1", 1);
+                std::string screenError;
+                auto source = CreateSystemScreen(screenError);
+                CHECK(source == nullptr);
+                CHECK(Contains(screenError, "was not allowed") && Contains(screenError, "Check again"));
+                std::string inputError;
+                auto input = CreateSystemInput(inputError);
+                CHECK(input == nullptr);
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                size_t starts = 0;
+                for (const auto& call : portal.Calls())
+                {
+                    starts += call == "RemoteDesktop.Start" ? 1 : 0;
+                }
+                CHECK(starts == 1); // one question to the person, not two
+                // "Check again" asks afresh.
+                FakePortalConfig now;
+                now.approve = false;
+                portal.Configure(now);
+                auto again = CreateSystemScreen(screenError);
+                CHECK(again == nullptr);
+                starts = 0;
+                for (const auto& call : portal.Calls())
+                {
+                    starts += call == "RemoteDesktop.Start" ? 1 : 0;
+                }
+                CHECK(starts == 2);
+                unsetenv("MARCONI_WAYLAND_PORTAL");
+            });
+
+            TimedTest("Wayland portal: a failure of the desktop's own sharing service is not blamed on the person", [&]() {
+                FakePortalConfig config;
+                config.approve = false;
+                config.declineCode = 2;
+                FakePortal portal(config);
+                CHECK(portal.Start(bus.Address()));
+                auto session = WaylandPortalSession::Start(OptionsFor(bus, TempFile("token")));
+                CHECK(session->WaitUntilSettled(10000));
+                CHECK(session->GetState() == WaylandPortalSession::State::Failed);
+                CHECK(Contains(session->GetStatusText(), "not an answer from you"));
+                CHECK(Contains(session->GetStatusText(), "xdg-desktop-portal-wlr"));
+            });
+
             TimedTest("Wayland portal: while the person is being asked the status says to allow it", [&]() {
                 FakePortalConfig config;
                 config.approve = false;
@@ -651,6 +700,56 @@ namespace MarconiServerTest
                 unsetenv("MARCONI_WAYLAND_PORTAL");
             });
         }
+
+        // Against a real desktop: set MARCONI_WAYLAND_LIVE=1 (and, for the picture check, MARCONI_WAYLAND_LIVE_COLOUR
+        // to the hex colour the whole screen is painted, for example ff0000) in a session whose D-Bus and portal are
+        // running (Tests/MarconiServerTest/wayland/RunLiveSwayTest.sh starts a headless Sway for it). Uses the real
+        // session bus and the real portal, so on a desktop that asks the person, the person must answer.
+        void LiveTest()
+        {
+            const char* live = std::getenv("MARCONI_WAYLAND_LIVE");
+            if (live == nullptr || std::string(live) != "1")
+            {
+                return;
+            }
+            TimedTest("Wayland live: the real desktop portal and PipeWire give the screen", []() {
+                setenv("MARCONI_WAYLAND_PORTAL", "1", 1);
+                WaylandPortalOptions options;
+                options.tokenPath = TempFile("live-token");
+                SetWaylandPortalOptions(options);
+                std::string error;
+                auto source = CreateSystemScreen(error);
+                auto input = CreateSystemInput(error);
+                CHECK(source != nullptr && input != nullptr);
+                if (!source)
+                {
+                    printf("  (%s)\n", error.c_str());
+                    return;
+                }
+                Capture capture;
+                bool got = Eventually([&]() { return source->Grab(capture); }, 60000);
+                printf("  live status: \"%s\"\n", GetCaptureStatus().c_str());
+                CHECK(got);
+                if (!got)
+                {
+                    return;
+                }
+                printf("  live picture: %dx%d, pixel at the centre %06X, top left %06X\n", capture.width, capture.height,
+                       capture.Row(capture.height / 2)[capture.width / 2], capture.Row(0)[0]);
+                const char* colour = std::getenv("MARCONI_WAYLAND_LIVE_COLOUR");
+                if (colour != nullptr)
+                {
+                    uint32_t expected = static_cast<uint32_t>(std::strtoul(colour, nullptr, 16));
+                    CHECK(capture.Row(capture.height / 2)[capture.width / 2] == expected);
+                    CHECK(capture.Row(0)[0] == expected);
+                    CHECK(capture.Row(capture.height - 1)[capture.width - 1] == expected);
+                }
+                Cursor cursor;
+                source->GetCursor(cursor);
+                printf("  live pointer image: %dx%d\n", cursor.width, cursor.height);
+                unsetenv("MARCONI_WAYLAND_PORTAL");
+            });
+        }
     } // namespace
 
     void RunWaylandTests()
@@ -680,6 +779,7 @@ namespace MarconiServerTest
             return;
         }
         StreamTests(bus);
+        LiveTest();
     }
 } // namespace MarconiServerTest
 

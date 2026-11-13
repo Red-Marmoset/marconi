@@ -23,6 +23,9 @@ namespace Marconi
         // question to the person covers both). It ends when the last user lets go, so a later call asks afresh.
         std::shared_ptr<WaylandPortalSession> AcquireWaylandPortal();
 
+        // The session if one is running, without starting one.
+        std::shared_ptr<WaylandPortalSession> FindWaylandPortal();
+
         // Replaces the options the next AcquireWaylandPortal starts with (the bus address and where the "remember my
         // answer" token is kept). For tests.
         void SetWaylandPortalOptions(const WaylandPortalOptions& options);

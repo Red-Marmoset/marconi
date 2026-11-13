@@ -121,7 +121,14 @@ namespace Marconi
                 error = "This is a Wayland desktop, and controlling it needs the D-Bus library. " + busError;
                 return nullptr;
             }
-            return CreateWaylandInput(AcquireWaylandPortal());
+            // Joins the session the screen started (one question to the person covers both). With no session, the
+            // screen wasn't made, and the reason has been given with it, so there is nothing more to say.
+            std::shared_ptr<WaylandPortalSession> session = FindWaylandPortal();
+            if (session == nullptr)
+            {
+                return nullptr;
+            }
+            return CreateWaylandInput(std::move(session));
         }
     } // namespace Server
 } // namespace Marconi

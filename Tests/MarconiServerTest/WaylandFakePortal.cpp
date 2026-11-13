@@ -354,7 +354,7 @@ namespace MarconiServerTest
             }
             if (!config.approve)
             {
-                code = 1;
+                code = config.declineCode;
             }
             else
             {

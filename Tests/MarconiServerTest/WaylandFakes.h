@@ -39,6 +39,7 @@ namespace MarconiServerTest
     {
         bool offerRemoteDesktop = true; // false: ScreenCast only, like a wlroots desktop
         bool approve = true;            // false: the person says no
+        uint32_t declineCode = 1;       // the answer when not approved: 1 = the person said no, 2 = it failed
         bool grantControl = true;       // false: share the screen, but no keyboard and mouse
         uint32_t cursorModes = 7;       // hidden | embedded | metadata
         int answerDelayMs = 0;          // how long "the person" takes to answer

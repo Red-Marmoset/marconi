@@ -355,11 +355,24 @@ namespace Marconi
                          "\"Check again\" in the Marconi Server tray menu to ask again.");
                 return false;
             }
+            if (code == 2)
+            {
+                // The portal's "something else went wrong" answer: not the person's choice (for example the
+                // desktop's own backend couldn't start capturing).
+                LOG_WARNING("Server", "Wayland portal: the desktop could not start sharing (code 2)");
+                SetState(State::Failed,
+                         "The desktop could not start sharing the screen. This is a problem with the desktop's "
+                         "screen-sharing service, not an answer from you. Check that the sharing service that "
+                         "matches your desktop is installed and running (xdg-desktop-portal-gnome on GNOME, "
+                         "xdg-desktop-portal-kde on KDE, xdg-desktop-portal-wlr on Sway and similar), then choose "
+                         "\"Check again\" in the Marconi Server tray menu.");
+                return false;
+            }
             if (code != 0)
             {
                 LOG_INFO("Server", "Wayland portal: the person declined (code %u)", code);
                 SetState(State::Declined,
-                         "Screen sharing was not allowed, so viewers see a test picture instead of this screen. To "
+                         "Screen sharing was not allowed, so viewers can't see this screen. To "
                          "share this computer, choose \"Check again\" in the Marconi Server tray menu and press "
                          "Share (or Allow) when the desktop asks. If it doesn't ask again, open the desktop's "
                          "privacy or screen-sharing settings and remove the earlier answer for Marconi Server.");

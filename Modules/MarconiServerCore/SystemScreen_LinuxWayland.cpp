@@ -112,6 +112,12 @@ namespace Marconi
             g_options = options;
         }
 
+        std::shared_ptr<WaylandPortalSession> FindWaylandPortal()
+        {
+            std::lock_guard<std::mutex> lock(g_sessionMutex);
+            return g_session.lock();
+        }
+
         std::shared_ptr<WaylandPortalSession> AcquireWaylandPortal()
         {
             std::lock_guard<std::mutex> lock(g_sessionMutex);
@@ -145,6 +151,16 @@ namespace Marconi
             std::shared_ptr<WaylandPortalSession> session = AcquireWaylandPortal();
             // Give a remembered answer a moment to come back, so the common case reports no problem at all.
             session->WaitUntilAnsweredOrAsking(3000);
+            WaylandPortalSession::State state = session->GetState();
+            if (state == WaylandPortalSession::State::Declined || state == WaylandPortalSession::State::Failed)
+            {
+                // The desktop already said no (or can't do it): report that, so the server serves its test picture
+                // and the tray explains. Letting go of the session here means "Check again" asks afresh.
+                error = session->GetStatusText();
+                return nullptr;
+            }
+            // Still asking the person, or sharing: the picture appears once they allow it, and
+            // GetCaptureStatus says what to do until then.
             return CreateWaylandScreen(std::move(session));
         }
     } // namespace Server
