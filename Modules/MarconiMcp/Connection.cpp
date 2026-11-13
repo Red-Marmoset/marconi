@@ -83,6 +83,11 @@ namespace Marconi
                 m_screens.clear();
                 m_credentialsAsked = 0;
                 m_updates = 0;
+                m_needPicture = true;
+                m_recentRects.clear();
+                m_clipboard.clear();
+                m_clipboardReceived = false;
+                m_clipboardUpdates = 0;
                 m_cursor = CursorShape();
                 m_pointerKnown = false;
             }
@@ -162,6 +167,49 @@ namespace Marconi
             return m_connected ? m_session.get() : nullptr;
         }
 
+        bool Connection::EnsurePicture(std::chrono::milliseconds limit)
+        {
+            const auto deadline = std::chrono::steady_clock::now() + limit;
+            std::unique_lock<std::mutex> lock(m_mutex);
+            int requests = 0;
+            while (m_connected && m_needPicture)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                if (now >= deadline)
+                {
+                    break;
+                }
+                RemoteSession* session = m_session.get();
+                lock.unlock();
+                if (requests > 0 && session)
+                {
+                    LOG_INFO("Mcp", "No picture yet; asking for the whole desktop again");
+                    session->RequestFullUpdate();
+                }
+                ++requests;
+                lock.lock();
+                m_changed.wait_until(lock, std::min(deadline, now + std::chrono::milliseconds(700)),
+                                     [this]() { return !m_connected || !m_needPicture; });
+            }
+            return m_connected && !m_needPicture;
+        }
+
+        bool Connection::RefreshPicture(std::chrono::milliseconds limit)
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            RemoteSession* session = m_connected ? m_session.get() : nullptr;
+            if (!session)
+            {
+                return false;
+            }
+            const uint64_t before = m_updates;
+            lock.unlock();
+            session->RequestFullUpdate();
+            lock.lock();
+            return m_changed.wait_for(lock, limit, [this, before]() { return m_updates != before || !m_connected; }) &&
+                   m_connected;
+        }
+
         bool Connection::WaitUntilQuiet(std::chrono::milliseconds quiet, std::chrono::milliseconds limit)
         {
             const auto deadline = std::chrono::steady_clock::now() + limit;
@@ -173,7 +221,8 @@ namespace Marconi
                 {
                     return false;
                 }
-                if (m_updates > 0 && now - m_lastUpdate >= quiet)
+                const auto lastActivity = std::max(m_lastUpdate, m_lastInput);
+                if (m_updates > 0 && now - lastActivity >= quiet)
                 {
                     return true;
                 }
@@ -185,18 +234,64 @@ namespace Marconi
                 auto wakeAt = deadline;
                 if (m_updates > 0)
                 {
-                    wakeAt = std::min(wakeAt, m_lastUpdate + quiet);
+                    wakeAt = std::min(wakeAt, lastActivity + quiet);
                 }
                 m_changed.wait_until(lock, wakeAt);
             }
         }
 
-        bool Connection::WaitForUpdate(std::chrono::milliseconds limit)
+        namespace
+        {
+            bool Overlap(const Rfb::Rect& a, const Rfb::Rect& b)
+            {
+                return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+            }
+        } // namespace
+
+        bool Connection::WaitForUpdate(std::chrono::milliseconds limit, const Rfb::Rect* area)
         {
             std::unique_lock<std::mutex> lock(m_mutex);
             const uint64_t before = m_updates;
-            return m_changed.wait_for(lock, limit, [this, before]() { return m_updates != before || !m_connected; }) &&
-                   m_connected;
+            const auto changed = [this, before, area]() {
+                if (!m_connected)
+                {
+                    return true;
+                }
+                if (m_updates == before)
+                {
+                    return false;
+                }
+                if (area == nullptr)
+                {
+                    return true;
+                }
+                return std::any_of(m_recentRects.begin(), m_recentRects.end(),
+                                   [before, area](const std::pair<uint64_t, Rfb::Rect>& entry) {
+                                       return entry.first > before && Overlap(entry.second, *area);
+                                   });
+            };
+            return m_changed.wait_for(lock, limit, changed) && m_connected;
+        }
+
+        std::string Connection::GetServerClipboard(std::chrono::milliseconds limit, bool& received)
+        {
+            RemoteSession* session = GetSession();
+            if (session && session->HasExtendedClipboard())
+            {
+                std::unique_lock<std::mutex> lock(m_mutex);
+                const uint64_t before = m_clipboardUpdates;
+                lock.unlock();
+                if (session->RequestServerClipboard())
+                {
+                    lock.lock();
+                    m_changed.wait_for(lock, limit,
+                                       [this, before]() { return m_clipboardUpdates != before || !m_connected; });
+                    lock.unlock();
+                }
+            }
+            std::lock_guard<std::mutex> lock(m_mutex);
+            received = m_clipboardReceived;
+            return m_clipboard;
         }
 
         CursorShape Connection::GetCursor() const
@@ -221,6 +316,12 @@ namespace Marconi
             m_pointerY = y;
         }
 
+        void Connection::NoteInput()
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_lastInput = std::chrono::steady_clock::now();
+        }
+
         void Connection::OnConnected(const Rfb::ServerInit& serverInit)
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -230,17 +331,29 @@ namespace Marconi
             m_changed.notify_all();
         }
 
-        void Connection::OnFramebufferUpdated(const std::vector<Rfb::Rect>& /*rects*/)
+        void Connection::OnFramebufferUpdated(const std::vector<Rfb::Rect>& rects)
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             ++m_updates;
+            m_needPicture = false;
             m_lastUpdate = std::chrono::steady_clock::now();
+            for (const Rfb::Rect& rect : rects)
+            {
+                m_recentRects.emplace_back(m_updates, rect);
+            }
+            // Enough for a waiter to see every update since it started; older ones are of no use.
+            const size_t kKeep = 512;
+            if (m_recentRects.size() > kKeep)
+            {
+                m_recentRects.erase(m_recentRects.begin(), m_recentRects.end() - kKeep);
+            }
             m_changed.notify_all();
         }
 
         void Connection::OnDesktopResized(int /*width*/, int /*height*/)
         {
             std::lock_guard<std::mutex> lock(m_mutex);
+            m_needPicture = true;
             m_lastUpdate = std::chrono::steady_clock::now();
             m_changed.notify_all();
         }
@@ -255,6 +368,24 @@ namespace Marconi
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_cursor = cursor;
+        }
+
+        void Connection::OnServerCutText(const std::string& latin1Text)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_clipboard = Latin1ToUtf8(latin1Text);
+            m_clipboardReceived = true;
+            ++m_clipboardUpdates;
+            m_changed.notify_all();
+        }
+
+        void Connection::OnServerClipboard(const Rfb::ClipboardContent& content)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_clipboard = content.utf8Text;
+            m_clipboardReceived = true;
+            ++m_clipboardUpdates;
+            m_changed.notify_all();
         }
 
         void Connection::OnDisconnected(const DisconnectInfo& info)

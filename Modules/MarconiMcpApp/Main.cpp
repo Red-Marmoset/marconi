@@ -3,6 +3,7 @@
 // and output
 
 #include <MarconiCore/Version.h>
+#include <MarconiMcp/LogFiles.h>
 #include <MarconiMcp/Protocol.h>
 #include <MarconiMcp/Tools.h>
 
@@ -28,10 +29,11 @@ namespace
         std::printf("Marconi for AI tools %s\n\n", Marconi::GetVersionString());
         std::printf("Usage: MarconiMcp [options]\n");
         std::printf("  (no options)   run as an MCP server on standard input and output; AI tools start it this way\n");
-        std::printf("  --read-only    offer only the tools that look (connect, status, screenshot)\n");
+        std::printf("  --read-only    offer only the tools that look: no mouse, keyboard or clipboard changes\n");
         std::printf("  --version      print the version and exit\n");
         std::printf("  --help         show this\n");
         std::printf("\nThe password for connections can come from the MARCONI_PASSWORD environment variable.\n");
+        std::printf("Logs go to standard error and to %s.\n", Marconi::Mcp::LogDirectory().c_str());
     }
 
     // Keeps the real standard output for MCP messages only and points standard output at standard error, so
@@ -66,7 +68,9 @@ namespace
             std::fprintf(stderr, "MarconiMcp: couldn't set up standard output\n");
             return 1;
         }
-        // Everything printed from here on goes to standard error, which AI tools keep as the server's log.
+        // Everything printed from here on goes to standard error, which AI tools keep as the server's log, and to
+        // a log file beside the viewer's.
+        const bool logFile = Marconi::Mcp::StartFileLogging();
 
         Marconi::Mcp::ToolOptions toolOptions;
         toolOptions.readOnly = readOnly;
@@ -83,6 +87,10 @@ namespace
 
         LOG_INFO("Mcp", "Marconi for AI tools %s started%s", Marconi::GetVersionString(),
                  readOnly ? " (read-only)" : "");
+        if (!logFile)
+        {
+            LOG_WARNING("Mcp", "Couldn't start a log file in %s", Marconi::Mcp::LogDirectory().c_str());
+        }
         std::string line;
         while (std::getline(std::cin, line))
         {
@@ -105,6 +113,7 @@ namespace
         // Standard input closed: the AI tool is done with us.
         LOG_INFO("Mcp", "Standard input closed; stopping");
         tools.GetConnection().Disconnect();
+        Log::ShutdownFileLogging();
         std::fclose(messages);
         return 0;
     }

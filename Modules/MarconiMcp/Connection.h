@@ -11,6 +11,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Marconi
@@ -71,16 +72,36 @@ namespace Marconi
             RemoteSession* GetSession() const;
 
             // Waits until the picture has been quiet for `quiet` (and at least one picture has arrived since
-            // connecting), or `limit` passes. True if it settled.
+            // connecting), or `limit` passes. True if it settled. Quiet counts from the last update or the last
+            // input (NoteInput), whichever is later: straight after a click the screen hasn't changed yet, and a
+            // picture taken then would show the moment before it.
             bool WaitUntilQuiet(std::chrono::milliseconds quiet, std::chrono::milliseconds limit);
-            // Waits until a picture update arrives after this call, or `limit` passes. True if one arrived.
-            bool WaitForUpdate(std::chrono::milliseconds limit);
+            // Until the server has sent a picture since connecting or the last resize, asks for the whole desktop
+            // again every 700 ms, up to `limit`. Some servers answer the first request with only the desktop's
+            // size and then send only changes, so a still screen would never arrive (the viewer does the same).
+            // True once there is a picture.
+            bool EnsurePicture(std::chrono::milliseconds limit);
+
+            // Asks for the whole desktop and waits up to `limit` for the answer, so the picture is current even if
+            // the server has missed changes (some only send the first picture and size notices after it). True if
+            // the answer came.
+            bool RefreshPicture(std::chrono::milliseconds limit);
+
+            // Waits until a picture update arrives after this call, or `limit` passes. True if one arrived. With
+            // `area` (desktop pixels), only updates that touch it count.
+            bool WaitForUpdate(std::chrono::milliseconds limit, const Rfb::Rect* area = nullptr);
+
+            // The server's clipboard as UTF-8 text, as last sent (`received` false if it never has). With the
+            // extended clipboard, asks for it first and waits up to `limit` for the answer.
+            std::string GetServerClipboard(std::chrono::milliseconds limit, bool& received);
 
             // The cursor the server last sent (empty when it draws its own into the picture).
             CursorShape GetCursor() const;
             // Where we last put the pointer, if we have; the cursor is drawn there in screenshots.
             bool GetPointer(int& x, int& y) const;
             void SetPointer(int x, int y);
+            // Records that input was just sent (see WaitUntilQuiet).
+            void NoteInput();
 
         private:
             void OnConnected(const Rfb::ServerInit& serverInit) override;
@@ -88,6 +109,8 @@ namespace Marconi
             void OnDesktopResized(int width, int height) override;
             void OnScreenLayout(const std::vector<Rfb::Screen>& screens) override;
             void OnCursorShape(const CursorShape& cursor) override;
+            void OnServerCutText(const std::string& latin1Text) override;
+            void OnServerClipboard(const Rfb::ClipboardContent& content) override;
             void OnDisconnected(const DisconnectInfo& info) override;
             bool OnCredentialsRequired(Rfb::CredentialsKind kind, Rfb::Credentials& inOutCredentials) override;
             bool OnUntrustedCertificate(const Net::TlsCertificate& certificate) override;
@@ -105,7 +128,14 @@ namespace Marconi
             std::vector<Rfb::Screen> m_screens;
             int m_credentialsAsked = 0;
             uint64_t m_updates = 0;
+            bool m_needPicture = true; // no pixels since connecting or the last resize
+            // The areas the most recent updates changed, each with its update's number (m_updates after it).
+            std::vector<std::pair<uint64_t, Rfb::Rect>> m_recentRects;
+            std::string m_clipboard;
+            bool m_clipboardReceived = false;
+            uint64_t m_clipboardUpdates = 0;
             std::chrono::steady_clock::time_point m_lastUpdate;
+            std::chrono::steady_clock::time_point m_lastInput;
             CursorShape m_cursor;
             bool m_pointerKnown = false;
             int m_pointerX = 0;

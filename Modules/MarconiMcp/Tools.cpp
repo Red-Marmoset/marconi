@@ -6,6 +6,7 @@
 #include <MarconiMcp/Base64.h>
 #include <MarconiMcp/Picture.h>
 #include <MarconiMcp/Png.h>
+#include <MarconiMcp/ToolArguments.h>
 
 #include <Log/Log.h>
 
@@ -22,68 +23,6 @@ namespace Marconi
     {
         namespace
         {
-            // A bad argument: reported to the AI as a failed tool call.
-            struct ArgumentError
-            {
-                std::string message;
-            };
-
-            int GetInt(const nlohmann::json& arguments, const char* key, int fallback, int minimum, int maximum)
-            {
-                if (!arguments.contains(key) || arguments[key].is_null())
-                {
-                    return fallback;
-                }
-                const nlohmann::json& value = arguments[key];
-                if (!value.is_number())
-                {
-                    throw ArgumentError{std::string(key) + " must be a number."};
-                }
-                const double number = value.get<double>();
-                if (number < minimum || number > maximum)
-                {
-                    throw ArgumentError{std::string(key) + " must be between " + std::to_string(minimum) + " and " +
-                                        std::to_string(maximum) + "."};
-                }
-                return static_cast<int>(number);
-            }
-
-            std::string GetString(const nlohmann::json& arguments, const char* key, bool required)
-            {
-                if (!arguments.contains(key) || arguments[key].is_null())
-                {
-                    if (required)
-                    {
-                        throw ArgumentError{std::string(key) + " is needed."};
-                    }
-                    return std::string();
-                }
-                if (!arguments[key].is_string())
-                {
-                    throw ArgumentError{std::string(key) + " must be text."};
-                }
-                return arguments[key].get<std::string>();
-            }
-
-            nlohmann::json Property(const char* type, const char* description)
-            {
-                return {{"type", type}, {"description", description}};
-            }
-
-            nlohmann::json ObjectSchema(nlohmann::json properties, std::vector<std::string> required = {})
-            {
-                nlohmann::json schema = {{"type", "object"}, {"additionalProperties", false}};
-                if (!properties.empty())
-                {
-                    schema["properties"] = std::move(properties);
-                }
-                if (!required.empty())
-                {
-                    schema["required"] = required;
-                }
-                return schema;
-            }
-
             std::string DescribeScreens(const ConnectionFacts& facts)
             {
                 std::ostringstream text;
@@ -191,6 +130,8 @@ namespace Marconi
             screenshot.readOnly = true;
             tools.push_back(screenshot);
 
+            AddInputTools(tools);
+
             if (m_options.readOnly)
             {
                 tools.erase(std::remove_if(tools.begin(), tools.end(),
@@ -226,7 +167,7 @@ namespace Marconi
                 {
                     out = Screenshot(arguments);
                 }
-                else
+                else if (!CallInputTool(name, arguments, out))
                 {
                     return false;
                 }
@@ -334,6 +275,13 @@ namespace Marconi
             const int settleMs = GetInt(arguments, "settle_ms", 300, 0, 5000);
             const long long maxPixels = maxSide > kDefaultMaxSide ? kLargestMaxPixels : kDefaultMaxPixels;
 
+            const bool havePicture = m_connection.EnsurePicture(std::chrono::milliseconds(3000));
+            // Ask for the whole desktop every time: some servers stop reporting changes, and a stale picture
+            // would mislead the AI about what its last action did.
+            if (havePicture)
+            {
+                m_connection.RefreshPicture(std::chrono::milliseconds(1500));
+            }
             // A screen that never stops changing (a clock, a video) is taken anyway after a while.
             const bool settled = m_connection.WaitUntilQuiet(std::chrono::milliseconds(settleMs),
                                                              std::chrono::milliseconds(std::max(2000, settleMs * 2)));
@@ -413,7 +361,11 @@ namespace Marconi
                 text << " (each picture pixel is " << scale << " desktop pixels)";
             }
             text << ". Mouse coordinates are in this picture's pixels.";
-            if (!settled)
+            if (!havePicture)
+            {
+                text << " The computer hasn't sent a picture yet, so this may be blank; try again in a moment.";
+            }
+            else if (!settled)
             {
                 text << " The screen was still changing when this was taken.";
             }

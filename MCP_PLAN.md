@@ -21,6 +21,14 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   `Mcp/Project.json`, and `Tests/MarconiCoreTest/McpTests.cpp` (all pass). Checked by hand: Claude Code 2.1.323,
   given MarconiMcp with `--mcp-config`, connected to `Tools/fake_vnc_server.py`, took a screenshot and described it
   correctly. Not yet built on Windows. Logging to a file (section 3.3) moved to Phase 2.
+- **Phase 2** written and tested 2026-11-13 (same branch): `click`, `move`, `drag`, `scroll`, `type_text`, `key`,
+  `get_clipboard`, `set_clipboard`, `wait_for_change`, `--read-only`, the log file, and the README section.
+  MarconiCoreTest checks the exact pointer, key and clipboard messages each tool sends (all pass). By hand,
+  Claude Code clicked into a terminal on x11vnc (Xvfb, this machine only) and typed commands that ran, while a
+  Marconi viewer on a second, view-only port watched. Two things found on the way (findings 10 and 11): screenshots
+  now wait for the screen's answer to input and ask for the whole desktop each time, and x11vnc stops sending
+  Marconi pictures because of a loop in `Rfb::Client` (section 7, decision 4). Phase 2's check is complete except
+  for "Claude sees its own result in the screenshot" on x11vnc, which waits on that decision.
 
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
@@ -157,8 +165,12 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
 - **Scaling:** by default a screenshot fits within 1568 pixels on each side and 1.15 megapixels, which every current
   Claude model takes as it is; `max_size` allows up to 2576 for models that take more (finding 4). Scaling is an
   area average (sharper text than nearest-pixel). The scale is kept so the input tools convert back.
-- **Settling:** before taking the picture, wait until no update has arrived for `settle_ms` (default 300), up to 2
-  seconds (or twice `settle_ms`); the text item says if it gave up waiting.
+- **A current picture:** until the first picture after connecting or a resize, ask for the whole desktop again
+  every 700 ms (as the viewer does, up to 3 s). Then every screenshot asks for the whole desktop and waits up to
+  1.5 s for it, so it's current even on a server that has stopped reporting changes (finding 10).
+- **Settling:** before taking the picture, wait until nothing has happened for `settle_ms` (default 300), counted
+  from the last picture update or the last input sent, whichever is later (straight after a click the screen hasn't
+  answered yet); up to 2 seconds (or twice `settle_ms`). The text item says if it gave up waiting.
 - **Cursor:** drawn into the screenshot from the last `OnCursorShape` and the last pointer position we sent.
 - **PNG:** 8-bit RGB, zlib `deflate` at a fast level, row filter "sub"; tested by decoding with stb_image.
 - **Mouse:** the VNC button mask: 1 left, 2 middle, 4 right, 8/16 wheel up/down, 32/64 wheel left/right. A click
@@ -372,13 +384,37 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
 9. **The engine's packaging signs only the main program** (`PackageProject.ps1` signs `<name>.exe`, then the
    uninstaller and Setup). A second program would ship unsigned, so Phase 5 starts with an engine change.
 
+10. **x11vnc and Marconi loop on desktop-size notices** (seen 2026-11-13 with x11vnc 0.9.16 on Xvfb, by the viewer
+    as well as MarconiMcp). `Rfb::Client` treats every ExtendedDesktopSize rectangle as a resize, even when the size
+    is unchanged: it sends SetPixelFormat again and asks for the whole desktop (`Client.cpp`, the `resized` flag).
+    x11vnc answers that request with another ExtendedDesktopSize, so the two loop (about 48 updates a second with
+    no pixels in the viewer's own log). After the first picture x11vnc then sends no more pixels to that
+    connection, and a second connection after the first ends gets none at all, while input still works. A minimal
+    client of our own that doesn't resend its pixel format always got pictures, with or without ExtendedDesktopSize
+    and the extended clipboard. The same behaviour explains the occasional `DesktopSizeTests` failure (the
+    SetPixelFormat and update request can arrive before the SetDesktopSize the test reads). The pixel-format resend
+    is there for macOS switching display modes (its comment); whether macOS needs it when the size doesn't change
+    can't be checked here. Decision 4 in section 7.
+11. **The viewer's log folder on Linux is `~/.marconi/logs`**, not `~/.local/share/marconi/logs` as the comment in
+    `MarconiApp.cpp` says: wxWidgets' XDG file layout only moves the settings file (`GetUserLocalDataDir` is
+    `~/.<app name>` in `src/unix/stdpaths.cpp`), and a real run wrote its logs and snapshots there. MarconiMcp logs
+    beside them; the comment is left as it is for now.
+
 Still open (none blocks Phase 1): what Claude Code does with an oversized image from an MCP server; whether the
 Codex desktop app brings a `codex` command; the exact file npm installs for each tool on Windows; which MCP
 revision Codex and Claude Desktop use; where Claude Desktop installs on Windows.
 
 ## 7. Decisions needed from the owner
 
-None open. Answered 2026-11-13:
+4. **Open: the desktop-size loop (finding 10).** It's in the VNC client, so it affects the viewer too.
+   - (a) Recommended: treat an ExtendedDesktopSize rectangle as a resize only when the size changed. The loop stops;
+     the risk is a macOS display-mode switch that keeps the size but forgets our pixel format, which can't be
+     checked without a Mac.
+   - (b) As (a), but still resend the pixel format (without asking for the whole desktop) when the size is
+     unchanged. Keeps the macOS safety net; whether x11vnc still drops pictures after a SetPixelFormat needs a try.
+   - (c) Leave the client alone; MarconiMcp (and the viewer) stay unreliable on x11vnc.
+
+Answered 2026-11-13:
 
 1. **Registering when installing for everyone:** Setup starts `MarconiMcp --register ...` as the signed-in user
    (ShellExecAsUser, as "Start Marconi now" does), and MarconiMcp shows its own message only if registering fails.

@@ -5,11 +5,13 @@
 
 #include <MarconiMcp/Base64.h>
 #include <MarconiMcp/Connection.h>
+#include <MarconiMcp/Input.h>
 #include <MarconiMcp/Picture.h>
 #include <MarconiMcp/Png.h>
 #include <MarconiMcp/Protocol.h>
 #include <MarconiMcp/Tools.h>
 
+#include <MarconiCore/Keysyms.h>
 #include <MarconiCore/Rfb/Messages.h>
 
 #include <zlib.h>
@@ -192,6 +194,112 @@ namespace MarconiTest
         {
             out.U16(static_cast<uint16_t>(x)).U16(static_cast<uint16_t>(y));
             out.U16(static_cast<uint16_t>(w)).U16(static_cast<uint16_t>(h)).S32(encoding);
+        }
+
+        // A MarconiTools connected to a fake VNC server of the given size.
+        struct ConnectedTools
+        {
+            FakeServer server;
+            Mcp::MarconiTools tools{Mcp::ToolOptions{}};
+
+            ConnectedTools(int width, int height)
+            {
+                Mcp::ToolResult result;
+                std::thread connecting([&]() {
+                    tools.CallTool("connect", {{"address", "127.0.0.1::" + std::to_string(server.GetPort())}}, result);
+                });
+                const bool accepted = server.AcceptClient();
+                if (accepted)
+                {
+                    server.HandshakeNone("RFB 003.008\n", width, height, "fake desktop");
+                    server.ReadClientSetup();
+                }
+                connecting.join();
+                if (!accepted || result.isError)
+                {
+                    throw std::runtime_error("couldn't connect to the fake server");
+                }
+            }
+
+            // Paints the desktop one colour, so a screenshot can be taken.
+            void Paint(int width, int height)
+            {
+                Rfb::OutBuffer update;
+                update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+                RectHeader(update, 0, 0, width, height, Rfb::Encoding::Raw);
+                const uint32_t grey = 0x00808080u;
+                for (int i = 0; i < width * height; ++i)
+                {
+                    update.Append(&grey, 4);
+                }
+                server.Send(update);
+            }
+
+            Mcp::ToolResult Call(const std::string& name, const json& arguments = json::object())
+            {
+                Mcp::ToolResult result;
+                CHECK(tools.CallTool(name, arguments, result));
+                return result;
+            }
+        };
+
+        // What the client sent, in order: pointer events as {'P', mask, x, y}, key events as {'K', down, keysym, 0},
+        // cut text as {'C', length, 0, 0} with the text in `cutText`. Update requests are skipped.
+        struct Event
+        {
+            char kind = 0;
+            uint32_t a = 0;
+            uint32_t b = 0;
+            uint32_t c = 0;
+        };
+
+        std::vector<Event> ReadEvents(FakeServer& server, size_t count, std::string* cutText = nullptr)
+        {
+            std::vector<Event> events;
+            while (events.size() < count)
+            {
+                const uint8_t type = server.In().U8();
+                if (type == Rfb::ClientMessage::FramebufferUpdateRequest)
+                {
+                    server.In().Skip(9);
+                }
+                else if (type == Rfb::ClientMessage::PointerEvent)
+                {
+                    Event event;
+                    event.kind = 'P';
+                    event.a = server.In().U8();
+                    event.b = server.In().U16();
+                    event.c = server.In().U16();
+                    events.push_back(event);
+                }
+                else if (type == Rfb::ClientMessage::KeyEvent)
+                {
+                    Event event;
+                    event.kind = 'K';
+                    event.a = server.In().U8();
+                    server.In().Skip(2);
+                    event.b = server.In().U32();
+                    events.push_back(event);
+                }
+                else if (type == Rfb::ClientMessage::ClientCutText)
+                {
+                    server.In().Skip(3);
+                    Event event;
+                    event.kind = 'C';
+                    event.a = server.In().U32();
+                    const std::string text = server.In().ReadString(event.a);
+                    if (cutText)
+                    {
+                        *cutText = text;
+                    }
+                    events.push_back(event);
+                }
+                else
+                {
+                    throw std::runtime_error("unexpected client message " + std::to_string(type));
+                }
+            }
+            return events;
         }
     } // namespace
 
@@ -514,6 +622,252 @@ namespace MarconiTest
             CHECK(tools.CallTool("connect", {{"address", "127.0.0.1::1"}}, result));
             CHECK(result.isError);
             CHECK(result.content[0]["text"].get<std::string>().find("Couldn't connect") == 0);
+        });
+
+        RunTest("MCP: key names and combinations", []() {
+            CHECK(Mcp::KeysymForName("Return") == Keysym::Return);
+            CHECK(Mcp::KeysymForName("ENTER") == Keysym::Return);
+            CHECK(Mcp::KeysymForName("page-down") == Keysym::PageDown);
+            CHECK(Mcp::KeysymForName("F12") == Keysym::F1 + 11);
+            CHECK(Mcp::KeysymForName("F25") == 0);
+            CHECK(Mcp::KeysymForName("a") == 'a');
+            CHECK(Mcp::KeysymForName("A") == 'A');
+            CHECK(Mcp::KeysymForName("\xc3\xa9") == 0xe9);         // é, Latin-1
+            CHECK(Mcp::KeysymForName("\xe2\x82\xac") == 0x10020ac); // €, through the Unicode range
+            CHECK(Mcp::KeysymForName("cmd") == Keysym::Super_L);
+            CHECK(Mcp::KeysymForName("nonsense") == 0);
+
+            std::vector<uint32_t> held;
+            uint32_t key = 0;
+            std::string error;
+            CHECK(Mcp::ParseKeyCombination("ctrl+alt+Delete", held, key, error));
+            CHECK(held == std::vector<uint32_t>({Keysym::Control_L, Keysym::Alt_L}) && key == Keysym::Delete);
+            CHECK(Mcp::ParseKeyCombination("ctrl++", held, key, error));
+            CHECK(held == std::vector<uint32_t>({Keysym::Control_L}) && key == '+');
+            CHECK(Mcp::ParseKeyCombination(" cmd + space ", held, key, error));
+            CHECK(held == std::vector<uint32_t>({Keysym::Super_L}) && key == ' ');
+            CHECK(Mcp::ParseKeyCombination("shift", held, key, error));
+            CHECK(held.empty() && key == Keysym::Shift_L);
+            CHECK(!Mcp::ParseKeyCombination("ctrl+banana", held, key, error));
+            CHECK(error.find("banana") != std::string::npos);
+            CHECK(!Mcp::ParseKeyCombination("", held, key, error));
+        });
+
+        RunTest("MCP: text becomes key presses", []() {
+            std::vector<uint32_t> keysyms;
+            std::string error;
+            CHECK(Mcp::KeysymsForText("Hi\r\n\tx\n", keysyms, error));
+            CHECK(keysyms == std::vector<uint32_t>({'H', 'i', Keysym::Return, Keysym::Tab, 'x', Keysym::Return}));
+            CHECK(Mcp::KeysymsForText("\xc3\xa9\xe2\x82\xac", keysyms, error));
+            CHECK(keysyms == std::vector<uint32_t>({0xe9, 0x10020ac}));
+            CHECK(!Mcp::KeysymsForText("bad \xc3", keysyms, error));
+            CHECK(!Mcp::KeysymsForText("bell \x07", keysyms, error));
+        });
+
+        RunTest("MCP: screenshot coordinates map back to the desktop", []() {
+            Mcp::ScreenshotView view;
+            int x = 0;
+            int y = 0;
+            std::string error;
+            // No screenshot yet: desktop pixels.
+            CHECK(Mcp::ToDesktop(view, 1920, 1080, 100, 200, x, y, error) && x == 100 && y == 200);
+            CHECK(!Mcp::ToDesktop(view, 1920, 1080, 1920, 0, x, y, error));
+
+            // The whole 1920x1080 desktop shown at 960x540: each picture pixel is two desktop pixels.
+            view.valid = true;
+            view.areaWidth = 1920;
+            view.areaHeight = 1080;
+            view.width = 960;
+            view.height = 540;
+            CHECK(Mcp::ToDesktop(view, 1920, 1080, 0, 0, x, y, error) && x == 1 && y == 1);
+            CHECK(Mcp::ToDesktop(view, 1920, 1080, 959, 539, x, y, error) && x == 1919 && y == 1079);
+            CHECK(!Mcp::ToDesktop(view, 1920, 1080, 960, 0, x, y, error));
+
+            // An area at full size: offsets only.
+            view.areaX = 100;
+            view.areaY = 50;
+            view.areaWidth = 200;
+            view.areaHeight = 100;
+            view.width = 200;
+            view.height = 100;
+            CHECK(Mcp::ToDesktop(view, 1920, 1080, 10, 20, x, y, error) && x == 110 && y == 70);
+        });
+
+        RunTest("MCP: clicks, drags and scrolls send the right pointer events", []() {
+            ConnectedTools s(400, 200);
+            s.Paint(400, 200);
+            Mcp::ToolResult shot = s.Call("screenshot", {{"settle_ms", 20}});
+            CHECK(!shot.isError);
+
+            CHECK(!s.Call("click", {{"x", 10}, {"y", 20}}).isError);
+            std::vector<Event> events = ReadEvents(s.server, 3);
+            CHECK(events[0].kind == 'P' && events[0].a == 0 && events[0].b == 10 && events[0].c == 20);
+            CHECK(events[1].kind == 'P' && events[1].a == 1);
+            CHECK(events[2].kind == 'P' && events[2].a == 0);
+
+            CHECK(!s.Call("click", {{"x", 5}, {"y", 5}, {"button", "right"}, {"count", 2}}).isError);
+            events = ReadEvents(s.server, 5);
+            CHECK(events[1].a == 4 && events[2].a == 0 && events[3].a == 4 && events[4].a == 0);
+
+            CHECK(!s.Call("click", {{"x", 1}, {"y", 1}, {"modifiers", {"shift"}}}).isError);
+            events = ReadEvents(s.server, 5);
+            CHECK(events[1].kind == 'K' && events[1].a == 1 && events[1].b == Keysym::Shift_L);
+            CHECK(events[2].kind == 'P' && events[2].a == 1);
+            CHECK(events[4].kind == 'K' && events[4].a == 0 && events[4].b == Keysym::Shift_L);
+
+            CHECK(!s.Call("scroll", {{"x", 50}, {"y", 60}, {"direction", "down"}, {"amount", 2}}).isError);
+            events = ReadEvents(s.server, 5);
+            CHECK(events[1].a == 16 && events[2].a == 0 && events[3].a == 16 && events[4].a == 0);
+
+            CHECK(!s.Call("drag", {{"from_x", 0}, {"from_y", 0}, {"to_x", 100}, {"to_y", 50}}).isError);
+            events = ReadEvents(s.server, 13); // move, press, ten steps held, release
+            CHECK(events[1].a == 1 && events[1].b == 0);
+            CHECK(events[11].a == 1 && events[11].b == 100 && events[11].c == 50);
+            CHECK(events[12].a == 0 && events[12].b == 100);
+
+            // Outside the screenshot: refused, nothing sent.
+            Mcp::ToolResult outside = s.Call("click", {{"x", 400}, {"y", 0}});
+            CHECK(outside.isError);
+
+            // A bad button or direction says what's allowed.
+            CHECK(s.Call("click", {{"x", 1}, {"y", 1}, {"button", "fourth"}}).isError);
+            CHECK(s.Call("scroll", {{"x", 1}, {"y", 1}, {"direction", "sideways"}}).isError);
+        });
+
+        RunTest("MCP: typing and key combinations send the right key events", []() {
+            ConnectedTools s(100, 100);
+            CHECK(!s.Call("type_text", {{"text", "Ab\n"}}).isError);
+            std::vector<Event> events = ReadEvents(s.server, 6);
+            CHECK(events[0].kind == 'K' && events[0].a == 1 && events[0].b == 'A');
+            CHECK(events[1].a == 0 && events[1].b == 'A');
+            CHECK(events[2].b == 'b' && events[4].b == Keysym::Return);
+
+            CHECK(!s.Call("key", {{"keys", "ctrl+c"}}).isError);
+            events = ReadEvents(s.server, 4);
+            CHECK(events[0].a == 1 && events[0].b == Keysym::Control_L);
+            CHECK(events[1].a == 1 && events[1].b == 'c');
+            CHECK(events[2].a == 0 && events[2].b == 'c');
+            CHECK(events[3].a == 0 && events[3].b == Keysym::Control_L);
+
+            CHECK(!s.Call("key", {{"keys", "Tab"}, {"repeat", 3}}).isError);
+            events = ReadEvents(s.server, 6);
+            CHECK(events[4].a == 1 && events[4].b == Keysym::Tab);
+
+            CHECK(s.Call("key", {{"keys", "ctrl+nothing"}}).isError);
+            CHECK(s.Call("type_text", {{"text", "\x07"}}).isError);
+        });
+
+        RunTest("MCP: the clipboard on a plain VNC server", []() {
+            ConnectedTools s(100, 100);
+            Mcp::ToolResult result = s.Call("get_clipboard");
+            CHECK(!result.isError);
+            CHECK(result.content[0]["text"].get<std::string>().find("hasn't shared") != std::string::npos);
+
+            // The server's clipboard arrives (Latin-1 on the wire) and is read back as UTF-8.
+            Rfb::OutBuffer cut;
+            const std::string latin1 = "caf\xe9";
+            cut.U8(Rfb::ServerMessage::ServerCutText).Padding(3).U32(static_cast<uint32_t>(latin1.size()));
+            cut.Append(latin1.data(), latin1.size());
+            s.server.Send(cut);
+            for (int i = 0; i < 100; ++i)
+            {
+                result = s.Call("get_clipboard");
+                if (result.content[0]["text"] == "caf\xc3\xa9")
+                {
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            CHECK(result.content[0]["text"] == "caf\xc3\xa9");
+
+            // Setting it sends cut text; characters outside Latin-1 are said to be lost.
+            std::string sent;
+            result = s.Call("set_clipboard", {{"text", "price \xe2\x82\xac" "5"}});
+            CHECK(!result.isError);
+            ReadEvents(s.server, 1, &sent);
+            CHECK(sent == "price ?5");
+            CHECK(result.content[0]["text"].get<std::string>().find("Western European") != std::string::npos);
+        });
+
+        RunTest("MCP: waiting for the screen to change", []() {
+            ConnectedTools s(100, 100);
+            Mcp::ToolResult result = s.Call("wait_for_change", {{"timeout_ms", 100}});
+            CHECK(!result.isError && result.content[0]["text"] == "No change in 100 ms.");
+
+            std::thread painter([&]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                s.Paint(100, 100);
+            });
+            result = s.Call("wait_for_change", {{"timeout_ms", 5000}});
+            painter.join();
+            CHECK(result.content[0]["text"].get<std::string>().find("The screen changed") == 0);
+
+            // A change elsewhere doesn't count when an area is given.
+            Mcp::ToolResult shot = s.Call("screenshot", {{"settle_ms", 20}});
+            CHECK(!shot.isError);
+            std::thread corner([&]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                Rfb::OutBuffer update;
+                update.U8(Rfb::ServerMessage::FramebufferUpdate).Padding(1).U16(1);
+                RectHeader(update, 0, 0, 1, 1, Rfb::Encoding::Raw);
+                const uint32_t white = 0x00ffffffu;
+                update.Append(&white, 4);
+                s.server.Send(update);
+            });
+            result = s.Call("wait_for_change",
+                            {{"timeout_ms", 300}, {"area", {{"x", 50}, {"y", 50}, {"width", 10}, {"height", 10}}}});
+            corner.join();
+            CHECK(result.content[0]["text"] == "No change in 300 ms.");
+        });
+
+        RunTest("MCP: a screenshot straight after input waits for the screen to answer", []() {
+            ConnectedTools s(100, 100);
+            s.Paint(100, 100);
+            CHECK(!s.Call("screenshot", {{"settle_ms", 20}}).isError);
+            std::this_thread::sleep_for(std::chrono::milliseconds(300)); // the picture has long been still
+
+            CHECK(!s.Call("key", {{"keys", "a"}}).isError);
+            const auto start = std::chrono::steady_clock::now();
+            CHECK(!s.Call("screenshot", {{"settle_ms", 200}}).isError);
+            const long long waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         std::chrono::steady_clock::now() - start)
+                                         .count();
+            CHECK(waited >= 180); // quiet is counted from the key press, not from the last picture
+        });
+
+        RunTest("MCP: no picture after connecting: the whole desktop is asked for again", []() {
+            // Like x11vnc: the first request gets no pixels, and nothing changes on screen, so only asking again
+            // brings the picture.
+            ConnectedTools s(4, 2);
+            Mcp::ToolResult shot;
+            std::thread taking([&]() { shot = s.Call("screenshot", {{"settle_ms", 20}}); });
+            const uint8_t type = s.server.In().U8();
+            const uint8_t incremental = s.server.In().U8();
+            s.server.In().Skip(8);
+            CHECK(type == Rfb::ClientMessage::FramebufferUpdateRequest && incremental == 0);
+            s.Paint(4, 2);
+            taking.join();
+            CHECK(!shot.isError);
+            Mcp::Picture picture;
+            CHECK(DecodePng(Base64Decode(shot.content[0]["data"].get<std::string>()), picture));
+            CHECK(picture.width == 4 && picture.pixels[0] == 0x00808080u);
+            CHECK(shot.content[1]["text"].get<std::string>().find("hasn't sent a picture") == std::string::npos);
+        });
+
+        RunTest("MCP: read-only offers no tools that change things", []() {
+            Mcp::ToolOptions options;
+            options.readOnly = true;
+            Mcp::MarconiTools tools(options);
+            std::vector<std::string> names;
+            for (const Mcp::ToolDefinition& tool : tools.ListTools())
+            {
+                names.push_back(tool.name);
+            }
+            CHECK(names == std::vector<std::string>({"connect", "disconnect", "status", "screenshot", "get_clipboard",
+                                                     "wait_for_change"}));
+            Mcp::ToolResult result;
+            CHECK(!tools.CallTool("click", {{"x", 1}, {"y", 1}}, result));
+            CHECK(!tools.CallTool("type_text", {{"text", "x"}}, result));
         });
     }
 } // namespace MarconiTest

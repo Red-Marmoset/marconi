@@ -229,6 +229,24 @@ keeps its settings and a log in a "marconi-server" folder in your user account.
 Right now the server shows this computer's actual screen on Windows; on macOS and Linux it shows a moving test
 picture for the moment, while the screen-sharing part for those systems is finished.
 
+## Letting AI tools use another computer (in progress)
+
+**MarconiMcp** lets AI coding tools such as Claude Code connect to a computer through Marconi, look at its screen,
+and use its mouse, keyboard and clipboard. You can watch what it does by connecting to the same computer with
+Marconi as usual.
+
+It isn't in the installers yet, so for now you build it and tell your AI tool about it by hand:
+
+    ./Build.sh Mcp/Project.json                     # macOS and Linux -> Build/MarconiMcp/Release/MarconiMcp
+    .\Build.ps1 -Project Mcp\Project.json           # Windows        -> Build\MarconiMcp\Release\MarconiMcp.exe
+    claude mcp add --scope user marconi -- /full/path/to/MarconiMcp
+
+Then ask the AI tool to connect to a computer by its address, as you would type it in Marconi. If the computer needs
+a password, set it in the `MARCONI_PASSWORD` environment variable for the program (for Claude Code:
+`claude mcp add --scope user marconi -e MARCONI_PASSWORD=... -- /full/path/to/MarconiMcp`), so it isn't typed
+into the conversation. Start it with `--read-only` to let the AI look but not touch. It keeps a log beside
+Marconi's own.
+
 ## Keeping Marconi up to date
 
 When Marconi starts it asks GitHub whether a newer version has been released (it sends nothing about you; GitHub
