@@ -234,6 +234,12 @@ namespace Marconi
                     LOG_INFO("Server", "Login locked out for %d seconds", retryAfterSeconds);
                 }
             }
+            if (result.status == Wire::LoginResult::Status::Ok)
+            {
+                // Start counting before the viewer is told it is in, so it can't be idle for longer than the time it
+                // has really been in (and the count can't start later than something the viewer does next).
+                m_idle.Touch();
+            }
             if (!Send(result.Encode()) || result.status != Wire::LoginResult::Status::Ok)
             {
                 return false; // the viewer isn't allowed in (or the connection failed)
@@ -813,7 +819,6 @@ namespace Marconi
             {
                 m_notifier->Notify({ConnectionEvent::Connected, GetViewerName(), m_peerAddress});
             }
-            m_idle.Touch(); // the time spent logging in doesn't count against the viewer
             m_files = std::make_unique<FileService>(m_settings.filesEnabled, m_settings.fileRoot,
                                                     [this](const Wire::Bytes& framed) { return Send(framed); });
             std::thread input([this, &reader]() { RunInputLoop(reader); });
