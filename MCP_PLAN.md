@@ -66,6 +66,12 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   thread. Placed in Settings rather than the menus (the plan asked to show the owner first: easy to move). Checked
   on Linux under Xvfb with the real Claude Code and Codex: both found, added, shown as "Can use Marconi", removed.
 
+- **Phase 7 done** 2026-11-13 (0.11.2): the Linux package has `/usr/bin/marconi-mcp` and
+  `/usr/share/marconi/Apps.json` (dpkg-shlibdeps covers both programs). Built with `Package.sh` here, installed with
+  apt: `marconi-mcp --status` found Claude Code and Codex, `--register claude-code` added `/usr/bin/marconi-mcp`, and
+  `claude mcp get` reported it connected. `Package.sh` also puts MarconiMcp in `Marconi.app/Contents/MacOS` (signed
+  before the app, without `--deep`) and `Apps.json` in `Contents/Resources` for Phase 9; that part needs a Mac.
+
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
 1. **MCP is the way in.** Claude's "connectors" are MCP servers, and Claude Code, Codex and Claude Desktop all take

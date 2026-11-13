@@ -69,7 +69,8 @@ it before working on that, follow its phases in order, and keep it current.
   `Build/Installer/Marconi-<version>-macos-<arch>.dmg`. BuildTool itself makes a bare executable, not a bundle.
 - **Linux package:** `./Package.sh` on Linux builds Release and makes a Debian package,
   `Build/Installer/Marconi-<version>-linux-<arch>.deb`: the app as `/usr/bin/marconi`,
-  `Installer/Linux/marconi.desktop`, the icons from `Installer/Linux/icons` (also made by `make_app_icon.py`), the
+  `/usr/bin/marconi-mcp` (MarconiMcp) with `Apps.json` in `/usr/share/marconi`, `Installer/Linux/marconi.desktop`, the
+  icons from `Installer/Linux/icons` (also made by `make_app_icon.py`), the
   fonts in `/usr/share/marconi`. Its dependencies come from `dpkg-shlibdeps` (package `dpkg-dev`); its maintainer
   is the owner's address in `Package.sh` unless `MARCONI_DEB_MAINTAINER` overrides it.
 - **Android app package:** `Package.ps1` and `Package.sh` end by running `Apps/Android/Package.ps1` or `.sh`, which
