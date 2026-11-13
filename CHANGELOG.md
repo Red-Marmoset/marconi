@@ -5,6 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server shares the clipboard (text and pictures) with the viewer, both ways.
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.

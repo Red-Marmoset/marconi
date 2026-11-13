@@ -12,6 +12,10 @@
 #include <MarconiServerCore/TestPatternScreen.h>
 
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
 #include <memory>
 #include <thread>
 
@@ -154,8 +158,140 @@ namespace MarconiServerTest
         };
     } // namespace
 
+    namespace
+    {
+        // The live check against a real server on an X display, run by hand: start Xvfb and `MarconiServer --port N`
+        // on it, then run this test program with MARCONI_LIVE_PORT=N, MARCONI_LIVE_TMP=<a scratch folder> and DISPLAY
+        // set to that display. It drives the display's clipboard with xclip and checks what the viewer sees.
+        std::string Run(const std::string& command)
+        {
+            std::string out;
+            FILE* pipe = popen(command.c_str(), "r");
+            if (pipe == nullptr)
+            {
+                return out;
+            }
+            char buffer[4096];
+            size_t n;
+            while ((n = fread(buffer, 1, sizeof(buffer), pipe)) > 0)
+            {
+                out.append(buffer, n);
+            }
+            pclose(pipe);
+            return out;
+        }
+
+        void WriteFile(const std::string& path, const std::string& data)
+        {
+            std::ofstream file(path, std::ios::binary);
+            file.write(data.data(), static_cast<std::streamsize>(data.size()));
+        }
+
+        void RunLiveCheck(const char* portText, const std::string& tmp)
+        {
+            RunTest("Live: the real X11 clipboard and a viewer exchange text and images through the server", [&]() {
+                RecordingClientListener listener;
+                Wire::Client client(listener);
+                Wire::ClientOptions options;
+                options.host = "127.0.0.1";
+                options.port = static_cast<uint16_t>(std::atoi(portText));
+                options.clientName = "live clipboard check";
+                client.Connect(options);
+                CHECK(listener.WaitFor([&]() { return listener.connected; }, 10000));
+                CHECK(client.HasExtendedClipboard());
+                auto delivered = [&]() {
+                    std::lock_guard<std::mutex> lock(listener.mutex);
+                    return listener.clipboards.size();
+                };
+                auto last = [&]() {
+                    std::lock_guard<std::mutex> lock(listener.mutex);
+                    return listener.clipboards.back();
+                };
+
+                // 1. Text copied in a program on the server arrives by itself.
+                const std::string first = "From a program on the server \xC3\xA9 \xE2\x82\xAC\nsecond line";
+                WriteFile(tmp + "/a.txt", first);
+                Run("xclip -selection clipboard -i " + tmp + "/a.txt > /dev/null 2>&1");
+                CHECK(WaitUntil([&]() { return delivered() >= 1; }, 5000));
+                CHECK(delivered() >= 1 && last().utf8Text == first);
+                std::printf("  1. text server -> viewer: %s\n", delivered() >= 1 && last().utf8Text == first ? "ok" : "FAILED");
+
+                // 2. Asking for it (the Get menu action) gives it again.
+                size_t before = delivered();
+                CHECK(client.RequestServerClipboard());
+                CHECK(WaitUntil([&]() { return delivered() > before; }, 5000));
+                CHECK(delivered() > before && last().utf8Text == first);
+                std::printf("  2. get: %s\n", delivered() > before ? "ok" : "FAILED");
+
+                // 3. Text from the viewer can be pasted in a program on the server.
+                Rfb::ClipboardContent content;
+                content.utf8Text = "Pasted from the viewer \xE2\x82\xAC";
+                before = delivered();
+                CHECK(client.OfferClipboard(content));
+                bool text = WaitUntil([&]() { return Run("xclip -selection clipboard -o") == content.utf8Text; }, 5000);
+                CHECK(text);
+                Settle();
+                CHECK(delivered() == before); // not echoed back
+                std::printf("  3. text viewer -> server: %s (clipboards seen %zu, none echoed: %s)\n", text ? "ok" : "FAILED",
+                            delivered(), delivered() == before ? "yes" : "NO");
+
+                // 4. An image copied on the server arrives as a bitmap.
+                Wire::Bytes dib = MakeDib(37, 23, 11);
+                Wire::Bytes png;
+                CHECK(Wire::DibToPng(dib, png));
+                WriteFile(tmp + "/a.png", std::string(png.begin(), png.end()));
+                before = delivered();
+                Run("xclip -selection clipboard -t image/png -i " + tmp + "/a.png > /dev/null 2>&1");
+                CHECK(WaitUntil([&]() { return delivered() > before; }, 5000));
+                bool imageIn = delivered() > before && last().dib == dib;
+                CHECK(imageIn);
+                std::printf("  4. image server -> viewer: %s\n", imageIn ? "ok" : "FAILED");
+
+                // 5. An image from the viewer can be pasted on the server.
+                Wire::Bytes dib2 = MakeDib(15, 40, 77);
+                Rfb::ClipboardContent image;
+                image.dib = dib2;
+                CHECK(client.OfferClipboard(image));
+                bool pasted = WaitUntil(
+                    [&]() {
+                        Run("xclip -selection clipboard -t image/png -o > " + tmp + "/b.png");
+                        std::ifstream file(tmp + "/b.png", std::ios::binary);
+                        std::stringstream data;
+                        data << file.rdbuf();
+                        std::string raw = data.str();
+                        Wire::Bytes got(raw.begin(), raw.end());
+                        Wire::Bytes back;
+                        return Wire::PngToDib(got, back) && back == dib2;
+                    },
+                    5000);
+                CHECK(pasted);
+                std::printf("  5. image viewer -> server: %s\n", pasted ? "ok" : "FAILED");
+
+                // 6. A big text (3 MB) copied on the server arrives (xclip sends it in pieces).
+                std::string big(3 * 1024 * 1024, 'q');
+                big += "END";
+                WriteFile(tmp + "/big.txt", big);
+                before = delivered();
+                Run("xclip -selection clipboard -i " + tmp + "/big.txt > /dev/null 2>&1");
+                CHECK(WaitUntil([&]() { return delivered() > before; }, 10000));
+                bool bigOk = delivered() > before && last().utf8Text == big;
+                CHECK(bigOk);
+                std::printf("  6. 3 MB text server -> viewer: %s\n", bigOk ? "ok" : "FAILED");
+
+                client.Disconnect();
+            });
+        }
+    } // namespace
+
     void RunClipboardTests()
     {
+        const char* livePort = std::getenv("MARCONI_LIVE_PORT");
+        const char* liveTmp = std::getenv("MARCONI_LIVE_TMP");
+        if (livePort != nullptr && liveTmp != nullptr)
+        {
+            RunLiveCheck(livePort, liveTmp);
+            return; // the live check is the whole run when asked for
+        }
         RunTest("A DIB becomes a PNG and back without changing a pixel; bad data is refused", []() {
             Wire::Bytes dib = MakeDib(5, 3, 17); // 5 pixels wide: rows are padded to a multiple of four bytes
             Wire::Bytes png;

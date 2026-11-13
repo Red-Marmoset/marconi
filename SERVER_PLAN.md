@@ -492,6 +492,25 @@ Each item is its own step and its own changelog line; they can be pulled forward
 tester needs them.
 
 1. Clipboard text (UTF-8) and images (PNG on the wire; DIB on Windows), the Send and Get menu actions.
+   **Built (Linux tested, Windows not).** The messages were already in the protocol (`ClipboardOffer`, `ClipboardRequest`,
+   `ClipboardData`; text as UTF-8, image as PNG; limits 4 MiB text and 32 MiB PNG, `Wire::kMax...`). Flow as with VNC's
+   extended clipboard: the side whose clipboard changed sends an Offer, the other asks for the formats it offers, the
+   data comes back; a viewer's Get asks for both formats and the server answers with empty data for what it lacks.
+   `ClipboardAccess` (read, write, change handler) is in `MarconiServerCore`, wired into `Session` through
+   `SetClipboard` (the Welcome grants the Clipboard capability only when one is set; `Listener::SetClipboard` passes it
+   on). `Session` tells its own writes from real changes by hashing the content, so nothing is offered back in a loop.
+   `Wire::Client` implements `OfferClipboard`, `RequestServerClipboard` and `OnServerClipboard` (the viewer needed no
+   change); DIB and PNG convert in `Wire/WireImage.*` (24 and 32 bits per pixel).
+   X11 (`ClipboardAccess_Linux.cpp`): the CLIPBOARD selection, XFixes for changes, an event thread to own it and serve
+   pastes, reads on a short connection of their own (INCR handled). Tested against a real Xvfb with xclip: text and
+   image both ways, a 3 MB text, no echo (see `Tests/MarconiServerTest/ClipboardTests.cpp`: run it with
+   `MARCONI_LIVE_PORT`, `MARCONI_LIVE_TMP` and `DISPLAY` set against a running `MarconiServer`).
+   **Not tested:** `ClipboardAccess_Windows.cpp` (never built or run; text CRLF conversion, CF_DIB, the format
+   listener) and the macOS stub (`ClipboardAccess_Mac.cpp` returns none). **Known limits:** serving a paste larger
+   than the X server's maximum request size is refused (no INCR when serving); images are written as 24-bit
+   PNG without transparency; only the CLIPBOARD selection, not PRIMARY; `ServerUI`'s controller doesn't pass the
+   clipboard on yet (the console server does); a clipboard read can block the input thread for up to 2 seconds
+   when the owning program is slow.
 2. File transfer: `Files::MarconiFiles` on the client, `LocalFiles` on the server, drops onto the screen go to the
    Desktop, the file panel works as with a Mac.
 3. Several displays: `Displays`, the Display menu, capture of one display.
