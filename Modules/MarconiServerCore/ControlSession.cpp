@@ -166,6 +166,7 @@ namespace Marconi
                         {
                             // The helper refused something (for example Hello): that ends the wait with its reason.
                             error = Result::Decode(body).text;
+                            m_refused = true;
                             if (error.empty())
                             {
                                 error = "the server refused the request";
@@ -184,6 +185,8 @@ namespace Marconi
 
             bool ControlClient::Connect(const std::string& clientName, std::string& error)
             {
+                m_versionMismatch = false;
+                m_refused = false;
                 Hello hello;
                 hello.clientName = clientName;
                 if (!Send(hello.Encode()))
@@ -194,6 +197,8 @@ namespace Marconi
                 Wire::Bytes bytes;
                 if (!WaitFor(Type::Welcome, bytes, error))
                 {
+                    // The only thing the helper refuses a first Hello for is a version it doesn't speak.
+                    m_versionMismatch = m_refused;
                     return false;
                 }
                 try
@@ -204,6 +209,7 @@ namespace Marconi
                     if (welcome.version != kVersion)
                     {
                         error = "the server speaks a different version";
+                        m_versionMismatch = true;
                         return false;
                     }
                     m_serverVersion = welcome.serverVersion;

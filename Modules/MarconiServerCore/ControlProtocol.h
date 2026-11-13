@@ -63,6 +63,9 @@ namespace Marconi
                 uint32_t consoleSession = 0; // the Windows session the helper serves
                 std::string desktop;         // the desktop it is looking at ("Default", "Winlogon" for UAC and lock)
                 std::vector<ViewerInfo> viewers;
+                // The certificate fingerprint viewers are asked to trust (lowercase hex), so the tray icon can show it.
+                // Sent after the viewers; an older helper leaves it out and it reads as empty.
+                std::string fingerprint;
 
                 bool operator==(const ServerStatus& other) const;
                 bool operator!=(const ServerStatus& other) const { return !(*this == other); }

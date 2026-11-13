@@ -100,6 +100,10 @@ namespace Marconi
                 const ServerStatus& GetLatestStatus() const { return m_latest; }
                 const std::string& GetServerVersion() const { return m_serverVersion; }
 
+                // True when the last Connect failed because the helper speaks a different protocol version (its
+                // refusal, or a Welcome with another version), as opposed to a broken pipe.
+                bool WasVersionMismatch() const { return m_versionMismatch; }
+
             private:
                 bool Send(const Wire::Bytes& framed);
                 // Reads until a message of `want` arrives, taking pushed Status messages on the way. Throws nothing;
@@ -111,6 +115,8 @@ namespace Marconi
                 Wire::MessageReader m_reader;
                 ServerStatus m_latest;
                 std::string m_serverVersion;
+                bool m_versionMismatch = false;
+                bool m_refused = false; // a Result arrived where something else was wanted
             };
         } // namespace Control
     } // namespace Server

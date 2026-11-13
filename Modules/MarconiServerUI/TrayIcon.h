@@ -6,6 +6,11 @@
 
 #include <wx/taskbar.h>
 
+#include <cstdint>
+#include <string>
+#include <functional>
+#include <vector>
+
 namespace Marconi
 {
     namespace ServerUI
@@ -13,18 +18,35 @@ namespace Marconi
         class ServerConfig;
         class ServerController;
         class TrayNotifier;
+    } // namespace ServerUI
+    namespace Server
+    {
+        namespace Tray
+        {
+            class TrayMode;
+        }
+    } // namespace Server
+    namespace ServerUI
+    {
 
         class TrayIcon : public wxTaskBarIcon
         {
         public:
-            TrayIcon(ServerController& controller, ServerConfig& config, TrayNotifier& notifier);
+            // `controller` gives the server this program runs itself, or null when it doesn't (a helper is serving and this is
+            // only its status window, or the server could not start). `mode` decides which of the two the menu shows.
+            TrayIcon(Server::Tray::TrayMode& mode, ServerConfig& config,
+                     std::function<ServerController*()> controller, TrayNotifier& notifier);
 
             // wxTaskBarIcon asks for the menu each time it's clicked; we build a fresh one so the status lines are
             // current.
             wxMenu* CreatePopupMenu() override;
 
         private:
+            wxMenu* CreateStatusOnlyMenu();
+            void OnDisconnectViewer(wxCommandEvent& event);
+            void OnSetPasswordViaHelper();
             void ShowProblem();
+            ServerController& Controller() { return *m_getController(); }
             void OnSetPassword(wxCommandEvent& event);
             void OnAllowFiles(wxCommandEvent& event);
             void OnChangePort(wxCommandEvent& event);
@@ -38,9 +60,12 @@ namespace Marconi
             void OnOpenControlSettings(wxCommandEvent& event);
             void OnQuit(wxCommandEvent& event);
 
-            ServerController& m_controller;
+            Server::Tray::TrayMode& m_mode;
             ServerConfig& m_config;
             TrayNotifier& m_notifier;
+            std::function<ServerController*()> m_getController;
+            std::vector<uint32_t> m_menuViewerIds; // the viewer behind each Disconnect item of the last menu
+            std::string m_menuFingerprint;         // the full fingerprint behind "Copy full fingerprint" (status-only)
 
             wxDECLARE_EVENT_TABLE();
         };

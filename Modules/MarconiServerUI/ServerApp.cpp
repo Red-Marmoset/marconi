@@ -11,8 +11,11 @@
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/IdentityStore.h>
 #include <MarconiServerCore/PasswordFile.h>
+#include <MarconiServerCore/ControlSocket.h>
 #include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/Settings.h>
+#include <MarconiServerCore/TrayMode.h>
+#include <MarconiServerCore/TrayTransportLink.h>
 
 #include <Log/Log.h>
 
@@ -33,7 +36,11 @@
 #include <wx/utils.h>
 #include <wx/vector.h>
 
+#include <wx/menu.h>
+
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <memory>
 
 namespace Marconi
@@ -160,6 +167,120 @@ namespace Marconi
                 }
             }
 
+            // Which way to reach the Windows service's helper: its named pipe, or (developer option, macOS and Linux)
+            // a Unix socket that `MarconiServer --control-socket` serves.
+            std::string controlSocket;
+            for (int i = 1; i < argc; ++i)
+            {
+                const wxString arg = argv[i];
+                if (arg == "--control-socket" && i + 1 < argc)
+                {
+                    controlSocket = wxString(argv[i + 1]).utf8_string();
+                }
+                else if (arg == "--dump-menu")
+                {
+                    m_dumpMenu = true;
+                }
+            }
+            Server::Tray::TransportFactory factory =
+                controlSocket.empty() ? Server::Tray::NamedPipeFactory()
+                                      : Server::Tray::TransportFactory([controlSocket](std::string& error) {
+                                            return Server::Control::ConnectToControlSocket(controlSocket, error);
+                                        });
+            m_connector = std::make_unique<Server::Tray::TransportConnector>(
+                factory, "tray icon (" + wxGetUserId().utf8_string() + ")");
+            // Made before the first poll, which may start the server and hand it the notifier.
+            m_notifier = std::make_unique<TrayNotifier>(m_config->GetNotifyEnabled());
+            m_trayMode = std::make_unique<Server::Tray::TrayMode>(*m_connector, []() {
+                return static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                std::chrono::steady_clock::now().time_since_epoch())
+                                                .count());
+            });
+            m_trayMode->SetModeChangedHandler(
+                [this](Server::Tray::Mode, Server::Tray::Mode to) { OnTrayModeChanged(to); });
+            m_trayMode->SetStatusChangedHandler([this]() {
+                if (m_dumpMenu)
+                {
+                    DumpMenu();
+                }
+            });
+
+            // Ask the helper first. If it answers, this program only shows its status and starts no listener of its
+            // own (it would fight the service for the port); if nothing answers, it is the server, as before. The
+            // first Tick polls straight away and the mode handler starts the server when that is what is wanted.
+            m_trayMode->Tick();
+            if (m_ownServerFailed)
+            {
+                return false;
+            }
+
+            m_tray = new TrayIcon(*m_trayMode, *m_config, [this]() { return m_controller.get(); }, *m_notifier);
+            if (!m_tray->SetIcon(MakeTrayIcon(), "Marconi Server"))
+            {
+                LOG_WARNING("Server", "Could not put the icon in the system tray");
+            }
+
+            // There is no window; the tray icon keeps the program running until Quit.
+            SetExitOnFrameDelete(false);
+
+            // Poll the helper every few seconds (TrayMode decides when a poll is due), so the tray icon switches mode
+            // if the service starts or stops later.
+            // (Not while the server is being set up: its first-run and problem dialogs run a nested event loop, and a
+            // mode change in the middle of that would start or stop the server under it.)
+            m_timer.Bind(wxEVT_TIMER, [this](wxTimerEvent&) {
+                if (!m_startingOwnServer)
+                {
+                    m_trayMode->Tick();
+                }
+            });
+            m_timer.Start(1000);
+
+            m_initialised = true;
+            if (m_dumpMenu)
+            {
+                DumpMenu();
+            }
+            return true;
+        }
+
+        void ServerApp::OnTrayModeChanged(Server::Tray::Mode mode)
+        {
+            LOG_INFO("Server", "Tray mode: %s", Server::Tray::ModeName(mode));
+            if (m_dumpMenu)
+            {
+                printf("MODE %s\n", Server::Tray::ModeName(mode));
+                fflush(stdout);
+            }
+            if (mode == Server::Tray::Mode::OwnServer)
+            {
+                if (!StartOwnServer())
+                {
+                    m_ownServerFailed = true;
+                }
+            }
+            else
+            {
+                StopOwnServer(); // a helper is serving now: leave the port to it
+            }
+        }
+
+        void ServerApp::StopOwnServer()
+        {
+            if (m_controller)
+            {
+                m_controller->Stop();
+                m_controller.reset();
+            }
+        }
+
+        bool ServerApp::StartOwnServer()
+        {
+            struct Busy
+            {
+                explicit Busy(bool& flag) : m_flag(flag) { m_flag = true; }
+                ~Busy() { m_flag = false; }
+                bool& m_flag;
+            } busy(m_startingOwnServer);
             // Build the settings from what's saved, and make or load the lasting TLS identity so viewers aren't asked
             // to trust the server again after every restart.
             Server::Settings settings;
@@ -200,7 +321,6 @@ namespace Marconi
                 }
             }
 
-            m_notifier = std::make_unique<TrayNotifier>(m_config->GetNotifyEnabled());
             m_controller = std::make_unique<ServerController>(settings);
             m_controller->SetNotifier(m_notifier.get());
             std::string startError;
@@ -213,23 +333,43 @@ namespace Marconi
                              "Marconi Server", wxOK | wxICON_WARNING);
             }
 
-            m_tray = new TrayIcon(*m_controller, *m_config, *m_notifier);
-            if (!m_tray->SetIcon(MakeTrayIcon(), "Marconi Server"))
-            {
-                LOG_WARNING("Server", "Could not put the icon in the system tray");
-            }
-
-            // There is no window; the tray icon keeps the program running until Quit.
-            SetExitOnFrameDelete(false);
-
             // If the screen can't be shared or controlled (a permission still to be given on a Mac, a Wayland
             // desktop on Linux), say so now: the tray menu is easy to miss. The server keeps running meanwhile.
             std::string problem = m_controller->GetProblem();
             if (!problem.empty())
             {
+                if (m_dumpMenu)
+                {
+                    printf("PROBLEM %s\n", problem.c_str());
+                    fflush(stdout);
+                }
                 wxMessageBox(wxString::FromUTF8(problem.c_str()), "Marconi Server", wxOK | wxICON_INFORMATION);
             }
             return true;
+        }
+
+        void ServerApp::DumpMenu()
+        {
+            if (!m_tray)
+            {
+                return;
+            }
+            wxMenu* menu = m_tray->CreatePopupMenu();
+            printf("MENU");
+            for (wxMenuItem* item : menu->GetMenuItems())
+            {
+                if (item->IsSeparator())
+                {
+                    printf(" | -");
+                }
+                else
+                {
+                    printf(" | %s%s", item->GetItemLabelText().utf8_str().data(), item->IsEnabled() ? "" : " (disabled)");
+                }
+            }
+            printf("\n");
+            fflush(stdout);
+            delete menu;
         }
 
         int ServerApp::SetPasswordFromFile(const wxString& path)
@@ -270,10 +410,8 @@ namespace Marconi
 
         int ServerApp::OnExit()
         {
-            if (m_controller)
-            {
-                m_controller->Stop();
-            }
+            m_timer.Stop();
+            StopOwnServer();
             if (m_tray)
             {
                 m_tray->RemoveIcon();

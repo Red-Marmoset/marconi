@@ -548,6 +548,48 @@ the device contexts again after a switch) and `SystemInput_Windows.cpp` (follow 
 Ctrl+Alt+Del detection: Delete down with Ctrl and Alt held asks for the secure attention sequence instead of being
 injected). The manual checklist is in the README under "Testing the Windows service by hand".
 
+**Tray icon and the control pipe (branch `claude/server-tray-pipe`; Linux-tested, Windows pipe path never run).**
+
+- `TrayMode.h/.cpp` (portable): the polling state machine behind two small interfaces, `Connector` (opens a link to a
+  helper) and `Link` (GetStatus, DisconnectViewer, SetPasswordHash), with an injected clock. Modes: `OwnServer` (nothing
+  answers: run the server in-process with the per-user settings, exactly as before), `StatusOnly` (a helper answers:
+  no listener is started, so it can't fight the service for port 1895) and `ServiceUnreadable` (something answers but
+  speaks another protocol version or breaks off during the hello: no listener either, the menu says why). The first
+  poll is immediate; then every 3 s. Leaving `StatusOnly` for `OwnServer` needs 3 failed polls in a row (a poll that
+  fails and reconnects cleanly counts as nothing); going to `StatusOnly` is immediate. The mode-changed handler is
+  where the app starts or stops its own server.
+- `StatusOnlyMenu()` is the menu in the two helper modes (status lines, "Lost contact..." while polls fail, Disconnect
+  viewer, Set password / Change password, Copy full fingerprint, Quit that leaves the server running). The wx menu in
+  `TrayIcon.cpp` is built from it. Set password in status-only mode hashes what was typed and sends it with
+  `SetPassword`; the helper's answer is turned into plain words (`DescribePasswordResult`): a refusal says only an
+  administrator can change it and to start the tray icon with Run as administrator. Nothing is saved in the user's
+  own settings in that mode.
+- `TrayTransportLink.h/.cpp`: `TransportConnector` wraps any `Wire::Transport` factory with the existing `ControlClient`
+  (the real Windows pipe is `NamedPipeFactory()` = `ConnectToControlPipe`, so `ControlPipe_Windows.cpp` is untouched).
+  A pipe that can't be opened counts as "nothing answers" (the Windows code can't tell "not there" from "access
+  denied"; both leave the tray icon running its own server).
+- `ControlProtocol`: `ServerStatus::fingerprint` added at the end of the Status message (old readers ignore it; a
+  Status without it reads as empty; `kVersion` not bumped). `ListenerControlHost` fills it. `ControlClient` has
+  `WasVersionMismatch()`.
+- `ControlSocket.h`, `ControlSocket_Posix.cpp`: the same control messages over a Unix domain socket (macOS, Linux),
+  with a developer choice of who counts as an administrator (`SocketAdmins`: nobody, everybody, root). Server option
+  `MarconiServer --control-socket PATH [--control-admin yes|no]` serves it from the console mode; the `--control-*`
+  commands and the tray program (`--control-socket PATH`) connect to it instead of the pipe. `ControlSocket_Windows.cpp`
+  is a stub that only says it is for macOS and Linux (**not built on Windows**).
+- Tray program options: `--control-socket PATH` and `--dump-menu` (prints `MODE ...` and `MENU | label | ...` lines,
+  the real wx menu's labels, whenever the mode or status changes).
+- Tests (`Tests/MarconiServerTest/TrayTests.cpp`, MarconiServerTest 951 passed): pipe absent gives own-server,
+  present gives status-only, both ways with a fake clock, no flapping on a brief failing poll, version mismatch (a
+  different Welcome and a refused Hello) falls back to `ServiceUnreadable` and never to a competing listener, the
+  menu labels, the Set password refusal text, and an end-to-end test on Linux: a real `Listener` with
+  `ListenerControlHost` on a Unix socket, the tray logic seeing the viewer, Disconnect viewer really ending it, the
+  refusal for a non-administrator, then the socket stopping (own-server) and returning (status-only, Set password
+  applied).
+- **Not verified:** that the Windows pipe client behaves the same as the Unix socket under this logic (timeouts: the
+  poll runs on the UI thread, so a helper that accepts the pipe and then never answers would freeze the menu; the
+  pipe's own read has no timeout that this code adds); the tray icon on Windows at all; Run as administrator giving
+  the pipe an administrator token.
+
 **Decisions made here (please check):**
 
 - Ctrl+Alt+Del: the helper sets the named event `Global\MarconiServerSAS` and the *service* calls `SendSAS(FALSE)`,
@@ -574,6 +616,10 @@ injected). The manual checklist is in the README under "Testing the Windows serv
   is not installed, keep today's behaviour. Its autostart (Run key) is then replaced by the service for the server
   and kept only for the status-only tray icon. The pipe can be tried today with the `--control-*` modes.
 - ~~A log file for the service and helper~~ done, see "Log files and the Linux package" below.
+- **Tray icon and the pipe (branch `claude/server-tray-pipe`).** Done, see "Tray icon and the control pipe" below. Still
+  open: the tray icon's autostart (Run key) is not changed by this: the installer should keep it only for the
+  status-only tray icon once the service runs the server.
+- A log file for the service and helper (they log through `LOG_*`; nothing writes it to the data folder yet).
 - Everything under "Written for Windows".
 - The service's data folder permissions: the installer must restrict `%ProgramData%\Marconi Server` to SYSTEM and
   administrators (it holds the password hash and the private key).
