@@ -1,0 +1,9 @@
+{
+    "name": "MarconiMcp",
+    "version": "0.1.0",
+    "type": "Engine",
+    "description": "Lets AI tools drive Marconi over the Model Context Protocol: the message handling, the tools, screenshots (PNG) and registering with each AI tool (through the engine's Process and AppDetect). No wx headers; uses wx's bundled zlib.",
+    "dependencies": ["MarconiCore", "Platform", "Log", "Process", "AppDetect"],
+    "externalDependencies": ["wxwidgets", "json"],
+    "platforms": ["Windows", "Linux", "macOS"]
+}

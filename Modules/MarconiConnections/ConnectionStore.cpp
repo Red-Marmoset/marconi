@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // Saved connections: settings in wxConfig, passwords in the OS keychain (wxSecretStore)
 
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 
 #include <Log/Log.h>
 
+#include <wx/app.h>
 #include <wx/arrstr.h>
 #include <wx/config.h>
 #include <wx/secretstore.h>
+#include <wx/stdpaths.h>
 
 #include <algorithm>
 #include <climits>
@@ -163,6 +165,7 @@ namespace MarconiUI
         out.notes = config->Read(path + "/Notes", wxEmptyString);
         out.group = config->Read(path + "/Group", wxEmptyString);
         out.macAddress = config->Read(path + "/MacAddress", wxEmptyString);
+        out.hideFromAiTools = config->ReadBool(path + "/HideFromAiTools", false);
         wxArrayString window = wxSplit(config->Read(path + "/Window", wxEmptyString), ',');
         long rect[4] = {0, 0, 0, 0};
         if (window.size() == 4 && window[0].ToLong(&rect[0]) && window[1].ToLong(&rect[1]) &&
@@ -220,6 +223,7 @@ namespace MarconiUI
         config->Write(path + "/Notes", connection.notes);
         config->Write(path + "/Group", connection.group);
         config->Write(path + "/MacAddress", connection.macAddress);
+        config->Write(path + "/HideFromAiTools", connection.hideFromAiTools);
         config->Write(path + "/Window", connection.windowRect.IsEmpty()
                                             ? wxString()
                                             : wxString::Format("%d,%d,%d,%d", connection.windowRect.x,
@@ -351,5 +355,30 @@ namespace MarconiUI
         {
             store.Delete(ServiceFor(id));
         }
+    }
+    void UseMarconiSettings()
+    {
+        // wxApp::OnInit's command line parser would reject the app's positional address argument, so this sets
+        // the names directly.
+        wxTheApp->SetAppName("marconi");
+        wxTheApp->SetAppDisplayName("Marconi");
+        wxTheApp->SetVendorName("Red Marmoset Studios");
+#if defined(__WXGTK__)
+        // ~/.config/marconi.conf and ~/.local/share/marconi rather than wx's traditional ~/.marconi.
+        wxStandardPaths::Get().SetFileLayout(wxStandardPaths::FileLayout_XDG);
+#endif
+        // wxRegConfig on Windows, wxFileConfig (XDG / ~/Library/Preferences) elsewhere.
+        wxConfigBase::Set(wxConfigBase::Create());
+    }
+
+    bool ConnectionStore::AiToolsMayUsePasswords()
+    {
+        return wxConfigBase::Get()->ReadBool("/AiTools/UseSavedPasswords", true);
+    }
+
+    void ConnectionStore::SetAiToolsMayUsePasswords(bool allowed)
+    {
+        wxConfigBase::Get()->Write("/AiTools/UseSavedPasswords", allowed);
+        wxConfigBase::Get()->Flush();
     }
 } // namespace MarconiUI

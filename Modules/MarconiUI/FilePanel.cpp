@@ -6,7 +6,7 @@
 #include "Appearance.h"
 #include "Controls.h"
 #include "ClipboardFiles.h"
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 #include "CredentialsDialog.h"
 #include "FilePane.h"
 

@@ -4,7 +4,7 @@
 #include "ViewerFrame.h"
 
 #include "ClipboardWatch.h"
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 #include "CredentialsDialog.h"
 #include "FilePanel.h"
 

@@ -126,7 +126,12 @@ find_buildtool
 [[ -n "$BUILDTOOL" ]] || fail "no BuildTool under ${UNA_ENGINE_PATH:-$ROOT/../engine}/Build/BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)."
 
 EXE="$ROOT/Build/Marconi/Release/Marconi"
+# MarconiMcp, the program AI tools start, and the engine's list of apps it looks for: Build.sh puts both beside the
+# app.
+MCP_EXE="$ROOT/Build/Marconi/Release/MarconiMcp"
+APPS_JSON="$ROOT/Build/Marconi/Release/Apps.json"
 [[ -x "$EXE" ]] || fail "$EXE not found. Run without --skip-build."
+[[ -x "$MCP_EXE" && -f "$APPS_JSON" ]] || fail "$MCP_EXE or $APPS_JSON not found. Run without --skip-build."
 
 # The package is labelled with the version the build stamped into the app, which must be the current source's.
 BASE_VERSION="$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/Project.json" | head -n 1)"
@@ -177,6 +182,9 @@ package_macos() {
     cp "$ROOT/Assets/Fonts/NebulaSans-Black.ttf" "$ROOT/Assets/Fonts/NebulaSans-Semibold.ttf" \
         "$ROOT/Assets/Fonts/NebulaSans-LICENSE.txt" "$app/Contents/Resources/"
     cp "$ROOT/LICENSE" "$app/Contents/Resources/LICENSE.txt"
+    # MarconiMcp beside the app's own program, and the list of apps it looks for with the other resources.
+    cp "$MCP_EXE" "$app/Contents/MacOS/MarconiMcp"
+    cp "$APPS_JSON" "$app/Contents/Resources/Apps.json"
 
     # The Developer ID certificate in the keychain, when there is exactly one and no choice was made
     IDENTITY="$(signing_input macos.identity)"
@@ -189,10 +197,20 @@ package_macos() {
             IDENTITY="-"
         fi
     fi
+    # MarconiMcp first: code inside a bundle is signed before the bundle around it, each on its own (Apple advises
+    # against --deep).
+    if [[ "$IDENTITY" == "-" ]]; then
+        codesign --force --sign - "$app/Contents/MacOS/MarconiMcp"
+    else
+        # Notarization requires the hardened runtime and a secure timestamp.
+        codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app/Contents/MacOS/MarconiMcp"
+    fi
+    # The Claude Desktop extension, made from the signed MarconiMcp, among the resources the app's signature seals.
+    bash "$ROOT/Tools/make_mcpb.sh" "$app/Contents/MacOS/MarconiMcp" darwin "$BASE_VERSION" \
+        "$app/Contents/Resources/marconi.mcpb"
     if [[ "$IDENTITY" == "-" ]]; then
         codesign --force --sign - "$app"
     else
-        # Notarization requires the hardened runtime and a secure timestamp.
         codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app"
     fi
     codesign --verify --strict "$app"
@@ -267,11 +285,14 @@ package_linux() {
         "$pkg/usr/share/marconi" "$pkg/usr/share/doc/marconi"
     install -m 755 "$EXE" "$pkg/usr/bin/marconi"
     strip --strip-unneeded "$pkg/usr/bin/marconi"
+    # MarconiMcp, the program AI tools start; it finds Apps.json in <prefix>/share/marconi.
+    install -m 755 "$MCP_EXE" "$pkg/usr/bin/marconi-mcp"
+    strip --strip-unneeded "$pkg/usr/bin/marconi-mcp"
     install -m 644 "$ROOT/Installer/Linux/marconi.desktop" "$pkg/usr/share/applications/"
     cp -R "$ROOT/Installer/Linux/icons/hicolor" "$pkg/usr/share/icons/"
     # The app looks for its fonts in <prefix>/share/marconi, with the prefix taken from the executable's location.
     install -m 644 "$ROOT/Assets/Fonts/NebulaSans-Black.ttf" "$ROOT/Assets/Fonts/NebulaSans-Semibold.ttf" \
-        "$ROOT/Assets/Fonts/NebulaSans-LICENSE.txt" "$pkg/usr/share/marconi/"
+        "$ROOT/Assets/Fonts/NebulaSans-LICENSE.txt" "$APPS_JSON" "$pkg/usr/share/marconi/"
     install -m 644 "$ROOT/LICENSE" "$pkg/usr/share/doc/marconi/copyright"
     gzip -9n < "$ROOT/CHANGELOG.md" > "$pkg/usr/share/doc/marconi/changelog.gz"
 
@@ -281,7 +302,8 @@ package_linux() {
     shlibsDir="$stageDir/shlibdeps"
     install -d "$shlibsDir/debian"
     printf 'Source: marconi\n\nPackage: marconi\nArchitecture: any\n' > "$shlibsDir/debian/control"
-    if ! depends="$(cd "$shlibsDir" && dpkg-shlibdeps -O "$pkg/usr/bin/marconi" 2> "$stageDir/shlibdeps.log" \
+    if ! depends="$(cd "$shlibsDir" && dpkg-shlibdeps -O "$pkg/usr/bin/marconi" "$pkg/usr/bin/marconi-mcp" \
+        2> "$stageDir/shlibdeps.log" \
         | sed -n 's/^shlibs:Depends=//p')" || [[ -z "$depends" ]]; then
         cat "$stageDir/shlibdeps.log" >&2
         fail "dpkg-shlibdeps couldn't work out which packages Marconi needs (see above)."
@@ -309,7 +331,7 @@ CONTROL
     # dpkg wants directories 755, files 644 (the app 755) and everything owned by root.
     find "$pkg" -type d -exec chmod 755 {} +
     find "$pkg" -type f -exec chmod 644 {} +
-    chmod 755 "$pkg/usr/bin/marconi"
+    chmod 755 "$pkg/usr/bin/marconi" "$pkg/usr/bin/marconi-mcp"
 
     OUT_FILE="$INSTALLER_DIR/Marconi-$VERSION-linux-$arch.deb"
     rm -f "$OUT_FILE"

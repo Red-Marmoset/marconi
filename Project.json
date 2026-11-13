@@ -1,7 +1,7 @@
 {
     "name": "Marconi",
     "type": "windowed",
-    "version": "0.10.4",
+    "version": "0.11.4",
     "description": "Marconi - cross-platform VNC client",
     "modules": [
         "MarconiCore",
@@ -25,6 +25,11 @@
                 "from": "Assets/Fonts/NebulaSans-LICENSE.txt",
                 "to": "NebulaSans-LICENSE.txt"
             }
+        ],
+        "buildFiles": [
+            "MarconiMcp.exe",
+            "Apps.json",
+            "marconi.mcpb"
         ],
         "license": "LICENSE",
         "installerScript": "Installer/Marconi.nsi",

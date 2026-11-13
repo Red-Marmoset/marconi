@@ -101,4 +101,20 @@ echo "[Build.sh] BuildTool=$BUILDTOOL"
 echo "[Build.sh] Project=$PROJECT"
 
 cd "$SCRIPT_DIR"
-exec "$BUILDTOOL" "$PROJECT" "${CONFIG_ARGS[@]}" -j "$JOBS" "$@"
+if [[ "$PROJECT" != "Project.json" && "$PROJECT" != "./Project.json" && "$PROJECT" != "$SCRIPT_DIR/Project.json" ]]; then
+    exec "$BUILDTOOL" "$PROJECT" "${CONFIG_ARGS[@]}" -j "$JOBS" "$@"
+fi
+
+# The app, then MarconiMcp (the program AI tools start), which goes beside it with the engine's list of apps it
+# looks for, so the AI tools window finds both there. --clean cleans only the project it's given.
+"$BUILDTOOL" "$PROJECT" "${CONFIG_ARGS[@]}" -j "$JOBS" "$@"
+"$BUILDTOOL" Mcp/Project.json "${CONFIG_ARGS[@]}" -j "$JOBS" "$@"
+CONFIG="Release"
+for ((i = 1; i <= $#; ++i)); do
+    if [[ "${!i}" == "-config" ]]; then
+        next=$((i + 1))
+        CONFIG="${!next}"
+    fi
+done
+cp "Build/MarconiMcp/$CONFIG/MarconiMcp" "Build/Marconi/$CONFIG/"
+cp "$UNA_ENGINE_PATH/Packaging/Apps.json" "Build/Marconi/$CONFIG/"

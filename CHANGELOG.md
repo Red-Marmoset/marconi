@@ -49,6 +49,32 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi connections lock the other computer's screen when you disconnect, if that option is on.
 - Marconi Server can run as a Windows service, so it keeps working at the sign-in screen and through permission prompts (written, not yet tried on Windows).
 
+## 0.11.4
+
+- AI tools can use the connections saved in Marconi by name, with their saved passwords, which they never see.
+- Settings > AI tools can stop AI tools using saved passwords, and each saved connection can be hidden from them.
+
+## 0.11.3
+
+- On Windows and macOS, Marconi can be added to Claude Desktop as an extension, from the installer or the AI tools window.
+
+## 0.11.2
+
+- The Linux package and the macOS app include the part of Marconi that AI tools use.
+
+## 0.11.1
+
+- Settings has an AI tools window that connects Marconi to the AI tools on this computer, or disconnects it.
+
+## 0.11.0
+
+- AI tools such as Claude Code and Codex can use other computers through Marconi: connect, see the screen, and use the mouse, keyboard and clipboard.
+- The Windows installer offers to connect Marconi to the AI tools it finds on the computer.
+
+## 0.10.5
+
+- Fixed the picture freezing or staying black on some VNC servers, such as x11vnc on Linux.
+
 ## 0.10.4
 
 - On this network finds Android phones and tablets that announce themselves, such as with droidVNC-NG.
