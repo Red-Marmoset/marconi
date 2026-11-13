@@ -32,9 +32,10 @@ val isWindows = System.getProperty("os.name").lowercase().contains("windows")
 // or is too old to answer, and the release build is then signed with the debug key.
 val unaBuildTool: File? = run {
     val engine = File(System.getenv("UNA_ENGINE_PATH") ?: if (isWindows) "C:\\code\\engine" else File(marconiRoot, "../engine").path)
-    listOf("Release", "MinSizeRel", "Debug", "Bootstrap")
+    listOf("Release", "MinSizeRel")
         .map { File(engine, "Build/BuildTool/$it/" + if (isWindows) "BuildTool.exe" else "BuildTool") }
-        .firstOrNull { it.isFile }
+        .filter { it.isFile }
+        .maxByOrNull { it.lastModified() }  // the most recently built, so an old copy never hides a newer one
 }
 fun signingSetting(switch: String, setting: String): String? {
     val tool = unaBuildTool ?: return null
