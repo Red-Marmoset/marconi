@@ -145,6 +145,10 @@ android {
                 storePassword = keystorePassword
                 keyAlias = signingSetting("--signing-value", "android.keyAlias") ?: signingVariable("android.keyAlias") ?: "marconi"
                 keyPassword = signingVariable("android.keyPassword") ?: keystorePassword
+                // v2 for every supported Android version; v3 as well (read from Android 9), so the release key can
+                // be replaced later with the old key vouching for the new one and updates still install
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }

@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.12
+
+- The Android app is signed so that its signing key can be replaced later without breaking updates.
+
 ## 0.9.11
 
 - The README says how to check that a downloaded Android app is genuine.
