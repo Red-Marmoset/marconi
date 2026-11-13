@@ -6,6 +6,7 @@
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Wire/WireCompress.h>
 #include <MarconiCore/Wire/WireImage.h>
+#include <MarconiCore/Wire/WireVideoMessages.h>
 
 #include <Log/Log.h>
 
@@ -213,6 +214,23 @@ namespace Marconi
                         ++m_statUpdates;
                         m_listener.OnFramebufferUpdated(m_frameRects);
                         break;
+                    case Type::VideoStart:
+                        if (std::shared_ptr<Video::VideoReceiver> video = GetVideo())
+                        {
+                            video->OnStart(VideoStart::Decode(body));
+                            m_videoStreaming = video->IsStreaming();
+                        }
+                        break;
+                    case Type::VideoFrame:
+                        HandleVideoFrame(VideoFrame::Decode(body));
+                        break;
+                    case Type::VideoStop:
+                        if (std::shared_ptr<Video::VideoReceiver> video = GetVideo())
+                        {
+                            video->OnStop(VideoStop::Decode(body));
+                            m_videoStreaming = false;
+                        }
+                        break;
                     case Type::CursorShape:
                     {
                         Wire::CursorShape shape = Wire::CursorShape::Decode(body);
@@ -295,15 +313,38 @@ namespace Marconi
             m_connected = false;
             m_encrypted = false;
             m_supportsFiles = false;
+            m_videoGranted = false;
+            m_videoStreaming = false;
+            {
+                std::lock_guard<std::mutex> lock(m_videoMutex);
+                m_video.reset();
+            }
             m_files.Close();
             m_listener.OnDisconnected(info);
         }
 
         bool Client::Handshake(MessageReader& reader, ClientOptions& options, DisconnectInfo& info)
         {
+            // Video is offered only with a decoder to show it with; otherwise the server sends still pictures.
+            std::shared_ptr<Video::VideoReceiver> video;
+            if (options.offerVideo)
+            {
+                video = std::make_shared<Video::VideoReceiver>(options.videoDecoderFactory,
+                                                               [this](const Bytes& framed) { return Send(framed); });
+                if (options.videoDecoderFactory)
+                {
+                    video->SetOfferedCodecs(options.videoCodecs);
+                }
+                video->SetStatsLogging(options.videoStats);
+                if (video->OfferedCodecs().empty())
+                {
+                    video.reset();
+                }
+            }
             Hello hello;
             hello.version = kProtocolVersion;
-            hello.capabilities = options.capabilities | (options.offerFiles ? Capability::Files : uint64_t(0));
+            hello.capabilities = options.capabilities | (options.offerFiles ? Capability::Files : uint64_t(0)) |
+                                 (video ? Capability::Video : uint64_t(0));
             hello.clientName = options.clientName;
             if (!Send(hello.Encode()))
             {
@@ -372,6 +413,12 @@ namespace Marconi
 
             m_supportsResize = (welcome.capabilities & Capability::ResizeDisplay) != 0;
             m_selectedDisplay = 0;
+            m_videoStreaming = false;
+            m_videoGranted = video && (welcome.capabilities & Capability::Video) != 0;
+            {
+                std::lock_guard<std::mutex> lock(m_videoMutex);
+                m_video = m_videoGranted.load() ? video : nullptr;
+            }
             int width = 0;
             int height = 0;
             DesktopSize(welcome.displays, width, height);
@@ -386,7 +433,63 @@ namespace Marconi
             m_listener.OnConnected(serverInit);
             LOG_INFO("Wire", "Connected to '%s' (%s), desktop %dx%d", welcome.serverName.c_str(),
                      welcome.serverVersion.c_str(), width, height);
+            if (m_videoGranted.load() && !video->SendOffer(options.video))
+            {
+                LOG_INFO("Wire", "Could not ask the server for video; it sends still pictures");
+            }
             return true;
+        }
+
+        std::shared_ptr<Video::VideoReceiver> Client::GetVideo() const
+        {
+            std::lock_guard<std::mutex> lock(m_videoMutex);
+            return m_video;
+        }
+
+        void Client::SetVideoPreferences(const Video::VideoPreferences& preferences)
+        {
+            if (std::shared_ptr<Video::VideoReceiver> video = GetVideo())
+            {
+                video->SetPreferences(preferences);
+            }
+        }
+
+        void Client::HandleVideoFrame(const VideoFrame& frame)
+        {
+            std::shared_ptr<Video::VideoReceiver> video = GetVideo();
+            if (!video)
+            {
+                return; // video was never agreed: a stray frame is ignored
+            }
+            Video::VideoUpdate update;
+            if (video->OnFrame(frame, update))
+            {
+                std::vector<Rfb::Rect> changed;
+                {
+                    std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                    const size_t stride = static_cast<size_t>(update.picture->width);
+                    for (const Wire::Rect& area : update.rects)
+                    {
+                        const Rfb::Rect rect{area.x, area.y, area.width, area.height};
+                        if (!m_framebuffer.Contains(rect))
+                        {
+                            continue; // outside the desktop we know (a resize not applied yet): drop it
+                        }
+                        const size_t offset = static_cast<size_t>(area.y - update.origin.y) * stride +
+                                              static_cast<size_t>(area.x - update.origin.x);
+                        m_framebuffer.PutPixels(rect, update.picture->pixels.data() + offset, stride);
+                        changed.push_back(rect);
+                    }
+                }
+                if (!changed.empty())
+                {
+                    m_statRectangles += static_cast<int>(changed.size());
+                    ++m_statUpdates;
+                    m_listener.OnFramebufferUpdated(changed);
+                }
+            }
+            m_videoStreaming = video->IsStreaming();
+            video->MaybeSendFeedback();
         }
 
         void Client::ApplyDisplays(const std::vector<Display>& displays, bool initial)

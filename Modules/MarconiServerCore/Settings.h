@@ -55,6 +55,14 @@ namespace Marconi
             // End a viewer's session after this many minutes with nothing sent from it (no mouse, key, clipboard or
             // file activity). 0 = never.
             int idleMinutes = 0;
+
+            // Video (Phase 4). Offered to viewers that ask for it, only where the server has an encoder. Turning it
+            // off here keeps every viewer on still pictures.
+            bool videoEnabled = true;
+            // Log frames a second, bitrate and capture-to-send time every few seconds (the --stats flag).
+            bool videoStats = false;
+            // How long a part of the picture must stay unchanged before it is resent as a lossless still.
+            uint32_t videoStillDelayMs = 300;
         };
     } // namespace Server
 } // namespace Marconi

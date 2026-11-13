@@ -93,6 +93,14 @@ namespace Marconi
             FileWrite = 70,       // client -> server: write this range (no answer unless it fails)
             FileClose = 71,       // client -> server: close the handle
             FileWriteFailed = 72, // server -> client: an earlier FileWrite did not work
+
+            // Video (control channel; the messages are in WireVideoMessages.h). 73-79 are left free for files.
+            VideoOffer = 80,           // client -> server: the codecs and size the viewer can decode
+            VideoStart = 81,           // server -> client: a video stream starts (codec, size, frame rate, bitrate)
+            VideoFrame = 82,           // server -> client: one encoded picture
+            VideoRequestKeyframe = 83, // client -> server: send a whole picture, my decoder lost its place
+            VideoFeedback = 84,        // client -> server: what arrived and how it went; bitrate and quality hints
+            VideoStop = 85,            // either way: the stream ended (the pictures come as stills again)
         };
 
         // One rectangle of the screen. Plain ints so the protocol layer needs nothing from the VNC code.

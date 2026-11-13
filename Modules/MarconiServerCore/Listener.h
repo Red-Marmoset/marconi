@@ -64,6 +64,14 @@ namespace Marconi
             // Shares this computer's clipboard with each viewer (null, the default, shares none). The clipboard
             // must outlive the listener. Call before Run() or ServeOne().
             void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
+            // Replaces the platform's video encoders for every session this listener serves (tests, or a build with its
+            // own). `codecs` are what the factory can make, best first. Call before Start().
+            void SetVideoEncoderFactory(VideoEncoderFactory factory, std::vector<Wire::VideoCodec> codecs)
+            {
+                m_videoFactory = std::move(factory);
+                m_videoCodecs = std::move(codecs);
+                m_videoFactorySet = true;
+            }
 
             // The SHA-256 fingerprint of the certificate the server presents, as a lowercase hex string, so it can
             // be shown to the person setting the server up. Empty before Start() or if the identity is bad.
@@ -106,6 +114,9 @@ namespace Marconi
             std::string m_fingerprint; // the certificate's SHA-256, in hex, for display
             int m_frameIntervalMs = 16;
             ClipboardAccess* m_clipboard = nullptr;
+            VideoEncoderFactory m_videoFactory;
+            std::vector<Wire::VideoCodec> m_videoCodecs;
+            bool m_videoFactorySet = false;
             ConnectionNotifier* m_notifier = nullptr;
             IdleClock m_idleClock;
             std::atomic<int> m_idleMinutes{0};
