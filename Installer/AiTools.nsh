@@ -9,7 +9,9 @@
 ; different account from the signed-in one (an administrator's password typed at the prompt), the page is skipped:
 ; those tools would be the other account's. Marconi's AI tools window does the same any time later.
 ;
-; A silent install registers with the tools named by /AITOOLS=claude-code,codex,claude-desktop (or all).
+; A silent install registers with the tools named by /AITOOLS=claude-code,codex,claude-desktop (or all). Only when the
+; "AI tools (MarconiMcp)" component is chosen (it is by default); an upgrade with it unticked takes Marconi out of the
+; tools an earlier install added it to.
 
 !include "DetectApps.nsh"
 !insertmacro DETECTAPP_FUNCTION_claude_code ""
@@ -53,6 +55,9 @@ FunctionEnd
 Function AiToolsPageCreate
     ${If} $UserBlocked == 1
         Abort ; Setup is another account's: its AI tools aren't the signed-in user's
+    ${EndIf}
+    ${IfNot} ${SectionIsSelected} ${SecAiTools}
+        Abort ; the AI tools component wasn't chosen
     ${EndIf}
     ${IfNot} ${FileExists} "$INSTDIR\${MCP_EXE}"
         Abort
@@ -130,6 +135,7 @@ FunctionEnd
 ; A silent install: the tools named by /AITOOLS=, each only if it's installed.
 Function AiToolsSilent
     ${If} $UserBlocked == 1
+    ${OrIfNot} ${SectionIsSelected} ${SecAiTools}
         Return
     ${EndIf}
     ${GetParameters} $R0
@@ -168,6 +174,28 @@ Function AiToolsSilent
             Call AiRegister
         ${EndIf}
     ${EndIf}
+FunctionEnd
+
+; An upgrade with the AI tools component unticked: takes Marconi out of the tools an earlier install put it in, while
+; the earlier MarconiMcp.exe is still there.
+Function AiToolsRemoveUnticked
+    ReadRegStr $R0 SHCTX "${UNINSTALL_KEY}" "AiTools"
+    ${If} $R0 == ""
+    ${OrIfNot} ${FileExists} "$INSTDIR\${MCP_EXE}"
+        Return
+    ${EndIf}
+    StrCpy $R0 " $R0 "
+    ${StrStr} $R1 $R0 " claude-code "
+    ${If} $R1 != ""
+        nsExec::ExecToLog '"$INSTDIR\${MCP_EXE}" --unregister claude-code --quiet'
+        Pop $R1
+    ${EndIf}
+    ${StrStr} $R1 $R0 " codex "
+    ${If} $R1 != ""
+        nsExec::ExecToLog '"$INSTDIR\${MCP_EXE}" --unregister codex --quiet'
+        Pop $R1
+    ${EndIf}
+    DeleteRegValue SHCTX "${UNINSTALL_KEY}" "AiTools"
 FunctionEnd
 
 ; Uninstall: takes Marconi out of the tools Setup put it in, before MarconiMcp.exe is deleted. Runs as the account

@@ -94,6 +94,12 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   (the password reaches the computer, never the AI), and MarconiMcp reading a real `~/.config/marconi.conf`. Not
   checked: reading a real keychain (none here; Credential Manager on Windows).
 
+- **Installer component** 2026-11-13 (0.11.5): MarconiMcp, `Apps.json` and `marconi.mcpb` are the component "AI
+  tools (MarconiMcp)" (`SecAiTools`, ticked by default) instead of part of the main one, as the owner first asked
+  ("in the installer but as an option"). The page and `/AITOOLS=` only run when it's chosen; an upgrade with it
+  unticked unregisters what an earlier install added and deletes the files. Checked under Wine: the silent default,
+  and the pages with it unticked on top of an earlier install.
+
 **To ship** (as of 0.11.3): merge the engine's `claude/sweet-bell-nobab4` into its `main` (Marconi needs its
 `Process`, `AppDetect`, `Apps.json`, `Include/DetectApps.nsh` and the `PackageProject.ps1` change), then on a
 Windows PC run `Build.ps1`, MarconiCoreTest and `Package.ps1` (none of the PowerShell or MSVC builds has been run;

@@ -50,6 +50,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi connections lock the other computer's screen when you disconnect, if that option is on.
 - Marconi Server can run as a Windows service, so it keeps working at the sign-in screen and through permission prompts (written, not yet tried on Windows).
 
+## 0.11.5
+
+- The Windows installer has AI tools as a component of its own, ticked by default; the AI tools page only appears when it's chosen, and unticking it on an upgrade removes it.
+
 ## 0.11.4
 
 - AI tools can use the connections saved in Marconi by name, with their saved passwords, which they never see.

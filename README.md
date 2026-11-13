@@ -373,8 +373,8 @@ AI tools such as Claude Code, Codex and Claude Desktop can use Marconi to connec
 screen, and use its mouse, keyboard and clipboard. The tool still asks before each step unless you tell it not to,
 and you can watch what it does by connecting to the same computer with Marconi as usual.
 
-**Connecting your AI tools.** The Windows installer offers it on a page of its own, for the AI tools it finds on
-the computer. Any time later, open **Settings > AI tools** in Marconi: it lists Claude Code, Codex and Claude
+**Connecting your AI tools.** The Windows installer has it as a component, "AI tools (MarconiMcp)", ticked by
+default; with it chosen, a page after installing offers to connect the AI tools it finds on the computer. Any time later, open **Settings > AI tools** in Marconi: it lists Claude Code, Codex and Claude
 Desktop, says which can use Marconi, and adds or removes Marconi for each. For Claude Desktop, Add opens Claude so
 you can confirm the extension; to remove it, use Claude's own settings, under Extensions.
 

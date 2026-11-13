@@ -93,9 +93,6 @@ Var RadioUser
 Var RadioAll
 Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started again at the end)
 
-; The "Connect Marconi to your AI tools" page and its uninstall side (needs the variables above).
-!include "AiTools.nsh"
-
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
 !define MUI_ABORTWARNING
@@ -521,7 +518,8 @@ Section "${APP_NAME}" SecApp
 
     SetOutPath "$INSTDIR"
     ; Marconi.exe and the MSVC runtime DLLs, deployed next to it (app-local) so no separate redistributable is needed.
-    File "${STAGE_DIR}\App\*.*"
+    ; MarconiMcp and its files are a component of their own (SecAiTools).
+    File /x "MarconiMcp.exe" /x "Apps.json" /x "marconi.mcpb" "${STAGE_DIR}\App\*.*"
     File "/oname=LICENSE.txt" "..\LICENSE"
 
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -571,10 +569,34 @@ Section "Marconi Server installer" SecServerSetup
 SectionEnd
 !endif
 
+Section "AI tools (MarconiMcp)" SecAiTools
+    ; The program AI tools such as Claude Code start to use other computers through Marconi, the list of AI tools it
+    ; looks for, and the Claude Desktop extension. The page after installing connects it to the tools it finds.
+    SetOutPath "$INSTDIR"
+    File "${STAGE_DIR}\App\MarconiMcp.exe"
+    File "${STAGE_DIR}\App\Apps.json"
+    File "${STAGE_DIR}\App\marconi.mcpb"
+SectionEnd
+
+; Unticked on an upgrade: an earlier install's MarconiMcp goes, after taking itself out of the AI tools it was in.
+Section "-AiToolsUnticked"
+    ${IfNot} ${SectionIsSelected} ${SecAiTools}
+        Call AiToolsRemoveUnticked
+        Delete "$INSTDIR\MarconiMcp.exe"
+        Delete "$INSTDIR\Apps.json"
+        Delete "$INSTDIR\marconi.mcpb"
+    ${EndIf}
+SectionEnd
+
+; The "Connect Marconi to your AI tools" page and its uninstall side. After the sections, as it asks whether
+; SecAiTools was chosen.
+!include "AiTools.nsh"
+
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} VNC client."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME}, and a link to its source code on GitHub, to the Start menu."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Add a ${APP_NAME} shortcut to the desktop."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecAiTools} "Lets AI tools such as Claude Code, Codex and Claude Desktop use other computers through ${APP_NAME}. The next page asks which of them to connect."
 !ifdef HAVE_SERVER_SETUP
     !insertmacro MUI_DESCRIPTION_TEXT ${SecServerSetup} "The Marconi Server installer, for setting up other computers so you can control them with ${APP_NAME}. It installs nothing until you use it."
 !endif
