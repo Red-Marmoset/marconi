@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The viewer choices and the buttons on the edit screen, shared by its portrait and landscape layouts -->
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <TextView style="@style/Marconi.Heading" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/section_viewer" />
+
+    <TextView style="@style/Marconi.Muted" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/size" />
+    <RadioGroup android:id="@+id/scale" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+        <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/scaleFit" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="@string/scale_fit" />
+        <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/scaleActual" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/scale_actual" />
+    </RadioGroup>
+
+    <TextView style="@style/Marconi.Muted" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/picture" />
+    <RadioGroup android:id="@+id/quality" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+        <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/qualityBest" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/quality_best" />
+        <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/qualityBalanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="@string/quality_balanced" />
+        <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/qualityLow" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/quality_low" />
+    </RadioGroup>
+
+    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/viewOnly" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/view_only" />
+    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/clipboard" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="@string/share_clipboard" />
+    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/lock" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/lock_on_disconnect" />
+    <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/sshTunnel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ssh_tunnel" />
+    <TextView style="@style/Marconi.Muted" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingLeft="4dp" android:text="@string/ssh_tunnel_help" />
+
+    <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:fontFamily="@font/nebula_sans_semibold" android:text="@string/save_and_connect" />
+    <Button android:id="@+id/save" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:fontFamily="@font/nebula_sans_semibold" android:text="@string/save" />
+    <Button android:id="@+id/delete" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/delete" android:textColor="@color/marconi_accent" android:visibility="gone" />
+</merge>

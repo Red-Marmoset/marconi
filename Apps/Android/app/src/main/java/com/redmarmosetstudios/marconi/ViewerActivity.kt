@@ -10,6 +10,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
@@ -18,6 +20,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.TypedValue
 import android.view.HapticFeedbackConstants
 import android.view.Menu
 import android.view.MenuItem
@@ -58,6 +61,9 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
     private var shareClipboard = true
     private var quality = SavedConnection.QUALITY_BALANCED
     private var currentDisplay = 0            // a display id, or 0 for all
+    private var orientation = ORIENTATION_MATCH
+    private var shownWidth = 0                // the shape of what's shown (the whole screen or one display), 0 = not yet
+    private var shownHeight = 0
     private var lastClipboardSent = ""
     private var lastClipboardReceived = ""
     private val main = Handler(Looper.getMainLooper())
@@ -80,12 +86,18 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_viewer)
-        findViewById<android.view.View>(android.R.id.content).padForSystemBars()
-        WindowCompat.setDecorFitsSystemWindows(window, true)
         store = SavedConnections(this)
         remote = findViewById(R.id.remote)
         toolbar = findViewById(R.id.toolbar)
         keyBar = findViewById(R.id.keyBar)
+        // Drawn edge to edge on every version, so the keyboard covers the picture rather than shrinking it (which in
+        // landscape left a sliver): the key bar rides above the keyboard and the picture slides up to keep the
+        // pointer in sight
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        findViewById<android.view.View>(android.R.id.content).padForSystemBars(keyboard = false) { covered ->
+            keyBar.translationY = -covered.toFloat()
+            remote.coveredBottom = covered
+        }
         menuButton = findViewById(R.id.menuButton)
         clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         remote.input = this
@@ -115,6 +127,7 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
             }.show()
         }
         setUpKeyBar()
+        fitTopBar(resources.configuration)
 
         session = NativeSession(this)
         val trusted = if (saved != null) saved.certificate
@@ -146,6 +159,54 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
         for (answer in pendingAnswers) answer.complete(null)
         session.close()
         super.onDestroy()
+    }
+
+    // This screen handles turning itself (the manifest's configChanges), so the connection survives it
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        fitTopBar(newConfig)
+    }
+
+    /** A slimmer top bar in landscape, where height is scarce; the usual one in portrait. */
+    private fun fitTopBar(config: Configuration) {
+        val landscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val height = if (landscape) {
+            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 44f, resources.displayMetrics).toInt()
+        } else {
+            val value = TypedValue()
+            theme.resolveAttribute(androidx.appcompat.R.attr.actionBarSize, value, true)
+            TypedValue.complexToDimensionPixelSize(value.data, resources.displayMetrics)
+        }
+        toolbar.layoutParams = toolbar.layoutParams.apply { this.height = height }
+        toolbar.setTitleTextAppearance(this, if (landscape) R.style.TextAppearance_Marconi_Heading_Compact else R.style.TextAppearance_Marconi_Heading)
+        toolbar.setSubtitleTextAppearance(this, if (landscape) R.style.TextAppearance_Marconi_Subtitle_Compact else R.style.TextAppearance_Marconi_Heading)
+        toolbar.setTitleTextColor(0xFFF2F4F7.toInt())
+        toolbar.setSubtitleTextColor(0xFFB2BCC9.toInt())
+    }
+
+    /** What's shown changed shape: the whole screen of the other computer, or one of its displays. */
+    private fun showShape(width: Int, height: Int) {
+        shownWidth = width
+        shownHeight = height
+        applyOrientation()
+    }
+
+    /**
+     * Turns this screen for the choice in the menu. Matching the other computer is landscape for a wide picture and
+     * portrait for a tall one, either way up, even with the phone's auto-rotate off; before the picture's size is
+     * known this screen stays as the phone is.
+     */
+    private fun applyOrientation() {
+        requestedOrientation = when (orientation) {
+            ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            ORIENTATION_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            ORIENTATION_DEVICE -> ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+            else -> when {
+                shownWidth <= 0 || shownHeight <= 0 -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                shownWidth >= shownHeight -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            }
+        }
     }
 
     private fun setUpKeyBar() {
@@ -182,6 +243,12 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
         menu.findItem(R.id.menu_share_clipboard)?.isChecked = shareClipboard
         menu.findItem(R.id.menu_show_keys)?.isChecked = keyBar.visibility == View.VISIBLE
         menu.findItem(R.id.menu_match_size)?.isVisible = session.supportsDesktopResize()
+        menu.findItem(when (orientation) {
+            ORIENTATION_LANDSCAPE -> R.id.orientation_landscape
+            ORIENTATION_PORTRAIT -> R.id.orientation_portrait
+            ORIENTATION_DEVICE -> R.id.orientation_device
+            else -> R.id.orientation_match
+        })?.isChecked = true
         menu.findItem(when (quality) {
             SavedConnection.QUALITY_BEST -> R.id.quality_best
             SavedConnection.QUALITY_LOW -> R.id.quality_low
@@ -219,7 +286,15 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
             R.id.zoom_125 -> remote.setZoomPercent(125)
             R.id.zoom_150 -> remote.setZoomPercent(150)
             R.id.zoom_200 -> remote.setZoomPercent(200)
-            R.id.display_all -> { currentDisplay = 0; remote.showDisplay(null) }
+            R.id.display_all -> {
+                currentDisplay = 0
+                remote.showDisplay(null)
+                showShape(session.framebufferWidth(), session.framebufferHeight())
+            }
+            R.id.orientation_match -> setOrientation(ORIENTATION_MATCH)
+            R.id.orientation_landscape -> setOrientation(ORIENTATION_LANDSCAPE)
+            R.id.orientation_portrait -> setOrientation(ORIENTATION_PORTRAIT)
+            R.id.orientation_device -> setOrientation(ORIENTATION_DEVICE)
             R.id.quality_best -> setQuality(SavedConnection.QUALITY_BEST)
             R.id.quality_balanced -> setQuality(SavedConnection.QUALITY_BALANCED)
             R.id.quality_low -> setQuality(SavedConnection.QUALITY_LOW)
@@ -250,10 +325,16 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
                     val screen = session.screens().firstOrNull { it.id == item.itemId - DISPLAY_ITEM_BASE } ?: return true
                     currentDisplay = screen.id
                     remote.showDisplay(Rect(screen.x, screen.y, screen.x + screen.width, screen.y + screen.height))
+                    showShape(screen.width, screen.height)
                 } else return false
             }
         }
         return true
+    }
+
+    private fun setOrientation(value: Int) {
+        orientation = value
+        applyOrientation()
     }
 
     private fun setQuality(value: Int) {
@@ -394,6 +475,7 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
             connected = true
             toolbar.title = if (connection.name.isEmpty()) name else connection.displayName()
             remote.setPictureSize(width, height)
+            showShape(width, height)
             if (!connection.scaleFit) remote.setZoomPercent(100)
             updateSubtitle()
             sendClipboardIfShared()
@@ -408,6 +490,8 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
             } else {
                 // The picture changed size under us: remake it and ask for all of it
                 remote.setPictureSize(session.framebufferWidth(), session.framebufferHeight())
+                currentDisplay = 0
+                showShape(session.framebufferWidth(), session.framebufferHeight())
                 session.requestFullUpdate()
             }
         }
@@ -417,6 +501,7 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
         runOnUiThread {
             remote.setPictureSize(width, height)
             currentDisplay = 0
+            showShape(width, height)
             session.requestFullUpdate()
         }
     }
@@ -533,5 +618,9 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
         const val EXTRA_PASSWORD = "password"
         const val EXTRA_STATUS = "status"
         private const val DISPLAY_ITEM_BASE = 10000
+        private const val ORIENTATION_MATCH = 0      // landscape or portrait, as the other computer's screen is
+        private const val ORIENTATION_LANDSCAPE = 1
+        private const val ORIENTATION_PORTRAIT = 2
+        private const val ORIENTATION_DEVICE = 3     // as the phone is held, when auto-rotate is on
     }
 }

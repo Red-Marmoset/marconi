@@ -18,6 +18,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -108,6 +109,10 @@ private:
 @property(nonatomic, strong) UIImageView* imageView;
 @property(nonatomic) CGSize pictureSize;
 @property(nonatomic, strong) NSMutableSet<NSNumber*>* stickyModifiers;
+// How much of the bottom the on-screen keyboard covers, in points (0 when it's closed). The picture keeps its size:
+// it scrolls up to keep the pointer above the keyboard, and two fingers move it to show what's underneath.
+@property(nonatomic) CGFloat coveredBottom;
+- (void)fitPicture;
 @end
 
 @interface ViewerController : UIViewController
@@ -362,10 +367,37 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 
 - (void)centerPicture
 {
+    // Centred in the part the keyboard leaves uncovered, with the covered part added below so it can be scrolled into
+    // view
     CGSize shown = CGSizeMake(_pictureSize.width * self.zoomScale, _pictureSize.height * self.zoomScale);
     CGFloat horizontal = std::max<CGFloat>(0, (self.bounds.size.width - shown.width) / 2);
-    CGFloat vertical = std::max<CGFloat>(0, (self.bounds.size.height - shown.height) / 2);
-    self.contentInset = UIEdgeInsetsMake(vertical, horizontal, vertical, horizontal);
+    CGFloat vertical = std::max<CGFloat>(0, (self.bounds.size.height - _coveredBottom - shown.height) / 2);
+    self.contentInset = UIEdgeInsetsMake(vertical, horizontal, vertical + _coveredBottom, horizontal);
+}
+
+- (void)setCoveredBottom:(CGFloat)covered
+{
+    if (covered == _coveredBottom)
+    {
+        return;
+    }
+    _coveredBottom = covered;
+    [self centerPicture];
+    // Keep the scroll within what the new insets allow, then bring the pointer above the keyboard
+    const CGFloat lowestOffset = -self.contentInset.top;
+    const CGFloat highestOffset = std::max(lowestOffset, self.contentSize.height + self.contentInset.bottom - self.bounds.size.height);
+    CGPoint offset = self.contentOffset;
+    if (covered > 0)
+    {
+        const CGPoint pointer = [self convertPoint:CGPointMake(_pointerX, _pointerY) fromView:_imageView];
+        const CGFloat lowest = offset.y + self.bounds.size.height - covered - 48;
+        if (pointer.y > lowest)
+        {
+            offset.y += pointer.y - lowest;
+        }
+    }
+    offset.y = std::clamp(offset.y, lowestOffset, highestOffset);
+    [self setContentOffset:offset animated:YES];
 }
 
 - (UIView*)viewForZoomingInScrollView:(UIScrollView*)scrollView
@@ -610,8 +642,20 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 
 // --- The viewer screen ---
 
+// Which way round the viewer turns on an iPhone: as the other computer's screen is shaped, one way always, or as the
+// phone is held
+enum class ViewerOrientation
+{
+    Match,
+    Landscape,
+    Portrait,
+    Device,
+};
+
 @implementation ViewerController
 {
+    NSLayoutConstraint* _screenBottom;
+    ViewerOrientation _orientation;
     NSString* _address;
     NSString* _username;
     NSString* _password;
@@ -644,8 +688,6 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.blackColor;
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"Disconnect" style:UIBarButtonItemStylePlain
-                                                                             target:self action:@selector(disconnectTapped)];
 
     _screen = [[ScreenView alloc] initWithFrame:CGRectZero];
     _screen.controller = self;
@@ -657,16 +699,22 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     [self.view addSubview:_toolbar];
     [self buildToolbar];
 
+    // The picture ends where the toolbar rests, and keeps that size when the keyboard opens: the toolbar rides up on
+    // the keyboard, and the two cover the bottom of the picture (ScreenView.coveredBottom) rather than shrinking it,
+    // which in landscape on an iPhone left a sliver.
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
+    _screenBottom = [_screen.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor];
     [NSLayoutConstraint activateConstraints:@[
         [_screen.topAnchor constraintEqualToAnchor:safe.topAnchor],
         [_screen.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [_screen.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
-        [_screen.bottomAnchor constraintEqualToAnchor:_toolbar.topAnchor],
+        _screenBottom,
         [_toolbar.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
         [_toolbar.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [_toolbar.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
     ]];
+    [self.view bringSubviewToFront:_toolbar];
+    [self buildNavigationItems];
 
     _listener = std::make_unique<ViewerListener>(self);
     Marconi::QuickConnectOptions options;
@@ -687,11 +735,107 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 - (void)viewDidLayoutSubviews
 {
     [super viewDidLayoutSubviews];
+    // The toolbar is shorter in landscape on an iPhone: the picture ends where it rests
+    const CGFloat toolbarHeight = [_toolbar sizeThatFits:self.view.bounds.size].height;
+    if (_screenBottom.constant != -toolbarHeight)
+    {
+        _screenBottom.constant = -toolbarHeight;
+        [self.view layoutIfNeeded];
+    }
     if (!CGSizeEqualToSize(_lastScreenSize, _screen.bounds.size))
     {
         _lastScreenSize = _screen.bounds.size;
         [_screen fitPicture];
     }
+    // What the toolbar covers once the keyboard has lifted it off its resting place
+    _screen.coveredBottom = std::max<CGFloat>(0, CGRectGetMaxY(_screen.frame) - CGRectGetMinY(_toolbar.frame));
+}
+
+// --- Turning the screen ---
+
+// On an iPhone the viewer turns as the menu says: by default landscape for a wide picture and portrait for a tall one,
+// even with Rotation Lock on. An iPad that allows Split View can't be turned by an app, so there it turns with the
+// device as always.
+- (BOOL)canTurn
+{
+    return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone;
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    if (![self canTurn])
+    {
+        return UIInterfaceOrientationMaskAll;
+    }
+    switch (_orientation)
+    {
+        case ViewerOrientation::Landscape: return UIInterfaceOrientationMaskLandscape;
+        case ViewerOrientation::Portrait: return UIInterfaceOrientationMaskPortrait;
+        case ViewerOrientation::Device: return UIInterfaceOrientationMaskAllButUpsideDown;
+        case ViewerOrientation::Match:
+            if (_pictureWidth <= 0 || _pictureHeight <= 0)
+            {
+                return UIInterfaceOrientationMaskAllButUpsideDown;
+            }
+            return _pictureWidth >= _pictureHeight ? UIInterfaceOrientationMaskLandscape : UIInterfaceOrientationMaskPortrait;
+    }
+    return UIInterfaceOrientationMaskAllButUpsideDown;
+}
+
+- (void)applyOrientation
+{
+    if (![self canTurn])
+    {
+        return;
+    }
+    if (@available(iOS 16.0, *))
+    {
+        [self setNeedsUpdateOfSupportedInterfaceOrientations];
+        [self.navigationController setNeedsUpdateOfSupportedInterfaceOrientations];
+        UIWindowScene* scene = self.view.window.windowScene;
+        UIWindowSceneGeometryPreferencesIOS* wanted =
+            [[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:[self supportedInterfaceOrientations]];
+        [scene requestGeometryUpdateWithPreferences:wanted errorHandler:nil];
+    }
+    else
+    {
+        [UIViewController attemptRotationToDeviceOrientation]; // iOS 15 can't turn the screen, only allow it to turn
+    }
+}
+
+- (void)buildNavigationItems
+{
+    UIBarButtonItem* disconnect = [[UIBarButtonItem alloc] initWithTitle:@"Disconnect" style:UIBarButtonItemStylePlain
+                                                                  target:self action:@selector(disconnectTapped)];
+    if (![self canTurn])
+    {
+        self.navigationItem.rightBarButtonItems = @[disconnect];
+        return;
+    }
+    NSMutableArray<UIAction*>* actions = [NSMutableArray array];
+    const std::pair<ViewerOrientation, NSString*> choices[] = {
+        {ViewerOrientation::Match, @"To match the other computer"}, {ViewerOrientation::Landscape, @"Landscape"},
+        {ViewerOrientation::Portrait, @"Portrait"}, {ViewerOrientation::Device, @"With the phone"}};
+    for (const auto& choice : choices)
+    {
+        const ViewerOrientation value = choice.first;
+        __weak ViewerController* weakSelf = self;
+        UIAction* action = [UIAction actionWithTitle:choice.second image:nil identifier:nil handler:^(UIAction*) {
+            ViewerController* strongSelf = weakSelf;
+            if (strongSelf)
+            {
+                strongSelf->_orientation = value;
+                [strongSelf buildNavigationItems];
+                [strongSelf applyOrientation];
+            }
+        }];
+        action.state = _orientation == value ? UIMenuElementStateOn : UIMenuElementStateOff;
+        [actions addObject:action];
+    }
+    UIBarButtonItem* turn = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"rotate.right"]
+                                                              menu:[UIMenu menuWithTitle:@"Turn the screen" children:actions]];
+    turn.accessibilityLabel = @"Turn the screen";
+    self.navigationItem.rightBarButtonItems = @[disconnect, turn];
 }
 
 - (void)buildToolbar
@@ -826,6 +970,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     _pixels.assign(static_cast<size_t>(std::max(0, width)) * static_cast<size_t>(std::max(0, height)), 0);
     _screen.pictureSize = CGSizeMake(width, height);
     [self showPicture];
+    [self applyOrientation];
 }
 
 - (void)pictureChangedX:(int)x y:(int)y width:(int)width height:(int)height
@@ -844,6 +989,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
             _pictureHeight = framebuffer.GetHeight();
             _pixels.assign(static_cast<size_t>(_pictureWidth) * _pictureHeight, 0);
             _screen.pictureSize = CGSizeMake(_pictureWidth, _pictureHeight);
+            dispatch_async(dispatch_get_main_queue(), ^{ [self applyOrientation]; }); // outside the framebuffer lock
             x = 0;
             y = 0;
             width = _pictureWidth;
@@ -1001,6 +1147,18 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     UITextField* _username;
     UITextField* _password;
     UILabel* _status;
+    UIStackView* _columns;
+}
+
+- (void)viewWillLayoutSubviews
+{
+    [super viewWillLayoutSubviews];
+    // Side by side in landscape, one above the other in portrait
+    const BOOL landscape = self.view.bounds.size.width > self.view.bounds.size.height;
+    _columns.axis = landscape ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+    _columns.distribution = landscape ? UIStackViewDistributionFillEqually : UIStackViewDistributionFill;
+    _columns.alignment = landscape ? UIStackViewAlignmentTop : UIStackViewAlignmentFill;
+    _columns.spacing = landscape ? 28 : 14;
 }
 
 - (void)viewDidLoad
@@ -1041,16 +1199,30 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     help.textColor = UIColor.secondaryLabelColor;
     help.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
 
-    UIStackView* stack = [[UIStackView alloc] initWithArrangedSubviews:@[_address, _username, _password, connect, _status, help]];
-    stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = 14;
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:stack];
+    // The form, and the help beside it in landscape (below it in portrait: viewWillLayoutSubviews), in a scroll view
+    // so both fit above the keyboard on a landscape iPhone
+    UIStackView* form = [[UIStackView alloc] initWithArrangedSubviews:@[_address, _username, _password, connect, _status]];
+    form.axis = UILayoutConstraintAxisVertical;
+    form.spacing = 14;
+    _columns = [[UIStackView alloc] initWithArrangedSubviews:@[form, help]];
+    _columns.spacing = 14;
+    _columns.translatesAutoresizingMaskIntoConstraints = NO;
+    UIScrollView* scroll = [UIScrollView new];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    [scroll addSubview:_columns];
+    [self.view addSubview:scroll];
     UILayoutGuide* safe = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:safe.topAnchor constant:20],
-        [stack.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:20],
-        [stack.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-20],
+        [scroll.topAnchor constraintEqualToAnchor:safe.topAnchor],
+        [scroll.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:self.view.keyboardLayoutGuide.topAnchor],
+        [_columns.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor constant:20],
+        [_columns.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor constant:20],
+        [_columns.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor constant:-20],
+        [_columns.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor constant:-20],
+        [_columns.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor constant:-40],
         [_address.heightAnchor constraintEqualToConstant:44],
         [_username.heightAnchor constraintEqualToConstant:44],
         [_password.heightAnchor constraintEqualToConstant:44],
@@ -1096,6 +1268,19 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
 
 // --- The app ---
 
+// Lets the screen in front say which ways round it may be (a navigation controller otherwise decides for all of them)
+@interface MarconiNavigationController : UINavigationController
+@end
+
+@implementation MarconiNavigationController
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    return self.topViewController ? self.topViewController.supportedInterfaceOrientations : [super supportedInterfaceOrientations];
+}
+
+@end
+
 @interface MarconiAppDelegate : UIResponder <UIApplicationDelegate>
 @property(nonatomic, strong) UIWindow* window;
 @property(nonatomic, strong) ConnectController* connect;
@@ -1108,7 +1293,7 @@ bool ViewerListener::OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestio
     Log::SetCallback(LogToSystem);
     self.connect = [ConnectController new];
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    self.window.rootViewController = [[UINavigationController alloc] initWithRootViewController:self.connect];
+    self.window.rootViewController = [[MarconiNavigationController alloc] initWithRootViewController:self.connect];
     [self.window makeKeyAndVisible];
     return YES;
 }

@@ -50,12 +50,18 @@ choice (system, light or dark) and the version.
 
 On the screen: tap to click, double-tap to double-click, touch and hold for a right click, double-tap and hold to
 drag with the left button. One finger moves the pointer, two fingers move and zoom the picture, and scroll the
-other computer's window while the picture fits the screen. The menu has zoom levels, the other computer's displays,
-picture quality, matching its screen size to the phone, full screen, view only, the clipboard both ways, keys to
-send (Ctrl+Alt+Del, Alt+Tab, the Windows key and more), screenshots, a key bar with Esc, Tab, the arrows, Del, Win
-and F8 (Ctrl, Alt and Shift stay pressed for the next key), refresh and disconnect. The bar at the top shows the
-computer's name, whether the connection is encrypted, and the round trip time. Rotating the phone keeps the
-connection.
+other computer's window while the picture fits the screen (while the keyboard is open, two fingers move the picture
+instead). The menu has zoom levels, the other computer's displays, which way round the screen turns, picture
+quality, matching its screen size to the phone, full screen, view only, the clipboard both ways, keys to send
+(Ctrl+Alt+Del, Alt+Tab, the Windows key and more), screenshots, a key bar with Esc, Tab, the arrows, Del, Win and F8
+(Ctrl, Alt and Shift stay pressed for the next key), refresh and disconnect. The bar at the top shows the computer's
+name, whether the connection is encrypted, and the round trip time; it is slimmer in landscape.
+
+The screen turns to match the other computer's: landscape for a wide screen, portrait for a tall one (or the shape
+of the display shown), even with auto-rotate off. The menu's "Turn the screen" changes that to always landscape,
+always portrait, or with the phone. Turning keeps the connection. The on-screen keyboard covers the bottom of the
+picture rather than shrinking it: the picture moves up to keep the pointer in sight. The other screens turn when
+auto-rotate is on, and have a landscape layout with their parts side by side.
 
 ## How it fits together
 

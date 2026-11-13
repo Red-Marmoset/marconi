@@ -53,8 +53,14 @@ password. A certificate you accept is remembered for that address.
 On the screen: tap to click, double-tap to double-click, touch and hold for a right click, tap then hold and move
 to drag with the left button. One finger moves the pointer, two fingers move and pinch to zoom the picture. The
 bar at the bottom shows the keyboard and has Esc, Tab, the arrows and Del; Ctrl, Alt, Shift and Cmd stay pressed
-for the next key. A hardware keyboard works too. Text the other computer copies goes to the clipboard. Links of
-the form `vnc://host` and `marconi://host` open in the app.
+for the next key. A hardware keyboard works too. The on-screen keyboard covers the bottom of the picture rather
+than shrinking it: the picture moves up to keep the pointer in sight, and two fingers move it to show the rest. Text
+the other computer copies goes to the clipboard. Links of the form `vnc://host` and `marconi://host` open in the app.
+
+On an iPhone the screen turns to match the other computer's: landscape for a wide screen, portrait for a tall one,
+even with Rotation Lock on. The turn button at the top changes that to always landscape, always portrait, or with
+the phone. An iPad turns with the device as usual: iPadOS doesn't let an app that works in Split View turn itself.
+Both screens have a landscape layout.
 
 ## Version and icon
 

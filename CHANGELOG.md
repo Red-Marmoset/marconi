@@ -5,9 +5,15 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
-## 0.9.13
+## 0.10.1
 
 - Fixed the picture freezing or staying black on some VNC servers, such as x11vnc on Linux.
+
+## 0.10.0
+
+- The phone and tablet apps have landscape layouts.
+- On phones the viewer turns to match the other computer's screen, even with auto-rotate off, and its menu can change that.
+- The on-screen keyboard covers the bottom of the picture instead of shrinking it.
 
 ## 0.9.12
 
