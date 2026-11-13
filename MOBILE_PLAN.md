@@ -39,7 +39,8 @@ decided along the way, and what is still unchecked. Keep it current.
   into a debug APK, the iOS project generated with every source it needs and none of the desktop ones.
 - Not checked yet: the apps on a device. Nobody has tapped on either. Expect the first run on a phone or an iPad
   to turn up small things in `RemoteView.kt`, `ViewerActivity.kt` and `Marconi_iOS.mm` (gesture feel, keyboard
-  handling, picture scaling). The iOS code has not been compiled with the iOS SDK either.
+  handling, picture scaling). The iOS app compiles with the iOS SDK and is signed for a device (on the Mac,
+  November 2026).
 - The Android app (0.9.2) has the desktop's start screen and choices: `ConnectionsActivity` (quick connect,
   saved connections with favourites, groups and search, "On this network" through the core's mDNS discovery with
   a multicast lock), `EditConnectionActivity` (every field of the desktop's connection dialog; passwords in an
