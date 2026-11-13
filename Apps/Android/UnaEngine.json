@@ -1,11 +1,11 @@
 {
     "repository": "https://github.com/Red-Marmoset/engine.git",
     "branch": "main",
-    "commit": "9ecde68702b80196dfca77614d70a08110626592",
+    "commit": "a5e35d575e08d8b587f75ac8a26c1769e68b71ec",
     "buildTool": {
         "path": "Modules/BuildTool",
         "repository": "https://github.com/Red-Marmoset/engine-build-tool.git",
         "branch": "main",
-        "commit": "f9b844d4b9d1bdb3d050ccf21ee9aacf4df9dba4"
+        "commit": "8142f44042269c405392ba07cab8e9232b5f7e9d"
     }
 }

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // Applies the saved appearance (system, light or dark) before any screen appears.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.app.Application
 import androidx.appcompat.app.AppCompatDelegate

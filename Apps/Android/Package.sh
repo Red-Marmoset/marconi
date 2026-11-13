@@ -7,7 +7,8 @@
 # any of those is missing, or no release key is set, it says so and exits with 0, so the desktop package still
 # gets made.
 #
-# Signing: with the release key these name. Without MARCONI_ANDROID_KEYSTORE the app is not packaged (for a test
+# Signing: with the release key these name. They are the environment variables Project.json's "signing" section
+# names for Android; change the names there. Without MARCONI_ANDROID_KEYSTORE the app is not packaged (for a test
 # build signed with the debug key, run ./gradlew assembleDebug here instead):
 #   MARCONI_ANDROID_KEYSTORE=<path to the keystore>
 #   MARCONI_ANDROID_KEYSTORE_PASSWORD=<its password>
@@ -35,12 +36,23 @@ skip() {
     exit 0
 }
 
-# A release is signed with the release key, so there is nothing to package without one.
-[[ -n "${MARCONI_ANDROID_KEYSTORE:-}" ]] || skip "MARCONI_ANDROID_KEYSTORE isn't set (the release key; see the top of Apps/Android/Package.sh)."
-[[ -f "$MARCONI_ANDROID_KEYSTORE" ]] || { echo "ERROR: MARCONI_ANDROID_KEYSTORE=$MARCONI_ANDROID_KEYSTORE doesn't exist." >&2; exit 1; }
-[[ -n "${MARCONI_ANDROID_KEYSTORE_PASSWORD:-}" ]] || { echo "ERROR: MARCONI_ANDROID_KEYSTORE_PASSWORD isn't set." >&2; exit 1; }
+# BuildTool builds the native library, and says which environment variables Project.json names for the release key.
+source "$ROOT/Tools/SigningSettings.sh"
+find_buildtool
+ENGINE="${UNA_ENGINE_PATH:-$ROOT/../engine}"
+[[ -n "$BUILDTOOL" ]] || skip "no BuildTool under $ENGINE/Build/BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)."
+export UNA_ENGINE_PATH="$ENGINE"
 
-# The tools: a JDK, the SDK with a platform and build tools, an NDK, and BuildTool.
+# A release is signed with the release key, so there is nothing to package without one. Only the password's
+# variable is named here; Gradle reads what it holds.
+KEYSTORE_ENV="$(signing_env android.keystore)"
+KEYSTORE_PASSWORD_ENV="$(signing_env android.keystorePassword)"
+KEYSTORE="${!KEYSTORE_ENV:-}"
+[[ -n "$KEYSTORE" ]] || skip "$KEYSTORE_ENV isn't set (the release key; see the top of Apps/Android/Package.sh)."
+[[ -f "$KEYSTORE" ]] || { echo "ERROR: $KEYSTORE_ENV=$KEYSTORE doesn't exist." >&2; exit 1; }
+[[ -n "${!KEYSTORE_PASSWORD_ENV:-}" ]] || { echo "ERROR: $KEYSTORE_PASSWORD_ENV isn't set." >&2; exit 1; }
+
+# The other tools: a JDK, the SDK with a platform and build tools, and an NDK.
 if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
     JAVA="$JAVA_HOME/bin/java"
 else
@@ -66,22 +78,11 @@ fi
 [[ -n "$NDK" && -d "$NDK/toolchains/llvm" ]] || skip "no Android NDK (install one from the SDK manager, or set ANDROID_NDK_HOME)."
 export ANDROID_NDK_HOME="$NDK"
 
-ENGINE="${UNA_ENGINE_PATH:-$ROOT/../engine}"
-BUILDTOOL=""
-for cfg in Release MinSizeRel Debug Bootstrap; do
-    if [[ -x "$ENGINE/Build/BuildTool/$cfg/BuildTool" ]]; then
-        BUILDTOOL="$ENGINE/Build/BuildTool/$cfg/BuildTool"
-        break
-    fi
-done
-[[ -n "$BUILDTOOL" ]] || skip "no BuildTool under $ENGINE/Build/BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)."
-export UNA_ENGINE_PATH="$ENGINE"
-
 # aapt, from the newest build tools, reads the version the app was stamped with.
 AAPT="$(ls "$SDK"/build-tools/*/aapt 2>/dev/null | sort -V | tail -n 1)"
 [[ -x "$AAPT" ]] || skip "no aapt in $SDK/build-tools."
 
-SIGNING="release key $MARCONI_ANDROID_KEYSTORE"
+SIGNING="release key $KEYSTORE"
 
 echo "[Package.sh] Android: SDK=$SDK"
 echo "[Package.sh] Android: NDK=$NDK"

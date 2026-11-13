@@ -84,8 +84,9 @@ From the menu you can:
 - go full screen or back;
 - turn view-only and clipboard sharing on or off, or send your clipboard to the other computer and get its
   clipboard by hand;
-- send Ctrl+Alt+Del, Alt+Tab, the Windows key and other shortcuts your own computer would otherwise act on (or F8
-  itself) to the other computer;
+- send Ctrl+Alt+Del, Alt+Tab, the Windows key, a Mac's screenshot shortcuts and other shortcuts your own computer
+  would otherwise act on (or F8 itself) to the other computer, from a menu for each of Windows, Mac and Linux (just
+  the Mac one when the other computer is a Mac using its own screen sharing);
 - send system shortcuts such as Alt+Tab, the Windows key and Cmd+Tab to the other computer as you press them, on
   Windows and macOS (macOS asks you to allow Marconi under Privacy & Security > Accessibility first; Linux desktops
   don't allow this);
@@ -311,6 +312,16 @@ download for your computer. Settings has a "Check for updates now" button, and a
 Marconi didn't check by itself. On Windows, the installer closes a running Marconi before updating and starts it
 again afterwards.
 
+### Checking the Android app is ours
+
+The Android app on the releases page is signed by Red Marmoset Studios, and every version is signed the same way.
+To check a download is genuine, compare the SHA-256 fingerprint of its signing certificate with this one:
+
+    58:95:65:E6:06:FA:1D:E5:E0:C4:F2:03:D3:E8:26:6E:09:44:F2:03:D7:3C:39:50:F0:BC:CA:7F:E8:89:E2:99
+
+With the Android SDK, `apksigner verify --print-certs Marconi-<version>-android.apk` prints it. Because it doesn't
+come from the Play Store, Android asks the first time whether the app you downloaded it with may install apps.
+
 ## Not available yet
 
 - **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.
@@ -488,6 +499,12 @@ differ from the defaults, `MARCONI_ANDROID_KEY_ALIAS` (`marconi`) and `MARCONI_A
 keystore's). For a test build signed with the debug key, run `./gradlew assembleDebug` in `Apps/Android`. An app
 signed with a different key than the one installed has to be uninstalled first.
 
+Before publishing, check the app is signed with the release key, not the debug one:
+`apksigner verify --print-certs Build/Installer/Marconi-<version>-android.apk` (in the SDK's `build-tools`) must
+show the SHA-256 fingerprint in [Checking the Android app is ours](#checking-the-android-app-is-ours). Put that
+fingerprint in the release's notes on GitHub too. Keep the keystore and its passwords backed up: updates install
+over an earlier version only when they're signed with the same key.
+
 ## Releasing (macOS)
 
     ./Package.sh                      # -> Build/Installer/Marconi-0.2.0.48-macos-arm64.dmg
@@ -504,6 +521,23 @@ then click *Open Anyway* in *System Settings > Privacy & Security*. Copies share
 blocked too. For a release, also set `MARCONI_NOTARY_PROFILE` to a profile from `xcrun notarytool
 store-credentials`: `Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the
 ticket.
+
+### Packaging on a build server
+
+Finder lays out the disk image's window (the background with the arrow, and where the icons sit), because macOS
+26 only shows a background picture that Finder set itself. So the Mac that runs `Package.sh` needs:
+
+- **Someone logged in to its screen.** Finder doesn't run for a program started over SSH alone or as a background
+  service. Run the build server's agent as a user who is logged in, for example with automatic login and the agent
+  started when that user logs in, not as a service for the whole Mac.
+- **Permission for the agent to control Finder.** The first time, macOS asks on the screen, and the answer is kept
+  in *System Settings > Privacy & Security > Automation*. Allow it once while setting the Mac up: run `Package.sh`,
+  or `osascript -e 'tell application "Finder" to get name of startup disk'`, from the agent and click *Allow*. A
+  Mac managed by a device management service can be given the same permission by a profile instead (a privacy
+  preferences profile allowing the agent to send Apple events to Finder).
+
+`Package.sh` checks both before it builds, and says which one is missing. It hasn't been tried on hosted build
+services such as GitHub's Macs.
 
 ## Releasing (Linux)
 

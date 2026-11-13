@@ -54,7 +54,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.redmarmoset.marconi.files"
+            android:authorities="com.redmarmosetstudios.marconi.files"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

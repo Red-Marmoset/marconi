@@ -1,7 +1,7 @@
 {
     "name": "Marconi",
     "type": "windowed",
-    "version": "0.9.7",
+    "version": "0.10.2",
     "description": "Marconi - cross-platform VNC client",
     "modules": [
         "MarconiCore",
@@ -32,7 +32,24 @@
             "ShellExecAsUser"
         ],
         "outputDir": "Build/Installer",
-        "zip": false,
-        "signEnv": "MARCONI_SIGN_THUMBPRINT"
+        "zip": false
+    },
+    "signing": {
+        "windows": {
+            "thumbprintEnv": "MARCONI_SIGN_THUMBPRINT"
+        },
+        "macos": {
+            "identityEnv": "MARCONI_SIGN_IDENTITY",
+            "notaryProfileEnv": "MARCONI_NOTARY_PROFILE"
+        },
+        "android": {
+            "keystoreEnv": "MARCONI_ANDROID_KEYSTORE",
+            "keystorePasswordEnv": "MARCONI_ANDROID_KEYSTORE_PASSWORD",
+            "keyAliasEnv": "MARCONI_ANDROID_KEY_ALIAS",
+            "keyPasswordEnv": "MARCONI_ANDROID_KEY_PASSWORD"
+        },
+        "linux": {
+            "maintainerEnv": "MARCONI_DEB_MAINTAINER"
+        }
     }
 }

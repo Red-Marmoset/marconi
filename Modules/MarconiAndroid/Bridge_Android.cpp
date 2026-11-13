@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// The bridge between the Android app (com.redmarmoset.marconi.NativeSession) and MarconiCore: one native session per
+// The bridge between the Android app (com.redmarmosetstudios.marconi.NativeSession) and MarconiCore: one native session per
 // NativeSession object. Calls from Kotlin arrive on the app's main thread; the session's callbacks arrive on the
 // connection thread and are handed straight to the Kotlin object, which moves them to the main thread itself.
 
@@ -504,17 +504,17 @@ extern "C"
         return JNI_VERSION_1_6;
     }
 
-    JNIEXPORT jlong JNICALL Java_com_redmarmoset_marconi_NativeSession_create(JNIEnv* env, jobject self)
+    JNIEXPORT jlong JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_create(JNIEnv* env, jobject self)
     {
         return static_cast<jlong>(reinterpret_cast<intptr_t>(new Session(env, self)));
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_destroy(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_destroy(JNIEnv*, jobject, jlong handle)
     {
         delete SessionOf(handle);
     }
 
-    JNIEXPORT jstring JNICALL Java_com_redmarmoset_marconi_NativeSession_connect(
+    JNIEXPORT jstring JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_connect(
         JNIEnv* env, jobject, jlong handle, jstring address, jstring username, jstring password,
         jstring trustedCertificateHex, jboolean sshTunnel, jint quality, jstring clientName)
     {
@@ -524,7 +524,7 @@ extern "C"
         return error.empty() ? nullptr : ToJava(env, error);
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_setQuality(JNIEnv*, jobject, jlong handle, jint quality)
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_setQuality(JNIEnv*, jobject, jlong handle, jint quality)
     {
         if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
         {
@@ -535,7 +535,7 @@ extern "C"
 
     // Text for the other computer's clipboard: offered through the extended clipboard where the server has it,
     // else sent the plain VNC way. False when not connected.
-    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_sendClipboardText(
+    JNIEXPORT jboolean JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_sendClipboardText(
         JNIEnv* env, jobject, jlong handle, jstring text)
     {
         Marconi::RemoteSession* session = SessionOf(handle)->Current();
@@ -552,14 +552,14 @@ extern "C"
         return JNI_TRUE;
     }
 
-    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_requestServerClipboard(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT jboolean JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_requestServerClipboard(JNIEnv*, jobject, jlong handle)
     {
         Marconi::RemoteSession* session = SessionOf(handle)->Current();
         return session != nullptr && session->RequestServerClipboard() ? JNI_TRUE : JNI_FALSE;
     }
 
     // The server's displays as five numbers each: id, x, y, width, height. Empty until the server describes them.
-    JNIEXPORT jintArray JNICALL Java_com_redmarmoset_marconi_NativeSession_screens(JNIEnv* env, jobject, jlong handle)
+    JNIEXPORT jintArray JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_screens(JNIEnv* env, jobject, jlong handle)
     {
         std::vector<jint> values;
         if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
@@ -581,13 +581,13 @@ extern "C"
         return result;
     }
 
-    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_supportsDesktopResize(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT jboolean JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_supportsDesktopResize(JNIEnv*, jobject, jlong handle)
     {
         Marconi::RemoteSession* session = SessionOf(handle)->Current();
         return session != nullptr && session->SupportsDesktopResize() ? JNI_TRUE : JNI_FALSE;
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_requestDesktopSize(
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_requestDesktopSize(
         JNIEnv*, jobject, jlong handle, jint width, jint height)
     {
         if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
@@ -597,13 +597,13 @@ extern "C"
     }
 
     // The last measured round trip to a VNC server in milliseconds; -1 before the first or for other protocols.
-    JNIEXPORT jint JNICALL Java_com_redmarmoset_marconi_NativeSession_roundTripMs(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT jint JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_roundTripMs(JNIEnv*, jobject, jlong handle)
     {
         Marconi::Rfb::Client* vnc = SessionOf(handle)->Vnc();
         return vnc != nullptr ? vnc->GetHealth().roundTripMs : -1;
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_sendPing(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_sendPing(JNIEnv*, jobject, jlong handle)
     {
         if (Marconi::Rfb::Client* vnc = SessionOf(handle)->Vnc())
         {
@@ -611,14 +611,14 @@ extern "C"
         }
     }
 
-    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_isAppleServer(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT jboolean JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_isAppleServer(JNIEnv*, jobject, jlong handle)
     {
         Marconi::Rfb::Client* vnc = SessionOf(handle)->Vnc();
         return vnc != nullptr && vnc->IsAppleServer() ? JNI_TRUE : JNI_FALSE;
     }
 
     // Wakes a computer by its hardware address. Returns a message when it couldn't be sent.
-    JNIEXPORT jstring JNICALL Java_com_redmarmoset_marconi_NativeSession_wake(JNIEnv* env, jclass, jstring macAddress)
+    JNIEXPORT jstring JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_wake(JNIEnv* env, jclass, jstring macAddress)
     {
         std::string error;
         if (Marconi::Net::SendWakeOnLan(FromJava(env, macAddress), error))
@@ -630,7 +630,7 @@ extern "C"
 
     // Computers advertising screen sharing, Remote Desktop or SSH on this network, one string each:
     // "name\thost\taddress\tport\tprotocol". Listens for listenMs; this blocks, so call it off the main thread.
-    JNIEXPORT jobjectArray JNICALL Java_com_redmarmoset_marconi_NativeSession_discoverNative(JNIEnv* env, jclass, jint listenMs)
+    JNIEXPORT jobjectArray JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_discoverNative(JNIEnv* env, jclass, jint listenMs)
     {
         const std::vector<Marconi::Net::DiscoveredService> services = Marconi::Net::Discover(listenMs);
         jclass stringClass = env->FindClass("java/lang/String");
@@ -648,28 +648,28 @@ extern "C"
         return result;
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_disconnect(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_disconnect(JNIEnv*, jobject, jlong handle)
     {
         SessionOf(handle)->Disconnect();
     }
 
-    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_copyFramebuffer(
+    JNIEXPORT jboolean JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_copyFramebuffer(
         JNIEnv* env, jobject, jlong handle, jobject bitmap, jint x, jint y, jint width, jint height)
     {
         return SessionOf(handle)->CopyFramebuffer(env, bitmap, x, y, width, height) ? JNI_TRUE : JNI_FALSE;
     }
 
-    JNIEXPORT jint JNICALL Java_com_redmarmoset_marconi_NativeSession_framebufferWidth(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT jint JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_framebufferWidth(JNIEnv*, jobject, jlong handle)
     {
         return SessionOf(handle)->FramebufferWidth();
     }
 
-    JNIEXPORT jint JNICALL Java_com_redmarmoset_marconi_NativeSession_framebufferHeight(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT jint JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_framebufferHeight(JNIEnv*, jobject, jlong handle)
     {
         return SessionOf(handle)->FramebufferHeight();
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_sendPointer(
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_sendPointer(
         JNIEnv*, jobject, jlong handle, jint x, jint y, jint buttons)
     {
         if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
@@ -678,7 +678,7 @@ extern "C"
         }
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_sendKey(
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_sendKey(
         JNIEnv*, jobject, jlong handle, jint keysym, jboolean down)
     {
         if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
@@ -687,12 +687,12 @@ extern "C"
         }
     }
 
-    JNIEXPORT jint JNICALL Java_com_redmarmoset_marconi_NativeSession_keysymForCodepoint(JNIEnv*, jclass, jint codepoint)
+    JNIEXPORT jint JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_keysymForCodepoint(JNIEnv*, jclass, jint codepoint)
     {
         return static_cast<jint>(Marconi::Keysym::FromUnicode(static_cast<uint32_t>(codepoint)));
     }
 
-    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_requestFullUpdate(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT void JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_requestFullUpdate(JNIEnv*, jobject, jlong handle)
     {
         if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
         {
@@ -700,13 +700,13 @@ extern "C"
         }
     }
 
-    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_isEncrypted(JNIEnv*, jobject, jlong handle)
+    JNIEXPORT jboolean JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_isEncrypted(JNIEnv*, jobject, jlong handle)
     {
         Marconi::RemoteSession* session = SessionOf(handle)->Current();
         return session != nullptr && session->IsEncrypted() ? JNI_TRUE : JNI_FALSE;
     }
 
-    JNIEXPORT jstring JNICALL Java_com_redmarmoset_marconi_NativeSession_encryptionName(JNIEnv* env, jobject, jlong handle)
+    JNIEXPORT jstring JNICALL Java_com_redmarmosetstudios_marconi_NativeSession_encryptionName(JNIEnv* env, jobject, jlong handle)
     {
         Marconi::RemoteSession* session = SessionOf(handle)->Current();
         return ToJava(env, session != nullptr ? session->GetEncryptionName() : std::string());

@@ -92,21 +92,15 @@ if (-not (Get-Command "cl.exe" -ErrorAction SilentlyContinue)) {
     Write-Host "cl.exe already on PATH; skipping MSVC environment setup."
 }
 
-# Locate BuildTool. Prefer Release, fall back to Debug, MinSizeRel, then
-# Bootstrap. The engine bootstrap produces Bootstrap\BuildTool.exe at minimum.
+# Locate BuildTool: the more recently built of the engine's Release and MinSizeRel copies, so an old copy left in one
+# folder never hides a newer one. The engine bootstrap ends with the MinSizeRel build. Debug and Bootstrap copies are
+# never used.
 $candidates = @(
     (Join-Path $enginePath "Build\BuildTool\Release\BuildTool.exe"),
-    (Join-Path $enginePath "Build\BuildTool\MinSizeRel\BuildTool.exe"),
-    (Join-Path $enginePath "Build\BuildTool\Debug\BuildTool.exe"),
-    (Join-Path $enginePath "Build\BuildTool\Bootstrap\BuildTool.exe")
+    (Join-Path $enginePath "Build\BuildTool\MinSizeRel\BuildTool.exe")
 )
-$buildTool = $null
-foreach ($candidate in $candidates) {
-    if (Test-Path $candidate) {
-        $buildTool = $candidate
-        break
-    }
-}
+$buildTool = $candidates | Where-Object { Test-Path $_ } |
+    Sort-Object { (Get-Item $_).LastWriteTimeUtc } -Descending | Select-Object -First 1
 
 if (-not $buildTool) {
     Write-Host "ERROR: BuildTool not found under $enginePath\Build\BuildTool\." -ForegroundColor Red

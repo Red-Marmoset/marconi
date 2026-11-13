@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // Settings: the appearance choice, and who made Marconi.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.os.Bundle
 import android.widget.TextView
@@ -13,6 +13,7 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+        findViewById<android.view.View>(android.R.id.content).padForSystemBars()
         findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
 
         val group = findViewById<MaterialButtonToggleGroup>(R.id.appearance)

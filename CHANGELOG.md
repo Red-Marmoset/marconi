@@ -31,6 +31,41 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi Server: sends the mouse pointer's shape and position as they change.
 - Marconi connections lock the other computer's screen when you disconnect, if that option is on.
 - Marconi Server can run as a Windows service, so it keeps working at the sign-in screen and through permission prompts (written, not yet tried on Windows).
+## 0.10.2
+
+- Send Keys has a menu for each of Windows, Mac and Linux, sorted by what the shortcuts do.
+- Send Keys can send the Mac's screenshot shortcuts, lock the screen, and send more Mac and Linux shortcuts.
+- When the other computer is a Mac using its own screen sharing, Send Keys shows only the Mac shortcuts.
+
+## 0.10.1
+
+- The Mac disk image opens in a square window with an arrow from Marconi to the Applications folder.
+
+## 0.10.0
+
+- The phone and tablet apps have landscape layouts.
+- On phones the viewer turns to match the other computer's screen, even with auto-rotate off, and its menu can change that.
+- The on-screen keyboard covers the bottom of the picture instead of shrinking it.
+
+## 0.9.12
+
+- The Android app is signed so that its signing key can be replaced later without breaking updates.
+
+## 0.9.11
+
+- The README says how to check that a downloaded Android app is genuine.
+
+## 0.9.10
+
+- The build and package scripts use the most recently built copy of the engine's build tool, never a debug or first-stage one.
+
+## 0.9.9
+
+- On Android, the top of each screen and the button at the bottom no longer sit under the phone's status bar and navigation buttons.
+
+## 0.9.8
+
+- The Android, iPad and Mac apps are now identified as com.redmarmosetstudios.marconi.
 
 ## 0.9.7
 

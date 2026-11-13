@@ -9,12 +9,14 @@
 #
 # macOS: wraps Build/Marconi/Release/Marconi in Marconi.app (Info.plist from Installer/macOS, the icon, and Nebula
 # Sans in Contents/Resources), signs it and puts it on a disk image beside an Applications shortcut, so it installs
-# by dragging.
+# by dragging. Finder lays out the disk image's window, so it has to run with someone logged in to the Mac's screen
+# and be allowed to control Finder (see check_finder below).
 #
 # Signing: with the Developer ID Application certificate in this Mac's keychain when there is exactly one, else
 # ad hoc, which runs on the Mac that built it (on another Mac, Gatekeeper blocks a downloaded copy until it's
 # allowed in System Settings > Privacy & Security, "Open Anyway"). To choose a certificate, or to notarize, which
-# publishing needs:
+# publishing needs, set the environment variables Project.json's "signing" section names (macos.identityEnv and
+# macos.notaryProfileEnv):
 #   MARCONI_SIGN_IDENTITY="Developer ID Application: Red Marmoset Studios Ltd. (TEAMID)"   or "-" for ad hoc
 #   MARCONI_NOTARY_PROFILE=<profile>   from: xcrun notarytool store-credentials <profile>
 #
@@ -25,7 +27,8 @@
 # from /usr/bin) and the licence and changelog in /usr/share/doc/marconi. The package depends on the system
 # libraries the app links against, worked out by dpkg-shlibdeps (from the dpkg-dev package), so it needs a build
 # machine no newer than the oldest release it should install on. The package is not signed.
-#   MARCONI_DEB_MAINTAINER="Name <email>"   the package's Maintainer field, if not the owner's below
+#   MARCONI_DEB_MAINTAINER="Name <email>"   the package's Maintainer field, if not the owner's below (the variable
+#                                           Project.json's signing section names as linux.maintainerEnv)
 #
 # The version is MAJOR.MINOR.PATCH from Project.json plus the revision, the number of commits in the history (see
 # README.md). Release builds should come from a clean, full clone so the version identifies the source exactly.
@@ -45,6 +48,30 @@ fail() {
     exit 1
 }
 
+# Finder lays out the disk image's window (Installer/macOS/DmgWindow.applescript): macOS 26 shows a background picture
+# only when Finder set it itself. That needs a desktop session (someone logged in to the Mac's screen) and permission
+# for the program that started Package.sh to control Finder (Privacy & Security > Automation). Checked before the
+# build, so a build server without them stops straight away and says which is missing.
+check_finder() {
+    local session result
+    session="$(launchctl managername 2> /dev/null || echo unknown)"
+    if [[ "$session" != "Aqua" ]]; then
+        fail "Finder lays out the disk image's window, and that needs someone logged in to the Mac's screen, but this runs outside it (a \"$session\" session: over SSH, or as a background service). Run it in Terminal on the Mac, or run the build server's agent as a user logged in to the screen (see README, \"Packaging on a build server\")."
+    fi
+    if ! result="$(osascript -e 'tell application "Finder" to get name of startup disk' 2>&1)"; then
+        case "$result" in
+            *-1743*)
+                fail "the program that started Package.sh isn't allowed to control Finder, which lays out the disk image's window. Allow it in System Settings > Privacy & Security > Automation (Terminal, or the build server's agent: see README, \"Packaging on a build server\"). Finder said: $result" ;;
+            *-1712*)
+                fail "Finder didn't answer in time. If macOS is asking on the Mac's screen whether this program may control Finder, nobody answered it (see README, \"Packaging on a build server\"). Finder said: $result" ;;
+            *-600*)
+                fail "Finder isn't running, and it lays out the disk image's window. Log in to the Mac's screen, or start Finder. Finder said: $result" ;;
+            *)
+                fail "couldn't ask Finder to lay out the disk image's window: $result" ;;
+        esac
+    fi
+}
+
 CLEAN=0
 SKIP_BUILD=0
 ALLOW_DIRTY=0
@@ -61,9 +88,10 @@ done
 case "$(uname -s)" in
     Darwin)
         PLATFORM=macos
-        for tool in git hdiutil codesign otool lipo plutil; do
+        for tool in git hdiutil codesign otool lipo plutil python3 osascript tiffutil; do
             command -v "$tool" > /dev/null || fail "$tool not found. Install the Xcode command line tools (xcode-select --install)."
         done
+        check_finder
         ;;
     Linux)
         PLATFORM=linux
@@ -91,6 +119,11 @@ if [[ $SKIP_BUILD -eq 0 ]]; then
     fi
     bash "$ROOT/Build.sh" "${BUILD_ARGS[@]}"
 fi
+
+# Which environment variables hold the signing inputs is Project.json's to say; BuildTool reads it.
+source "$ROOT/Tools/SigningSettings.sh"
+find_buildtool
+[[ -n "$BUILDTOOL" ]] || fail "no BuildTool under ${UNA_ENGINE_PATH:-$ROOT/../engine}/Build/BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)."
 
 EXE="$ROOT/Build/Marconi/Release/Marconi"
 [[ -x "$EXE" ]] || fail "$EXE not found. Run without --skip-build."
@@ -146,7 +179,7 @@ package_macos() {
     cp "$ROOT/LICENSE" "$app/Contents/Resources/LICENSE.txt"
 
     # The Developer ID certificate in the keychain, when there is exactly one and no choice was made
-    IDENTITY="${MARCONI_SIGN_IDENTITY:-}"
+    IDENTITY="$(signing_input macos.identity)"
     if [[ -z "$IDENTITY" ]]; then
         local found
         found="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | tr -d '"' | sort -u || true)"
@@ -164,8 +197,6 @@ package_macos() {
     fi
     codesign --verify --strict "$app"
 
-    ln -s /Applications "$stageDir/Applications"
-
     OUT_FILE="$INSTALLER_DIR/Marconi-$VERSION-macos-$archLabel.dmg"
     rm -f "$OUT_FILE"
 
@@ -173,12 +204,40 @@ package_macos() {
     echo "[Package.sh] Arch=$archs MinMacOS=$minMacos"
     echo "[Package.sh] Signing=$IDENTITY"
 
-    hdiutil create -quiet -volname "Marconi $VERSION" -srcfolder "$stageDir" -fs HFS+ -format UDZO -ov "$OUT_FILE"
+    # The disk image: Marconi.app and an Applications shortcut, large, either side of the background's arrow, in a
+    # square window (Tools/dmg_layout.py). The background, normal and Retina sizes in one file, goes in a hidden
+    # .background folder, where Finder takes it from.
+    ln -s /Applications "$stageDir/Applications"
+    mkdir "$stageDir/.background"
+    tiffutil -cathidpicheck "$ROOT/Installer/Art/DmgBackground.png" "$ROOT/Installer/Art/DmgBackground@2x.png" \
+        -out "$stageDir/.background/background.tiff" 2> /dev/null
+
+    # A writable image first, with room for the window settings Finder saves on it; compressed afterwards.
+    local rwImage mountPoint layout sizeMb
+    rwImage="$INSTALLER_DIR/Marconi-rw.dmg"
+    rm -f "$rwImage"
+    sizeMb=$(( $(du -sm "$stageDir" | cut -f 1) + 20 ))
+    hdiutil create -quiet -volname "Marconi" -srcfolder "$stageDir" -fs HFS+ -format UDRW -size "${sizeMb}m" -ov "$rwImage"
+    mountPoint="$(hdiutil attach -readwrite -noverify -noautoopen "$rwImage" | awk -F'\t' '/\/Volumes\// { print $NF }')"
+    [[ -d "$mountPoint" ]] || fail "couldn't open $rwImage to lay out its window."
+    layout="$(cd "$ROOT/Tools" && python3 -c 'import dmg_layout as l; print(l.WINDOW_SIZE, l.ICON_SIZE, l.TEXT_SIZE, l.ICON_Y, l.APP_X, l.APPLICATIONS_X)')"
+    # shellcheck disable=SC2086  # the layout is six numbers
+    if ! osascript "$ROOT/Installer/macOS/DmgWindow.applescript" "$(basename "$mountPoint")" $layout; then
+        hdiutil detach -quiet "$mountPoint" || true
+        fail "Finder couldn't lay out the disk image's window (see check_finder at the top of Package.sh)."
+    fi
+    rm -rf "$mountPoint/.fseventsd"
+    sync
+    hdiutil detach -quiet "$mountPoint"
+    hdiutil convert -quiet "$rwImage" -format UDZO -o "$OUT_FILE"
+    rm -f "$rwImage"
 
     if [[ "$IDENTITY" != "-" ]]; then
         codesign --force --timestamp --sign "$IDENTITY" "$OUT_FILE"
-        if [[ -n "${MARCONI_NOTARY_PROFILE:-}" ]]; then
-            xcrun notarytool submit "$OUT_FILE" --keychain-profile "$MARCONI_NOTARY_PROFILE" --wait
+        local notaryProfile
+        notaryProfile="$(signing_input macos.notaryProfile)"
+        if [[ -n "$notaryProfile" ]]; then
+            xcrun notarytool submit "$OUT_FILE" --keychain-profile "$notaryProfile" --wait
             xcrun stapler staple "$OUT_FILE"
         fi
     fi
@@ -194,7 +253,8 @@ package_linux() {
     fi
 
     local maintainer
-    maintainer="${MARCONI_DEB_MAINTAINER:-Sem Essessi <sem.essessi@redmarmosetstudios.com>}"
+    maintainer="$(signing_input linux.maintainer)"
+    [[ -n "$maintainer" ]] || maintainer="Sem Essessi <sem.essessi@redmarmosetstudios.com>"
 
     local arch stageDir pkg
     arch="$(dpkg --print-architecture)"
@@ -295,4 +355,5 @@ ANDROID_ARGS=()
 if [[ $CLEAN -eq 1 ]]; then
     ANDROID_ARGS+=(--clean)
 fi
-bash "$ROOT/Apps/Android/Package.sh" "${ANDROID_ARGS[@]}"
+# The ${...+...} form keeps macOS's bash 3.2 from calling an empty array unbound under set -u
+bash "$ROOT/Apps/Android/Package.sh" ${ANDROID_ARGS[@]+"${ANDROID_ARGS[@]}"}

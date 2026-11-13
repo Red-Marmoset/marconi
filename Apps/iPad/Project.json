@@ -14,7 +14,7 @@
     ],
     "xcode": {
         "infoPlist": "Info.plist",
-        "bundleIdentifier": "com.RedMarmosetStudios.Marconi",
+        "bundleIdentifier": "com.redmarmosetstudios.marconi",
         "developmentTeam": "RHL5BSNMJW",
         "versionFrom": "../../Project.json",
         "deploymentTarget": "15.0",
@@ -23,7 +23,8 @@
         "frameworks": [
             "UIKit",
             "Foundation",
-            "CoreGraphics"
+            "CoreGraphics",
+            "QuartzCore"
         ],
         "includePaths": [
             "../../Modules"

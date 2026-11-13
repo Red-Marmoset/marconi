@@ -61,6 +61,10 @@ its phases in order, and keep it current (decisions, measurements, finished step
 - **macOS disk image:** `./Package.sh` builds Release, wraps the binary in `Marconi.app` (`Installer/macOS/Info.plist`,
   `Marconi.icns`, fonts in `Contents/Resources`), signs it ad-hoc or with `MARCONI_SIGN_IDENTITY`, and writes
   `Build/Installer/Marconi-<version>-macos-<arch>.dmg`. BuildTool itself makes a bare executable, not a bundle.
+  Finder lays out the image's window (`Installer/macOS/DmgWindow.applescript`, sizes in `Tools/dmg_layout.py`,
+  background `Installer/Art/DmgBackground*.png` from `make_installer_art.py`), because macOS 26 ignores a background
+  Finder didn't set; so it needs a logged-in screen and permission to control Finder (README, "Packaging on a build
+  server"). Opening a Finder window takes focus, so don't run it while the owner is typing without saying so.
 - **Linux package:** `./Package.sh` on Linux builds Release and makes a Debian package,
   `Build/Installer/Marconi-<version>-linux-<arch>.deb`: the app as `/usr/bin/marconi`,
   `Installer/Linux/marconi.desktop`, the icons from `Installer/Linux/icons` (also made by `make_app_icon.py`), the
@@ -70,6 +74,11 @@ its phases in order, and keep it current (decisions, measurements, finished step
   builds the release app with Gradle, signed with the key in `MARCONI_ANDROID_KEYSTORE`, as
   `Build/Installer/Marconi-<version>-android.apk` when that key is set and a JDK, the Android SDK, an NDK and
   BuildTool are found, and says what is missing otherwise without failing the desktop package.
+- **Signing variables:** the `signing` section of `Project.json` names the environment variable each signing input
+  is read from (the Windows certificate, the macOS identity and notary profile, the Android keystore, its passwords
+  and alias, the Linux maintainer). The packaging scripts and Gradle ask the engine's BuildTool for the names
+  (`--signing-env`; `Tools/SigningSettings.sh` for bash), so rename a variable there, not in the scripts. Passwords
+  are only ever named, never written to a file or printed. The engine's `Packaging/README.md` describes the section.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
   logs every input event it receives. `Tools/fake_vencrypt_server.py` is the same for encrypted (VeNCrypt over TLS)
   connections, and `Tools/TlsStream_OpenSSL.cpp` is the reference TLS stream it was checked against (not built).

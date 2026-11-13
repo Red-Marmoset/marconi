@@ -31,6 +31,18 @@ decided along the way, and what is still unchecked. Keep it current.
 - Trusted certificates are remembered per address in the app's preferences, as the desktop remembers them; SSH
   host keys are asked about each time (not yet remembered).
 - The version went to 0.8.0: a new platform is a significant feature, even before a device test.
+- Turning (0.10.0): the viewer turns to match the shape of what it shows (the whole screen, or the display picked),
+  landscape or portrait either way up, even with the phone's auto-rotate off; its menu can fix it to landscape or
+  portrait or hand it back to the phone. The other screens follow auto-rotate. Android's connections, editor and
+  settings screens have `layout-land` versions built from the same shared pieces (`content_*.xml`), so a field
+  is never written twice; the viewer turns itself (`configChanges`) to keep the connection and slims its top bar
+  in code. On iPad the viewer turns with the device: iPadOS ignores orientation requests from an app that allows
+  Split View, and the owner chose keeping Split View; the iPhone turns as Android does (`requestGeometryUpdate`
+  from iOS 16; iOS 15 only allows the turn).
+- The on-screen keyboard covers the bottom of the picture instead of shrinking it, which in landscape left a
+  sliver: the picture keeps its size and slides up to keep the pointer in sight, and the covered part can be panned
+  into view. On Android the viewer is drawn edge to edge on every version for this, and the key bar rides on the
+  keyboard; while the keyboard is open two fingers pan instead of scrolling the other computer's window.
 
 ## What is checked and what is not
 
@@ -39,7 +51,8 @@ decided along the way, and what is still unchecked. Keep it current.
   into a debug APK, the iOS project generated with every source it needs and none of the desktop ones.
 - Not checked yet: the apps on a device. Nobody has tapped on either. Expect the first run on a phone or an iPad
   to turn up small things in `RemoteView.kt`, `ViewerActivity.kt` and `Marconi_iOS.mm` (gesture feel, keyboard
-  handling, picture scaling). The iOS code has not been compiled with the iOS SDK either.
+  handling, picture scaling). The iOS app compiles with the iOS SDK and is signed for a device (on the Mac,
+  November 2026).
 - The Android app (0.9.2) has the desktop's start screen and choices: `ConnectionsActivity` (quick connect,
   saved connections with favourites, groups and search, "On this network" through the core's mDNS discovery with
   a multicast lock), `EditConnectionActivity` (every field of the desktop's connection dialog; passwords in an
@@ -47,6 +60,12 @@ decided along the way, and what is still unchecked. Keep it current.
   (zoom levels, displays, picture quality, match screen size, full screen, view only, clipboard both ways, sent
   keys, screenshots, key bar, refresh). Its look follows `MarconiUI/Appearance.cpp`: the palette in
   `res/values/colors.xml` and `values-night`, Nebula Sans for headings, the M mark as an adaptive icon.
+- Turning and the keyboard (0.10.0) were checked on an Android 16 phone: the landscape connections, editor and
+  settings screens, the viewer turning to landscape for a wide screen with auto-rotate off, the menu's Portrait
+  choice, the slimmer top bar, and the keyboard covering the picture. Not checked: the picture sliding up to keep
+  the pointer in sight, and two-finger panning while the keyboard is open (both need a finger on the screen). The
+  iOS side of the same change hasn't been compiled or run (it was written on Windows): build it on the Mac and try
+  an iPhone in landscape with Rotation Lock on.
 - The iPad app still has the first version's single screen: it needs the same list, editor, settings and viewer
   menu, written in UIKit over the same `QuickConnect` options. The desktop wording and layout are the spec, as
   for Android.

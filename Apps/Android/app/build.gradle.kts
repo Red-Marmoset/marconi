@@ -25,8 +25,37 @@ val marconiRevision: Int = try {
     1
 }
 
-// The native library, built by Una's BuildTool for each ABI before the app is assembled.
 val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+
+// Which environment variables hold the release key is Project.json's to say (its "signing" section); Una's
+// BuildTool reads it and prints a variable's name, or a value Project.json fixes. Null when BuildTool isn't built
+// or is too old to answer, and the release build is then signed with the debug key.
+val unaBuildTool: File? = run {
+    val engine = File(System.getenv("UNA_ENGINE_PATH") ?: if (isWindows) "C:\\code\\engine" else File(marconiRoot, "../engine").path)
+    listOf("Release", "MinSizeRel")
+        .map { File(engine, "Build/BuildTool/$it/" + if (isWindows) "BuildTool.exe" else "BuildTool") }
+        .filter { it.isFile }
+        .maxByOrNull { it.lastModified() }  // the most recently built, so an old copy never hides a newer one
+}
+fun signingSetting(switch: String, setting: String): String? {
+    val tool = unaBuildTool ?: return null
+    return try {
+        val output = ByteArrayOutputStream()
+        project.exec {
+            commandLine(tool.path, File(marconiRoot, "Project.json").path, switch, setting)
+            standardOutput = output
+        }
+        output.toString().trim().ifEmpty { null }
+    } catch (e: Exception) {
+        logger.warn("Marconi: ${tool.path} couldn't answer $switch $setting; update the Una engine and rebuild BuildTool.")
+        null
+    }
+}
+// What the variable Project.json names for a setting holds. Passwords go from here to the signing config only.
+fun signingVariable(setting: String): String? =
+    signingSetting("--signing-env", setting)?.let { System.getenv(it) }?.ifEmpty { null }
+
+// The native library, built by Una's BuildTool for each ABI before the app is assembled.
 val buildNativeTasks = marconiAbis.map { abi ->
     tasks.register<Exec>("buildMarconiNative_$abi") {
         description = "Builds libMarconi.so for $abi with the Una BuildTool"
@@ -68,13 +97,13 @@ val checkMarconiNative = tasks.register("checkMarconiNative") {
             logger.warn("checkMarconiNative: llvm-nm not found, skipping the native name check")
             return@doLast
         }
-        val declared = Regex("external fun ([A-Za-z0-9_]+)").findAll(File(projectDir, "src/main/java/com/redmarmoset/marconi/NativeSession.kt").readText())
+        val declared = Regex("external fun ([A-Za-z0-9_]+)").findAll(File(projectDir, "src/main/java/com/redmarmosetstudios/marconi/NativeSession.kt").readText())
             .map { it.groupValues[1] }.toSet()
         for (abi in marconiAbis) {
             val library = File(jniLibsDir, "$abi/libMarconi.so")
             val output = ByteArrayOutputStream()
             project.exec { commandLine(nm.absolutePath, "-D", library.absolutePath); standardOutput = output }
-            val exported = Regex("Java_com_redmarmoset_marconi_NativeSession_([A-Za-z0-9_]+)").findAll(output.toString())
+            val exported = Regex("Java_com_redmarmosetstudios_marconi_NativeSession_([A-Za-z0-9_]+)").findAll(output.toString())
                 .map { it.groupValues[1] }.toSet()
             val missing = declared - exported
             if (missing.isNotEmpty()) throw GradleException("libMarconi.so ($abi) lacks native functions NativeSession.kt declares: $missing")
@@ -84,11 +113,11 @@ val checkMarconiNative = tasks.register("checkMarconiNative") {
 tasks.named("preBuild") { dependsOn(checkMarconiNative) }
 
 android {
-    namespace = "com.redmarmoset.marconi"
+    namespace = "com.redmarmosetstudios.marconi"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.redmarmoset.marconi"
+        applicationId = "com.redmarmosetstudios.marconi"
         minSdk = 24
         targetSdk = 35
         versionCode = marconiRevision
@@ -104,17 +133,22 @@ android {
         }
     }
 
-    // A release APK must be signed or Android won't install it. With MARCONI_ANDROID_KEYSTORE set (see
-    // Apps/Android/Package.sh) it is signed with that key; otherwise with the standard debug key, which installs
-    // for testing but isn't for publishing.
+    // A release APK must be signed or Android won't install it. With the keystore variable Project.json names
+    // set (MARCONI_ANDROID_KEYSTORE; see Apps/Android/Package.sh) it is signed with that key; otherwise with the
+    // standard debug key, which installs for testing but isn't for publishing.
     signingConfigs {
-        val keystore = System.getenv("MARCONI_ANDROID_KEYSTORE")
-        if (!keystore.isNullOrEmpty()) {
+        val keystore = signingVariable("android.keystore")
+        if (keystore != null) {
+            val keystorePassword = signingVariable("android.keystorePassword") ?: ""
             create("release") {
                 storeFile = file(keystore)
-                storePassword = System.getenv("MARCONI_ANDROID_KEYSTORE_PASSWORD") ?: ""
-                keyAlias = System.getenv("MARCONI_ANDROID_KEY_ALIAS") ?: "marconi"
-                keyPassword = System.getenv("MARCONI_ANDROID_KEY_PASSWORD") ?: (System.getenv("MARCONI_ANDROID_KEYSTORE_PASSWORD") ?: "")
+                storePassword = keystorePassword
+                keyAlias = signingSetting("--signing-value", "android.keyAlias") ?: signingVariable("android.keyAlias") ?: "marconi"
+                keyPassword = signingVariable("android.keyPassword") ?: keystorePassword
+                // v2 for every supported Android version; v3 as well (read from Android 9), so the release key can
+                // be replaced later with the old key vouching for the new one and updates still install
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }

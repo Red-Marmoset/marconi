@@ -19,11 +19,13 @@ if [[ $# -gt 0 && "$1" == *.json ]]; then
     shift
 fi
 
+# The more recently built of the engine's Release and MinSizeRel BuildTool copies (never Debug or Bootstrap), so an
+# old one left in one folder never hides a newer one
 BUILDTOOL=""
-for cfg in Release MinSizeRel Debug Bootstrap; do
-    if [[ -x "$UNA_ENGINE_PATH/Build/BuildTool/$cfg/BuildTool" ]]; then
-        BUILDTOOL="$UNA_ENGINE_PATH/Build/BuildTool/$cfg/BuildTool"
-        break
+for cfg in Release MinSizeRel; do
+    candidate="$UNA_ENGINE_PATH/Build/BuildTool/$cfg/BuildTool"
+    if [[ -x "$candidate" && ( -z "$BUILDTOOL" || "$candidate" -nt "$BUILDTOOL" ) ]]; then
+        BUILDTOOL="$candidate"
     fi
 done
 
