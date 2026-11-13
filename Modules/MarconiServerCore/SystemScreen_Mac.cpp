@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// No screen capture on macOS or Linux yet: the caller falls back to the test pattern. (macOS ScreenCaptureKit
-// and Linux PipeWire/X11 come in later phases.)
+// No screen capture on macOS yet: the caller falls back to the test pattern. (macOS ScreenCaptureKit comes in a
+// later phase; Linux is in SystemScreen_Linux.cpp.)
 
 #include "SystemScreen.h"
 

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// No input injection on macOS or Linux yet: the caller falls back to logging the input. (macOS CGEvent and Linux
-// XTest come in later phases.)
+// No input injection on macOS yet: the caller falls back to logging the input. (macOS CGEvent comes in a later
+// phase; Linux is in SystemInput_Linux.cpp.)
 
 #include "SystemInput.h"
 
