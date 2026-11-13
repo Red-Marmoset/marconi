@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.10.3
+
+- On this network finds Android phones and tablets that announce themselves, such as with droidVNC-NG.
+
 ## 0.10.2
 
 - Send Keys has a menu for each of Windows, Mac and Linux, sorted by what the shortcuts do.

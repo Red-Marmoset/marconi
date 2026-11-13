@@ -36,6 +36,7 @@ namespace Marconi
                 std::string ipv4;   // A, dotted
             };
 
+            // Each question asks for a unicast answer (the mDNS "QU" bit).
             std::vector<uint8_t> EncodeQuery(uint16_t id, const std::vector<Question>& questions);
             // A response with every record in the answer section (for tests and fake responders).
             std::vector<uint8_t> EncodeResponse(uint16_t id, const std::vector<Record>& answers);

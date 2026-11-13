@@ -28,7 +28,8 @@ namespace Marconi
         std::vector<DiscoveredService> AssembleServices(const std::vector<Dns::Record>& records);
 
         // Sends one "legacy unicast" mDNS query (from an ephemeral port, so responders answer us directly rather
-        // than fighting the system's own mDNS service for port 5353) and collects answers for `listenMs`.
+        // than fighting the system's own mDNS service for port 5353), with the QU bit asking for unicast answers (Android
+        // multicasts its answers otherwise), and collects answers for `listenMs`.
         // Returns nothing if the network doesn't allow it.
         std::vector<DiscoveredService> Discover(int listenMs, const std::string& destination = "224.0.0.251",
                                                 uint16_t destinationPort = 5353,
