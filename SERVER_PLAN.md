@@ -149,6 +149,7 @@ Each point gives the recommendation this plan is written against. Answer in this
    uses for its virtual keyboard and mouse); Apple has to grant the DriverKit entitlement to Red Marmoset's developer
    account first, and the extension is signed with the Developer ID and notarized like the app. Planned in Phase 8,
    gated on that entitlement.
+   Forking ViGEmBus or writing our own drivers is researched in `DRIVER_PLAN.md` (an idea, awaiting the owner).
 7. **One version for client and server**, from the same commit, and one `Package.ps1` run producing both installers,
    with the server's installer embedded in the client's so the client can hand it out. The client installer grows by
    the server installer's size (a few MB).

@@ -15,6 +15,7 @@ Where the plans are:
 | Plan | What it covers | Where |
 |---|---|---|
 | `SERVER_PLAN.md` | Marconi Server and its own protocol | `main` |
+| `DRIVER_PLAN.md` | whether to fork ViGEmBus or write our own drivers (research, an idea) | branch `claude/driver-plan`, not merged |
 | `MOBILE_PLAN.md` | the Android, iPad and iPhone apps | `main` |
 | `Documentation/RDP.md` | Remote Desktop | `main` |
 | `MCP_PLAN.md` | Marconi for AI tools (the `MarconiMcp` program) | branch `claude/sweet-bell-nobab4`, not merged |
@@ -34,6 +35,7 @@ The ideas from the owner's phone chat of 2026-11-13 are folded in below, each ne
 | Reaching computers away from home without port forwarding (a relay) | Idea | `SERVER_PLAN.md` decision 10 says none is planned, because it needs a service Red Marmoset would have to run. Today: port forwarding, a VPN, or connecting through SSH. |
 | Recording a session (for bug reports and trailers) | Idea | Today Marconi saves single screenshots. |
 | Game controllers from a phone or laptop | Planned | `SERVER_PLAN.md` Phase 7 (and Phase 8 for Macs), decision 6 on the Windows driver. Not started. |
+| Our own Windows drivers (a fork of ViGEmBus, or new ones): virtual gamepad, virtual screen, virtual microphone | Idea | Researched in `DRIVER_PLAN.md`; waits for the owner's go-ahead. Short version: forking is allowed but means owning a signed kernel driver; a USB/IP test could avoid that. Meanwhile controllers use the existing ViGEmBus (`SERVER_PLAN.md` decision 6). |
 | A terminal in the same app, opening SSH computers found on the network | Idea | Today Marconi finds SSH computers on the network and recognises `ssh://` addresses, but says it can't open them. It uses SSH only to carry VNC and for Mac file transfer. |
 | Watching an iPad or iPhone's screen (view only), through a ReplayKit companion app | Idea | The details are in a separate email, not copied here yet. |
 | "Follow along": watching live what an AI tool is doing through Marconi, with a big Stop button | Idea | `MarconiMcp` connects by itself with no window, and "AI control of the viewer's own window" is not planned (`MCP_PLAN.md` section 8). Marconi Server takes one viewer at a time today, so watching alongside would need it to take more (Phase 6 step 7). |
