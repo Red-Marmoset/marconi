@@ -70,6 +70,11 @@ its phases in order, and keep it current (decisions, measurements, finished step
   builds the release app with Gradle, signed with the key in `MARCONI_ANDROID_KEYSTORE`, as
   `Build/Installer/Marconi-<version>-android.apk` when that key is set and a JDK, the Android SDK, an NDK and
   BuildTool are found, and says what is missing otherwise without failing the desktop package.
+- **Signing variables:** the `signing` section of `Project.json` names the environment variable each signing input
+  is read from (the Windows certificate, the macOS identity and notary profile, the Android keystore, its passwords
+  and alias, the Linux maintainer). The packaging scripts and Gradle ask the engine's BuildTool for the names
+  (`--signing-env`; `Tools/SigningSettings.sh` for bash), so rename a variable there, not in the scripts. Passwords
+  are only ever named, never written to a file or printed. The engine's `Packaging/README.md` describes the section.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
   logs every input event it receives. `Tools/fake_vencrypt_server.py` is the same for encrypted (VeNCrypt over TLS)
   connections, and `Tools/TlsStream_OpenSSL.cpp` is the reference TLS stream it was checked against (not built).
