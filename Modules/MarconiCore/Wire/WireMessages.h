@@ -100,6 +100,14 @@ namespace Marconi
             GamepadState = 82,      // client -> server: the controller's whole state, with a sequence number
             GamepadRumble = 83,     // server -> client: shake the controller this hard
             GamepadResult = 84,     // server -> client: the answer to a GamepadConnect
+
+            // Video (control channel; the messages are in WireVideoMessages.h). 100 to 105 are the video messages (80 to 89 are the controllers, 90 to 99 the datagram channel).
+            VideoOffer = 100,           // client -> server: the codecs and size the viewer can decode
+            VideoStart = 101,           // server -> client: a video stream starts (codec, size, frame rate, bitrate)
+            VideoFrame = 102,           // server -> client: one encoded picture
+            VideoRequestKeyframe = 103, // client -> server: send a whole picture, my decoder lost its place
+            VideoFeedback = 104,        // client -> server: what arrived and how it went; bitrate and quality hints
+            VideoStop = 105,            // either way: the stream ended (the pictures come as stills again)
         };
 
         // One rectangle of the screen. Plain ints so the protocol layer needs nothing from the VNC code.

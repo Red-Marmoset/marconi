@@ -224,6 +224,8 @@ namespace MarconiUI
         options.password = m_options.credentials.password;
         options.askForPassword = !m_options.headless;
         options.clientName = "Marconi";
+        options.offerVideo = m_options.video;
+        options.videoStats = m_options.videoStats;
         options.trustedCertificateSha256 = m_options.trustedCertificateSha256;
         EnsureWireClient().Connect(options);
     }

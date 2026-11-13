@@ -14,6 +14,7 @@
 #include "ScreenSource.h"
 #include "Settings.h"
 #include "VirtualGamepad.h"
+#include "VideoSession.h"
 
 #include <MarconiCore/Wire/WireChannel.h>
 
@@ -68,6 +69,17 @@ namespace Marconi
                 m_notifier = notifier;
                 m_peerAddress = address;
             }
+            // The video encoders this session may use (tests, or a build with its own): a factory and the codecs it can
+            // make, in order of preference. Without this the platform's encoders are used, and where there are none
+            // the server doesn't offer video. `clock` replaces the steady clock the video pacing uses (microseconds).
+            // Call before Run().
+            void SetVideoEncoderFactory(VideoEncoderFactory factory, std::vector<Wire::VideoCodec> codecs)
+            {
+                m_videoFactory = std::move(factory);
+                m_videoCodecs = std::move(codecs);
+                m_videoFactorySet = true;
+            }
+            void SetVideoClock(VideoSession::Clock clock) { m_videoClock = std::move(clock); }
             // Ends the session when the viewer sends nothing for the settings' idleMinutes (0 = never). The limit can
             // be changed while it runs; `clock` replaces the steady clock, for tests.
             void SetIdleMinutes(int minutes) { m_idle.SetLimitMinutes(minutes); }
@@ -86,6 +98,7 @@ namespace Marconi
             void RunInputLoop(Wire::MessageReader& reader); // the other thread: read and apply input
             bool Send(const Wire::Bytes& framed);        // one message, serialised against other senders
             void SendFrame(const Capture& capture, bool full);
+            Wire::Rect StreamArea(const Capture& capture) const; // the part of the capture the viewer is watching
             void StopClipboardHandler();                 // stops listening for clipboard changes
             void CheckClipboard();                       // frame loop: the computer's clipboard changed; offer it
             void HandleClipboardOffer(const Wire::ClipboardOffer& offer);
@@ -112,6 +125,13 @@ namespace Marconi
             std::unique_ptr<FileService> m_files; // answers the viewer's file messages
             VirtualGamepadBackend* m_gamepadBackend = nullptr;
             std::unique_ptr<GamepadHost> m_gamepads; // the viewer's controllers, once granted; input thread only
+
+            // Video (Phase 4): made once the viewer was granted Capability::Video; null otherwise.
+            VideoEncoderFactory m_videoFactory;
+            std::vector<Wire::VideoCodec> m_videoCodecs;
+            bool m_videoFactorySet = false;
+            VideoSession::Clock m_videoClock;
+            std::unique_ptr<VideoSession> m_video;
 
             // Clipboard sharing. `m_clipboardActive` is set once the viewer was granted it. The change handler only
             // raises `m_clipboardChanged`; the frame loop does the reading. `m_recentHashes` holds hashes of what

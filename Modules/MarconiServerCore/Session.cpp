@@ -189,6 +189,15 @@ namespace Marconi
             {
                 offered |= Wire::Capability::Gamepads;
             }
+            if (!m_videoFactorySet)
+            {
+                m_videoFactory = [](Wire::VideoCodec codec) { return CreatePlatformVideoEncoder(codec); };
+                m_videoCodecs = PlatformEncodableCodecs();
+            }
+            if (m_settings.videoEnabled && !m_videoCodecs.empty())
+            {
+                offered |= Wire::Capability::Video; // the viewer then offers its decoders and asks for a stream
+            }
             m_grantedCapabilities = hello.capabilities & offered;
             welcome.capabilities = m_grantedCapabilities;
             m_clipboardActive = (welcome.capabilities & Wire::Capability::Clipboard) != 0;
@@ -270,7 +279,8 @@ namespace Marconi
                 try
                 {
                     type = Wire::ReadType(body);
-                    if (type != Wire::Type::Ping && type != Wire::Type::Bye && type != Wire::Type::GamepadState)
+                    if (type != Wire::Type::Ping && type != Wire::Type::Bye && type != Wire::Type::GamepadState &&
+                        type != Wire::Type::VideoFeedback && type != Wire::Type::VideoRequestKeyframe)
                     {
                         m_idle.Touch(); // anything but a keep-alive counts as the viewer being there
                     }
@@ -315,6 +325,36 @@ namespace Marconi
                         m_modePending = true;
                         break;
                     }
+                    case Wire::Type::VideoOffer:
+                        if (m_video)
+                        {
+                            m_video->OnOffer(Wire::VideoOffer::Decode(body));
+                        }
+                        break;
+                    case Wire::Type::StreamConfig:
+                        if (m_video)
+                        {
+                            m_video->OnStreamConfig(Wire::StreamConfig::Decode(body));
+                        }
+                        break;
+                    case Wire::Type::VideoRequestKeyframe:
+                        if (m_video)
+                        {
+                            m_video->OnKeyframeRequest(Wire::VideoRequestKeyframe::Decode(body));
+                        }
+                        break;
+                    case Wire::Type::VideoFeedback:
+                        if (m_video)
+                        {
+                            m_video->OnFeedback(Wire::VideoFeedback::Decode(body));
+                        }
+                        break;
+                    case Wire::Type::VideoStop:
+                        if (m_video)
+                        {
+                            m_video->OnViewerStop(Wire::VideoStop::Decode(body));
+                        }
+                        break;
                     case Wire::Type::Ping:
                     {
                         Wire::Pong pong;
@@ -564,6 +604,22 @@ namespace Marconi
             }
         }
 
+        Wire::Rect Session::StreamArea(const Capture& capture) const
+        {
+            Wire::Rect area{0, 0, capture.width, capture.height};
+            if (m_selectedDisplay != 0)
+            {
+                for (const Wire::Display& display : m_displays)
+                {
+                    if (display.id == m_selectedDisplay)
+                    {
+                        area = Intersect(area, {display.x, display.y, display.width, display.height});
+                    }
+                }
+            }
+            return area;
+        }
+
         void Session::SendFrame(const Capture& capture, bool full)
         {
             // Only the chosen display is streamed (the whole desktop when none is chosen): everything is clipped to
@@ -811,7 +867,23 @@ namespace Marconi
                         lastHeight = capture.height;
                         m_needFull = true;
                     }
-                    if (first || m_needFull || !capture.dirty.empty())
+                    if (m_video && m_video->WantsFrames())
+                    {
+                        // Video is on (or about to start): it decides what goes out, video or stills, every grab.
+                        const bool wantFull = first || m_needFull;
+                        m_needFull = false;
+                        first = false;
+                        VideoSession::Result result = m_video->Process(capture, StreamArea(capture), wantFull, m_frameId);
+                        if (result == VideoSession::Result::SendFailed)
+                        {
+                            m_stop = true;
+                        }
+                        else if (result == VideoSession::Result::UseStills)
+                        {
+                            SendFrame(capture, true); // video just ended: the viewer gets the whole picture as stills
+                        }
+                    }
+                    else if (first || m_needFull || !capture.dirty.empty())
                     {
                         bool full = first || m_needFull;
                         m_needFull = false;
@@ -859,6 +931,15 @@ namespace Marconi
                 m_gamepads = std::make_unique<GamepadHost>(
                     *m_gamepadBackend, [this](const Wire::GamepadRumble& rumble) { Send(rumble.Encode()); });
             }
+            if ((m_grantedCapabilities & Wire::Capability::Video) != 0)
+            {
+                VideoSessionOptions videoOptions;
+                videoOptions.logStats = m_settings.videoStats;
+                videoOptions.stillDelayMs = m_settings.videoStillDelayMs;
+                m_video = std::make_unique<VideoSession>(m_videoFactory, m_videoCodecs,
+                                                         [this](const Wire::Bytes& framed) { return Send(framed); },
+                                                         m_videoClock, videoOptions);
+            }
             std::thread input([this, &reader]() { RunInputLoop(reader); });
             RunFrameLoop();
             m_stop = true;
@@ -866,6 +947,7 @@ namespace Marconi
             input.join();
             m_gamepads.reset(); // whatever the viewer was holding is let go and its controllers removed
             m_files->Stop();
+            m_video.reset(); // the encoder (a hardware one holds the GPU) goes with the viewer
             m_screen.RestoreDisplayModes(); // a changed screen size doesn't outlive the viewer
             // A viewer that got in and then went away (not one the server itself ended) locks the screen when the
             // setting says so.

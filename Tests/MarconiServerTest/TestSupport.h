@@ -160,4 +160,5 @@ namespace MarconiServerTest
     void RunServiceTests();
     void RunRuleTests();
     void RunTrayTests();
+    void RunVideoTests();
 } // namespace MarconiServerTest

@@ -8,11 +8,13 @@
 #include <MarconiCore/Gamepad/GamepadLink.h>
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/RemoteSession.h>
+#include <MarconiCore/Video/VideoReceiver.h>
 #include <MarconiCore/Wire/WireChannel.h>
 #include <MarconiCore/Wire/WireMessages.h>
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -40,6 +42,13 @@ namespace Marconi
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
+            // Video (Phase 4). The viewer offers it only when it has a decoder: the platform's, or `videoDecoderFactory`
+            // (a test's, or a build's own) together with the codecs that factory can do in `videoCodecs`.
+            bool offerVideo = false; // opt-in until the Windows and Mac decoders have been run (--video)
+            Video::VideoPreferences video; // what the viewer wants of the stream (Hybrid, no limits by default)
+            Video::VideoDecoderFactory videoDecoderFactory;
+            std::vector<VideoCodec> videoCodecs;
+            bool videoStats = false; // log frames a second, bitrate and decode time every few seconds (--stats)
         };
 
         // Runs the protocol on a background thread. The listener's callbacks arrive on that thread; a UI listener
@@ -80,6 +89,12 @@ namespace Marconi
             TrafficStats TakeTrafficStats() override;
             bool SendLock() override;
 
+            // Video: true once the server granted it. Changes what the viewer wants of the stream (picture or still
+            // only, the most bitrate and frame rate, quality); takes effect at once and does nothing without video.
+            bool SupportsVideo() const { return m_videoGranted.load(); }
+            bool IsVideoStreaming() const { return m_videoStreaming.load(); }
+            void SetVideoPreferences(const Video::VideoPreferences& preferences);
+
             // File transfer with the server, once connected: true if the server agreed to it. The pointer stays
             // valid as long as this client does; its calls fail while there is no connection.
             bool SupportsFiles() const { return m_supportsFiles.load(); }
@@ -98,6 +113,7 @@ namespace Marconi
             bool Handshake(MessageReader& reader, ClientOptions& options, DisconnectInfo& info);
             void HandleStill(const Still& still);
             void HandleMove(const Move& move);
+            void HandleVideoFrame(const VideoFrame& frame);
             void ApplyDisplays(const std::vector<Display>& displays, bool initial);
             void HandleClipboardOffer(const ClipboardOffer& offer);
             void HandleClipboardRequest(const ClipboardRequest& request);
@@ -124,6 +140,14 @@ namespace Marconi
             std::atomic<bool> m_gamepadsGranted{false};
             std::mutex m_gamepadMutex; // held while the listener is called, so it can't be freed under a call
             Gamepad::GamepadListener* m_gamepadListener = nullptr; // guarded by m_gamepadMutex
+
+            // The video stream's viewer side: made at the start of a connection that offers video, used on the worker
+            // thread (the UI thread only changes its preferences, through the shared pointer taken under the lock).
+            std::shared_ptr<Video::VideoReceiver> GetVideo() const;
+            mutable std::mutex m_videoMutex;
+            std::shared_ptr<Video::VideoReceiver> m_video; // guarded by m_videoMutex
+            std::atomic<bool> m_videoGranted{false};
+            std::atomic<bool> m_videoStreaming{false};
 
             // Clipboard sharing, once the server granted it. `m_offered` is what we last told the server we have (it
             // asks for it when someone pastes); the await flags and `m_incoming` collect what we asked the server for,

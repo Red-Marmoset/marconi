@@ -156,6 +156,10 @@ namespace Marconi
             session.SetFrameIntervalMs(m_frameIntervalMs);
             session.SetClipboard(m_clipboard);
             session.SetGamepads(m_gamepadBackend);
+            if (m_videoFactorySet)
+            {
+                session.SetVideoEncoderFactory(m_videoFactory, m_videoCodecs);
+            }
             session.SetNotifier(m_notifier, client.GetPeerAddress());
             if (m_idleClock)
             {
