@@ -101,8 +101,8 @@ Phase 1 is written but not finished:
   clipboard, displays, service). On Linux it builds and `MarconiServerTest` passes (822 checks, including X11 capture,
   input, displays and clipboard against Xvfb); `MarconiCoreTest` has two connect-timeout failures that look like the
   sandbox's network. See each phase below for what is done and untested.
-- **Still to do:** the tray app is not connected to the service's control pipe (Phase 3); video, UDP and gamepads
-  (Phases 4, 5 and 7) are not started; Wayland capture; the measurements table in section 8 is empty.
+- **Still to do:** the tray app is not connected to the service's control pipe (Phase 3); video and gamepads
+  (Phases 4 and 7) are not started, and UDP (Phase 5) has its transport layer built but not connected; Wayland capture; the measurements table in section 8 is empty.
 - **Next step:** build and run the server and tray on a Windows machine and fix what it shows.
 
 ## 1. Decisions needed from the owner
@@ -785,6 +785,79 @@ pixels). **Not run:** any real H.264, any Windows or Mac code, a Wayland or mult
 
 Done when: over a real internet link with a few percent loss, the picture keeps moving without stalls and the
 mouse stays responsive; pulling UDP falls back to TCP and says so.
+
+**Transport layer built (branch `claude/server-udp`; the transport only, not yet connected to video, input or the
+handshake).** Everything is in `MarconiCore/Wire/Datagram*` and `MarconiCore/Net/UdpWorker.*`; other features adopt it
+by creating a `DatagramSession` and calling `Channel().Send(channel, bytes, now)`; it uses control message numbers
+90 to 93 and inner datagram kinds of its own, and touches no other feature's files.
+
+- **Setup.** After login the server calls `DatagramSession::CreateServer` (binds a UDP port from a range, makes a
+  random 32-bit session id and a 32-byte secret from the OS random source) and sends `DatagramOffer` (type 90) inside
+  TLS. The client answers `DatagramAccept` (91), both call `Start()`, and the client's `Hello` datagram opens the
+  path. `DatagramState` (92) says "UDP is blocked, use TCP"; `DatagramData` (93) carries a channel's message over
+  the control channel. The `Capability::Datagram` bit in Hello/Welcome decides whether an offer is made.
+- **Key derivation, and why.** The engine's `Crypto` module has no AES-GCM, no HKDF and no TLS key exporter (its
+  `TlsClient` and `TlsServer` expose neither, and mbedTLS 3.6 has no exporter call). So: the secret is generated
+  fresh by the server and travels only inside the TLS connection, which gives it the same confidentiality and
+  integrity as the password; then `HKDF-SHA256` (RFC 5869, built from `Crypto::HmacSha256`, checked against the RFC's
+  test vectors) with salt `"marconi datagram v1" + session id` expands it into a separate AES-256 key and 12-byte
+  base nonce for each direction (labels `marconi udp c2s key`, `... c2s iv`, `... s2c key`, `... s2c iv`). Separate
+  directions mean a datagram reflected back never authenticates and both ends can count packet numbers from zero.
+  Binding to the TLS session instead would tie the keys to the handshake transcript, a small gain for the cost of
+  patching the engine; revisit if the engine gains an exporter. AES-GCM itself is mbedTLS's `gcm.h` (the library the
+  engine already links for TLS); `MarconiCore/Module.manifest` now lists `mbedtls` as an external dependency
+  for that one file (`DatagramCrypto.cpp`). Checked against the published GCM test cases 13 and 14.
+- **Datagram format.** 13 bytes in the clear (format byte 1, session id, 64-bit packet number), which are the AEAD's
+  associated data, then AES-256-GCM of the body and a 16-byte tag. The nonce is the direction's base nonce XOR the
+  packet number (as in TLS 1.3). Body kinds: Hello, HelloAck, Ping, Pong, Data (channel, message id, fragment index
+  and count), Report, Close. A 1024-packet replay window per direction refuses duplicates and anything older; it is
+  checked before decrypting and only marked after the tag verifies, so forged packets cannot move it. Datagrams that
+  do not authenticate are counted and never answered. Packet numbers stop at 2^48 (then the channel falls back).
+- **Channels.** A channel is `{id, kind}`, agreed in code by both ends: `LatestWins` (state: only the newest message
+  is delivered, older or late ones dropped), `Ordered` (video: delivered in order; a message that does not complete
+  within the deadline, 100 ms after its first fragment by default, is dropped and reported through `onGap` as
+  `{first message id, count}`, a late fragment of it is ignored; messages behind it wait at most that long) and
+  `Reliable` (always sent on the control channel). Messages over one datagram are fragmented to the MTU (default
+  1200 bytes of UDP payload; each datagram is 39 bytes of overhead) and reassembled; messages are limited to 8 MiB
+  and 64 are held in reassembly per channel.
+- **Fallback and retry.** The client sends Hello every 250 ms for 3 s; with no answer the channel is `FellBack`, tells
+  the server with `DatagramState`, and from then on `Send` uses `DatagramData` on the control channel (`SendResult::Tcp`),
+  the receiver sees `overTcp`. It tries UDP again after 5 s, doubling to 2 minutes, and a late answer at any time
+  brings it back (the back-off resets after 30 s of working UDP). An active link with nothing authentic heard for 6 s
+  also falls back. Message ids keep counting across path changes, so an ordered receiver reports the messages lost in
+  the switch. The server accepts a valid Hello in any state and answers from whatever address the newest authentic
+  datagram came from, so a NAT that re-maps the client keeps working; the client's Hello and the 1 s Ping keep a NAT
+  mapping open.
+- **Statistics for the status bar and for bitrate adaptation.** `GetStats()`: packets and bytes, refusals by reason,
+  messages delivered, dropped at the deadline, stale and reported lost, smoothed round trip (from Hello and Ping,
+  RFC 6298 smoothing), recent minimum and variation (used as jitter), loss in the receive direction from packet
+  numbers (per second, averaged) and the loss the peer reports for what we send (`Report` once a second).
+  `DatagramStatusText` gives "UDP", "UDP, 3% loss", "UDP starting" or "over TCP". `ComputeBitrateHint` turns loss
+  and round-trip growth into decrease (x0.70 at 10% loss, x0.85 at 3% or a queue building), hold or increase (x1.10),
+  as a starting point; the thresholds are guesses until measured on real links. `RemoteSession` has the additive
+  `GetTransportStatus()` and `GetRoundTripMs()` (empty and -1 by default) and the viewer's health tick shows them in
+  the status bar for non-VNC connections; `Wire::Client` does not implement them yet.
+- **Sockets.** `Net::UdpWorker` wraps the existing IPv4 `Net::UdpSocket` with a receive thread (select with a 10 ms
+  limit, so `Stop()` returns within about that and the socket closes only after the thread has ended). IPv6 is not done.
+- **Tests (`DatagramTests.cpp`, `DatagramLoopbackTests.cpp`, support in `DatagramFakeLink.h`).** A seeded in-memory
+  link that loses, duplicates, delays and reorders, and a pair of channels on a virtual clock: HKDF and GCM test
+  vectors, key separation, replay window, every flipped bit and every truncation rejected, replay of a captured
+  datagram (also after the window moved), key mismatch and wrong session, fragmentation and MTU edges (0, 1,
+  one fragment minus 1, exactly one, plus 1, many; MTU 100), 20% loss with every message delivered or reported lost,
+  reordering with nothing lost, latest-wins never going backwards, duplicates delivered once, deadline drops and
+  gaps, id wrap past 2^32, fallback with the retry back-off timing and recovery, dead-link detection, Close, statistics
+  and hints, and three fuzzers (random datagrams, authentic packets with random contents, random fragments to the
+  reassembler). Loopback tests over real UDP sockets: a producer thread sending 80 KB video frames and state both
+  ways (200 of 200 and 300 of 300 delivered), a blocked port falling back to TCP, an outsider sending junk, and 15
+  start/stop cycles under load.
+- **Not done or not checked.** The channel is not yet offered in the handshake (`Server/Session.cpp`,
+  `WireClient.cpp`): that waits for the video and gamepad branches to adopt it. Forward error correction (the plan's
+  XOR parity) is not built: loss is handled by the deadline and `RequestKeyframe`. Nothing here has run over a real
+  network: NAT traversal, real loss and jitter, MTU discovery (1200 is a safe guess, not measured), Windows and macOS
+  builds of the socket code (the code is portable but only built on Linux here), and AES-GCM speed at video rates.
+  **Installer change needed (not made):** the Windows firewall rule the installer adds is TCP only
+  (`Installer/MarconiServer.nsi`, the `netsh ... protocol=TCP localport=${DEFAULT_PORT}` line, and its delete on uninstall); it needs a second rule, `protocol=UDP` on the same port and program, added and removed the same way.
+  The Linux and macOS packages add no firewall rules.
 
 ### Phase 6: everything the client already does, on our server
 

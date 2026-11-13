@@ -108,6 +108,12 @@ namespace Marconi
             VideoRequestKeyframe = 103, // client -> server: send a whole picture, my decoder lost its place
             VideoFeedback = 104,        // client -> server: what arrived and how it went; bitrate and quality hints
             VideoStop = 105,            // either way: the stream ended (the pictures come as stills again)
+            // The datagram channel's setup and fallback (control channel; the messages are in DatagramMessages.h).
+            // Numbers 90 to 99 belong to that layer.
+            DatagramOffer = 90,  // server -> client: UDP port, session id and the secret the keys come from
+            DatagramAccept = 91, // client -> server: will use UDP, or won't
+            DatagramState = 92,  // either way: UDP is working, or is blocked so use the control channel
+            DatagramData = 93,   // either way: one datagram-channel message carried on the control channel
         };
 
         // One rectangle of the screen. Plain ints so the protocol layer needs nothing from the VNC code.
