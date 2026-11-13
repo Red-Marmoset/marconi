@@ -5,6 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- When copying files to a TightVNC computer is refused (for example into the Public Desktop), Marconi says why and asks for another folder, then tries again.
+
 - Marconi Server keeps a log file for each run (tray, service and helper), the newest 20 kept, with no passwords in it.
 - Marconi Server on Linux: a package (`PackageServerLinux.sh`) that installs it in the applications menu and can start it when you sign in.
 - Marconi Server no longer writes what a viewer types to its log when it has no screen to control.

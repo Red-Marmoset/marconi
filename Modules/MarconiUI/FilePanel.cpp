@@ -28,6 +28,7 @@
 #include <MarconiCore/Files/FileView.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <functional>
 #include <random>
@@ -625,18 +626,7 @@ namespace MarconiUI
                 {
                     return;
                 }
-                folder.Replace("\\", "/");
-                m_remote.dropFolder = folder;
-                if (!m_remote.savedId.empty())
-                {
-                    ConnectionStore store;
-                    SavedConnection saved;
-                    if (store.Load(m_remote.savedId, saved))
-                    {
-                        saved.dropFolder = folder;
-                        store.Save(saved);
-                    }
-                }
+                RememberDropFolder(folder);
             }
             desktop = m_remote.dropFolder.utf8_string();
         }
@@ -650,23 +640,71 @@ namespace MarconiUI
                 desktop = m_sftp->GetHome();
             }
         }
-        StartCopy(m_local, localPaths, *remote, desktop, m_remotePane);
+        std::vector<int> ids = StartCopy(m_local, localPaths, *remote, desktop, m_remotePane);
+        if (m_tight != nullptr)
+        {
+            m_desktopCopy.ids = ids;
+            m_desktopCopy.paths = localPaths;
+            m_desktopCopy.folder = desktop;
+        }
         SetMessage(wxString::Format("Copying %zu item%s to ", localPaths.size(), localPaths.size() == 1 ? "" : "s") +
                    wxString::FromUTF8(desktop));
     }
 
-    void FilePanel::StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
-                              Marconi::Files::FileSource& to, const std::string& destination, FilePane* refreshAfter)
+    std::vector<int> FilePanel::StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
+                                          Marconi::Files::FileSource& to, const std::string& destination,
+                                          FilePane* refreshAfter)
     {
         if (!m_queue)
         {
-            return; // shut down
+            return {}; // shut down
         }
         std::vector<int> ids = m_queue->Add(from, paths, to, destination);
         if (refreshAfter != nullptr && !ids.empty())
         {
             m_refreshWhenDone[ids.back()] = refreshAfter;
         }
+        return ids;
+    }
+
+    void FilePanel::RememberDropFolder(const wxString& chosen)
+    {
+        wxString folder = chosen;
+        folder.Replace("\\", "/");
+        m_remote.dropFolder = folder;
+        if (!m_remote.savedId.empty())
+        {
+            ConnectionStore store;
+            SavedConnection saved;
+            if (store.Load(m_remote.savedId, saved))
+            {
+                saved.dropFolder = folder;
+                store.Save(saved);
+            }
+        }
+    }
+
+    void FilePanel::OfferAnotherDropFolder()
+    {
+        const std::vector<std::string> paths = m_desktopCopy.paths;
+        const wxString refused = wxString::FromUTF8(m_desktopCopy.folder);
+        m_desktopCopy = DesktopCopy();
+        if (paths.empty() || m_closing)
+        {
+            return;
+        }
+        wxString folder = wxGetTextFromUser(
+            m_remote.displayName + " would not let Marconi copy into\n\n" + refused + "\n\nThat usually means the "
+            "file transfer there runs as an ordinary user, which can't write to a folder only an administrator can "
+            "change (the Public Desktop is one). Type a folder that the signed-in user can write to, for example "
+            "their own Desktop: /C:/Users/NAME/Desktop",
+            "Where should dropped files go?", refused, this);
+        if (folder.empty())
+        {
+            return;
+        }
+        RememberDropFolder(folder);
+        UploadToDesktop(paths);
     }
 
     void FilePanel::ShowStatus(const Marconi::Files::TransferStatus& status)
@@ -691,6 +729,19 @@ namespace MarconiUI
         m_transfers->SetItem(index, 1, FormatState(status));
         m_transfers->EnsureVisible(index);
         using Marconi::Files::TransferState;
+        if (status.state == TransferState::Failed && !m_desktopCopy.ids.empty() &&
+            std::find(m_desktopCopy.ids.begin(), m_desktopCopy.ids.end(), status.id) != m_desktopCopy.ids.end())
+        {
+            std::string lowered = status.error;
+            std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (lowered.find("denied") != std::string::npos || lowered.find("refused") != std::string::npos ||
+                lowered.find("permission") != std::string::npos)
+            {
+                m_desktopCopy.ids.clear(); // ask once for this copy, however many of its items fail
+                CallAfter([this]() { OfferAnotherDropFolder(); });
+            }
+        }
         bool finished = status.state == TransferState::Done || status.state == TransferState::Skipped ||
                         status.state == TransferState::Failed || status.state == TransferState::Cancelled;
         if (finished)

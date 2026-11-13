@@ -85,8 +85,13 @@ namespace MarconiUI
         void Login();
         void HandleLoggedIn(bool ok, const std::string& error);
         void SetMessage(const wxString& message);
-        void StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
-                       Marconi::Files::FileSource& to, const std::string& destination, FilePane* refreshAfter);
+        std::vector<int> StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
+                                   Marconi::Files::FileSource& to, const std::string& destination,
+                                   FilePane* refreshAfter);
+        // Remembers where dropped files go on a TightVNC computer (with the saved connection, if there is one).
+        void RememberDropFolder(const wxString& folder);
+        // A copy to the drop folder was refused: says why and asks for another folder, then tries again.
+        void OfferAnotherDropFolder();
         void ShowStatus(const Marconi::Files::TransferStatus& status);
         Marconi::Files::ConflictAnswer AskAboutExisting(const std::string& destinationPath);
         void JoinWorker();
@@ -103,6 +108,13 @@ namespace MarconiUI
         std::thread m_worker; // connects and logs in
         std::atomic<bool> m_closing{false};
         std::vector<std::string> m_pendingDesktopUploads; // dropped before the connection was ready
+        // The last copy to a TightVNC computer's drop folder: if it is refused, the same files go to another folder.
+        struct DesktopCopy
+        {
+            std::vector<int> ids;
+            std::vector<std::string> paths;
+            std::string folder;
+        } m_desktopCopy;
 
         FilePane* m_localPane = nullptr;
         FilePane* m_remotePane = nullptr;
