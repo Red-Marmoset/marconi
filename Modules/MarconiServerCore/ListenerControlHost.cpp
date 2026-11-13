@@ -23,6 +23,7 @@ namespace Marconi
             status.port = m_listener.GetPort();
             status.lockOnDisconnect = m_settings.lockOnDisconnect;
             status.consoleSession = m_consoleSession;
+            status.fingerprint = m_listener.GetCertificateFingerprint();
             if (m_desktopName)
             {
                 status.desktop = m_desktopName();

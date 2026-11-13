@@ -4,7 +4,9 @@
 
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/ClipboardAccess.h>
+#include <MarconiServerCore/ControlSocket.h>
 #include <MarconiServerCore/IdentityStore.h>
+#include <MarconiServerCore/ListenerControlHost.h>
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/PasswordHash.h>
@@ -18,10 +20,14 @@
 
 #include <Log/Log.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -49,6 +55,9 @@ namespace
         printf("  --set-password        read a password from standard input and store its hash in the settings\n");
         printf("  --install-service     (administrator) install the Windows service and start it [--no-start]\n");
         printf("  --remove-service      (administrator) stop and remove the Windows service\n");
+        printf("  --control-socket PATH developer option, macOS and Linux: serve the control connection on a Unix socket at\n"
+               "                        PATH (or, with the --control-* commands, talk to it) instead of the Windows pipe\n");
+        printf("  --control-admin yes|no   with --control-socket, whether the tray icon counts as an administrator (default: only root)\n");
         printf("  --control-status      ask the running helper who is connected (Windows service)\n");
         printf("  --control-disconnect ID  end viewer ID's connection (0 = everyone)\n");
         printf("  --control-set-password   change the password of the running helper (password on standard input)\n");
@@ -92,6 +101,8 @@ int main(int argc, char** argv)
     std::string dataDirectory;
     unsigned consoleSession = 0;
     std::string controlCommand;
+    std::string controlSocketPath;
+    Marconi::Server::Control::SocketAdmins controlAdmins = Marconi::Server::Control::SocketAdmins::RootOnly;
     unsigned controlViewerId = 0;
     int portOverride = -1;
     bool startServiceNow = true;
@@ -140,6 +151,23 @@ int main(int argc, char** argv)
         else if (arg == "--install-service")
         {
             mode = Mode::InstallService;
+        }
+        else if (arg == "--control-socket")
+        {
+            if (!TakeValue(argc, argv, i, "--control-socket", controlSocketPath))
+            {
+                return 2;
+            }
+        }
+        else if (arg == "--control-admin")
+        {
+            std::string value;
+            if (!TakeValue(argc, argv, i, "--control-admin", value))
+            {
+                return 2;
+            }
+            controlAdmins = value == "yes" ? Marconi::Server::Control::SocketAdmins::Everybody
+                                           : Marconi::Server::Control::SocketAdmins::Nobody;
         }
         else if (arg == "--control-status")
         {
@@ -282,7 +310,7 @@ int main(int argc, char** argv)
     case Mode::RemoveService:
         return Marconi::Server::RunRemoveServiceMode();
     case Mode::Control:
-        return Marconi::Server::RunControlMode(controlCommand, controlViewerId);
+        return Marconi::Server::RunControlMode(controlCommand, controlViewerId, controlSocketPath);
     case Mode::Console:
         break;
     }
@@ -379,7 +407,51 @@ int main(int argc, char** argv)
     {
         printf("A password is required to connect.\n");
     }
+
+    // Developer option: answer the tray icon's control requests on a Unix socket (what the Windows service's helper
+    // does on its pipe). A new password lasts only until this program stops.
+    std::mutex passwordMutex;
+    Marconi::Server::ListenerControlHost controlHost(
+        listener, settings, 0,
+        [&](const std::string& hash, std::string&) {
+            std::lock_guard<std::mutex> lock(passwordMutex);
+            listener.SetPasswordHash(hash);
+            return Marconi::Server::Control::ResultCode::Ok;
+        });
+    Marconi::Server::Control::ControlSocketServer controlSocket(controlHost, settings.serverVersion, controlAdmins);
+    std::atomic<bool> done{false};
+    std::thread monitor;
+    if (!controlSocketPath.empty())
+    {
+        std::string socketError;
+        if (!controlSocket.Start(controlSocketPath, socketError))
+        {
+            printf("Could not start the control socket: %s\n", socketError.c_str());
+            return 1;
+        }
+        printf("Control socket: %s\n", controlSocketPath.c_str());
+        monitor = std::thread([&]() {
+            uint32_t last = 0;
+            while (!done)
+            {
+                Marconi::Server::ViewerSnapshot viewer;
+                const uint32_t current = listener.GetViewer(viewer) ? viewer.id : 0;
+                if (current != last)
+                {
+                    last = current;
+                    controlSocket.NotifyChanged();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            }
+        });
+    }
     printf("Press Ctrl+C to stop.\n");
     listener.Run(); // until the process is stopped
+    done = true;
+    if (monitor.joinable())
+    {
+        monitor.join();
+    }
+    controlSocket.Stop();
     return 0;
 }

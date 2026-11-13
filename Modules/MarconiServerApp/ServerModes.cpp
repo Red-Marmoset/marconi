@@ -5,6 +5,7 @@
 
 #include <MarconiServerCore/ControlPipe.h>
 #include <MarconiServerCore/ControlSession.h>
+#include <MarconiServerCore/ControlSocket.h>
 #include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/ServiceConfig.h>
 #include <MarconiServerCore/ServiceHost.h>
@@ -116,10 +117,11 @@ namespace Marconi
             return 0;
         }
 
-        int RunControlMode(const std::string& command, unsigned viewerId)
+        int RunControlMode(const std::string& command, unsigned viewerId, const std::string& socketPath)
         {
             std::string error;
-            std::unique_ptr<Wire::Transport> pipe = Control::ConnectToControlPipe(error);
+            std::unique_ptr<Wire::Transport> pipe = socketPath.empty() ? Control::ConnectToControlPipe(error)
+                                                                       : Control::ConnectToControlSocket(socketPath, error);
             if (!pipe)
             {
                 printf("Could not reach the server: %s\n", error.c_str());
@@ -146,6 +148,10 @@ namespace Marconi
                        status.desktop.c_str());
                 printf("Password %s; lock on disconnect %s\n", status.passwordSet ? "set" : "NOT set",
                        status.lockOnDisconnect ? "on" : "off");
+                if (!status.fingerprint.empty())
+                {
+                    printf("Fingerprint %s\n", status.fingerprint.c_str());
+                }
                 if (status.viewers.empty())
                 {
                     printf("Nobody is connected.\n");

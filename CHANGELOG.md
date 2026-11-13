@@ -5,6 +5,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server's tray icon, when the Marconi Server service is running, shows the service's status (who is connected, whether a password is set) and can disconnect the viewer or change the password (an administrator is needed), instead of starting a second server. It switches by itself if the service starts or stops.
 - Marconi Server's tray icon now has Marconi's own "M" on a blue circle.
 
 - Marconi Server refuses every login until a password is set, and its tray icon asks for one the first time it starts.

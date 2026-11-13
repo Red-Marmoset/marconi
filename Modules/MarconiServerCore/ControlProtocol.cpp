@@ -30,7 +30,7 @@ namespace Marconi
             {
                 if (serverVersion != other.serverVersion || port != other.port || passwordSet != other.passwordSet ||
                     lockOnDisconnect != other.lockOnDisconnect || consoleSession != other.consoleSession ||
-                    desktop != other.desktop || viewers.size() != other.viewers.size())
+                    desktop != other.desktop || fingerprint != other.fingerprint || viewers.size() != other.viewers.size())
                 {
                     return false;
                 }
@@ -99,6 +99,7 @@ namespace Marconi
                     {
                         w.U32(viewer.id).String(viewer.name).U32(viewer.connectedSeconds);
                     }
+                    w.String(status.fingerprint);
                 });
             }
 
@@ -127,6 +128,10 @@ namespace Marconi
                     viewer.name = r.String();
                     viewer.connectedSeconds = r.U32();
                     s.viewers.push_back(std::move(viewer));
+                }
+                if (!r.AtEnd())
+                {
+                    s.fingerprint = r.String(); // added after version 1 first shipped; older helpers stop before it
                 }
                 return message;
             }

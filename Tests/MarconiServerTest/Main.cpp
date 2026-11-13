@@ -15,6 +15,7 @@ namespace Test
         MarconiServerTest::RunIdentityTests();
         MarconiServerTest::RunSessionTests();
         MarconiServerTest::RunServiceTests();
+        MarconiServerTest::RunTrayTests();
         MarconiServerTest::RunListenerTests();
         MarconiServerTest::RunEndToEndTests();
         MarconiServerTest::RunX11Tests();

@@ -26,7 +26,8 @@ namespace Marconi
         // requests from the command line, over the same control pipe, so the pipe can be tried without the tray
         // icon. `command` is "status", "disconnect" or "set-password". Set password reads the password from standard
         // input and needs an elevated prompt.
-        int RunControlMode(const std::string& command, unsigned viewerId);
+        // With a `socketPath` (the developer option --control-socket) it talks to a Unix socket instead of the pipe.
+        int RunControlMode(const std::string& command, unsigned viewerId, const std::string& socketPath = std::string());
 
         // --install-service [--no-start] and --remove-service.
         int RunInstallServiceMode(bool startNow);
