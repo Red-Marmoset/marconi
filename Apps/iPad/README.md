@@ -24,11 +24,10 @@ BuildTool bootstrapped (the engine and BuildTool revisions this app was made wit
    The script goes through `Build.sh`, which writes the version header the core needs, then runs
    `BuildTool --generate-xcode --platform iOS Apps/iPad/Project.json`. Rerun it after a source, manifest or version
    change; it resets signing settings, so choose your team again afterwards.
-3. Signing needs your Apple development team, which is a setting of the Mac rather than of the project: put
-   `export UNA_IOS_TEAM_ID=<your team id>` in your shell profile (or in front of the generate command) and the
-   generated project signs automatically. Without it, pick the team under **Signing & Capabilities** after each
-   generation. The bundle identifier is `com.RedMarmosetStudios.Marconi`, in the style of the Soccer Boy app;
-   change it in `Project.json` if yours must differ.
+3. The project names the Red Marmoset development team (`developmentTeam` in `Project.json`), so Xcode signs it
+   straight away. Under another team, change that value, or remove it and set `UNA_IOS_TEAM_ID` on the Mac, which
+   the generator uses when a project names none. The bundle identifier is `com.RedMarmosetStudios.Marconi`, in
+   the style of the Soccer Boy app; change it in `Project.json` if yours must differ.
 4. Connect the iPad or iPhone, trust the Mac on it, turn on Developer Mode if asked, select it as the run
    destination and press Run. Use the Release configuration for a smooth picture.
 

@@ -15,6 +15,7 @@
     "xcode": {
         "infoPlist": "Info.plist",
         "bundleIdentifier": "com.RedMarmosetStudios.Marconi",
+        "developmentTeam": "RHL5BSNMJW",
         "versionFrom": "../../Project.json",
         "deploymentTarget": "15.0",
         "deviceFamily": "1,2",
