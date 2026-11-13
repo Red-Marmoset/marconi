@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include "AllowList.h"
 #include "Auth.h"
 #include "ClipboardAccess.h"
+#include "ConnectionNotifier.h"
+#include "IdleWatch.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Session.h"
@@ -16,6 +19,7 @@
 #include <chrono>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace Marconi
 {
@@ -71,6 +75,19 @@ namespace Marconi
             // Changes the password logins are checked against while the server runs ("" = none).
             void SetPasswordHash(const std::string& passwordHash) { m_auth.SetPasswordHash(passwordHash); }
 
+            // Who may connect (see Settings::allowedAddresses). Takes effect for the next connection; a viewer already
+            // connected is not ended by it. False (with `error`) if an entry can't be read, leaving the list as it was.
+            bool SetAllowedAddresses(const std::vector<std::string>& entries, std::string& error);
+
+            // Tells `notifier` (null = nobody; it must outlive the listener) when a viewer connects or goes away.
+            // Call before Run() or ServeOne().
+            void SetNotifier(ConnectionNotifier* notifier) { m_notifier = notifier; }
+
+            // The idle limit in minutes (0 = never), also for a viewer that is connected now.
+            void SetIdleMinutes(int minutes);
+            // The clock the idle limit is measured with; tests move it by hand. Call before Run() or ServeOne().
+            void SetIdleClock(IdleClock clock) { m_idleClock = std::move(clock); }
+
             // Ends the viewer with this id (from GetViewer), or the connected one when `viewerId` is 0. False if
             // there was none to end.
             bool DisconnectViewer(uint32_t viewerId);
@@ -89,6 +106,11 @@ namespace Marconi
             std::string m_fingerprint; // the certificate's SHA-256, in hex, for display
             int m_frameIntervalMs = 16;
             ClipboardAccess* m_clipboard = nullptr;
+            ConnectionNotifier* m_notifier = nullptr;
+            IdleClock m_idleClock;
+            std::atomic<int> m_idleMinutes{0};
+            mutable std::mutex m_allowMutex;
+            AllowList m_allow; // guarded by m_allowMutex
             std::atomic<bool> m_stop{false};
             mutable std::mutex m_currentMutex; // guards the members below
             Session* m_current = nullptr;      // the live session, so Stop() and DisconnectViewer can end it

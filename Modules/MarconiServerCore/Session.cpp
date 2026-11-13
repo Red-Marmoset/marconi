@@ -84,6 +84,23 @@ namespace Marconi
                          Auth* auth)
             : m_transport(transport), m_screen(screen), m_input(input), m_settings(settings), m_auth(auth)
         {
+            m_idle.SetLimitMinutes(settings.idleMinutes);
+        }
+
+        void Session::EndIdleViewer()
+        {
+            LOG_INFO("Server", "Viewer '%s' ended: nothing sent from it for %d minutes", GetViewerName().c_str(),
+                     m_idle.GetLimitMinutes());
+            Wire::Bye bye;
+            bye.reason = "Disconnected because nothing was done for " + std::to_string(m_idle.GetLimitMinutes()) +
+                         (m_idle.GetLimitMinutes() == 1 ? " minute." : " minutes.");
+            m_endedIdle = true;
+            Send(bye.Encode());
+            m_stop = true;
+            if (m_endHandler)
+            {
+                m_endHandler(); // wakes the input thread, which is waiting on the viewer
+            }
         }
 
         void Session::Stop()
@@ -228,6 +245,10 @@ namespace Marconi
                 try
                 {
                     type = Wire::ReadType(body);
+                    if (type != Wire::Type::Ping && type != Wire::Type::Bye)
+                    {
+                        m_idle.Touch(); // anything but a keep-alive counts as the viewer being there
+                    }
                     switch (type)
                     {
                     case Wire::Type::Pointer:
@@ -710,6 +731,11 @@ namespace Marconi
             m_lastLayoutCheck = std::chrono::steady_clock::now();
             while (!m_stop)
             {
+                if (m_idle.Expired())
+                {
+                    EndIdleViewer();
+                    break;
+                }
                 if (m_clipboardActive && m_clipboardChanged.exchange(false))
                 {
                     CheckClipboard();
@@ -768,6 +794,11 @@ namespace Marconi
                 return;
             }
 
+            if (m_notifier != nullptr)
+            {
+                m_notifier->Notify({ConnectionEvent::Connected, GetViewerName(), m_peerAddress});
+            }
+            m_idle.Touch(); // the time spent logging in doesn't count against the viewer
             m_files = std::make_unique<FileService>(m_settings.filesEnabled, m_settings.fileRoot,
                                                     [this](const Wire::Bytes& framed) { return Send(framed); });
             std::thread input([this, &reader]() { RunInputLoop(reader); });
@@ -782,6 +813,11 @@ namespace Marconi
             if (m_loggedIn && m_settings.lockOnDisconnect && !m_stoppedByServer)
             {
                 LockComputer();
+            }
+            if (m_notifier != nullptr)
+            {
+                m_notifier->Notify({m_endedIdle ? ConnectionEvent::IdleDisconnected : ConnectionEvent::Disconnected,
+                                    GetViewerName(), m_peerAddress});
             }
         }
     } // namespace Server

@@ -21,6 +21,23 @@ namespace Marconi
         Listener::Listener(ScreenSource& screen, InputSink& input, const Settings& settings)
             : m_screen(screen), m_input(input), m_settings(settings), m_auth(settings.passwordHash)
         {
+            m_idleMinutes = settings.idleMinutes;
+        }
+
+        bool Listener::SetAllowedAddresses(const std::vector<std::string>& entries, std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_allowMutex);
+            return m_allow.Set(entries, error);
+        }
+
+        void Listener::SetIdleMinutes(int minutes)
+        {
+            m_idleMinutes = minutes < 0 ? 0 : minutes;
+            std::lock_guard<std::mutex> lock(m_currentMutex);
+            if (m_current != nullptr)
+            {
+                m_current->SetIdleMinutes(m_idleMinutes);
+            }
         }
 
         namespace
@@ -67,6 +84,13 @@ namespace Marconi
             {
                 return false;
             }
+            // A list that can't be read stops the server starting: carrying on would let in everyone, which is not
+            // what the person who wrote the list meant.
+            if (!SetAllowedAddresses(m_settings.allowedAddresses, error))
+            {
+                error = "The list of who may connect has an entry that can't be read. " + error;
+                return false;
+            }
             if (!m_listenSocket.Listen(bindAddress, m_settings.port, error))
             {
                 return false;
@@ -89,6 +113,21 @@ namespace Marconi
             if (!m_listenSocket.Accept(client, acceptTimeoutMs > 0 ? acceptTimeoutMs : 24 * 60 * 60 * 1000, error))
             {
                 return false; // timed out, was shut down, or failed; the caller (or Run) decides what next
+            }
+
+            // Who may connect is decided first, before any byte is sent: a refused address gets nothing but a closed
+            // connection, so it learns nothing about this server.
+            bool allowed = false;
+            {
+                std::lock_guard<std::mutex> lock(m_allowMutex);
+                allowed = m_allow.Allows(client.GetPeerAddress());
+            }
+            if (!allowed)
+            {
+                LOG_INFO("Server", "Refused a connection from %s: it is not on the list of who may connect",
+                         client.GetPeerAddress().empty() ? "an unknown address" : client.GetPeerAddress().c_str());
+                client.Close();
+                return true;
             }
 
             // The four-byte marker goes out in the clear, so a probe can tell a Marconi server from anything else on
@@ -116,9 +155,16 @@ namespace Marconi
             Session session(transport, m_screen, m_input, m_settings, &m_auth);
             session.SetFrameIntervalMs(m_frameIntervalMs);
             session.SetClipboard(m_clipboard);
+            session.SetNotifier(m_notifier, client.GetPeerAddress());
+            if (m_idleClock)
+            {
+                session.SetIdleClock(m_idleClock);
+            }
+            session.SetEndHandler([&client]() { client.Shutdown(); });
             {
                 std::lock_guard<std::mutex> lock(m_currentMutex);
                 m_current = &session;
+                session.SetIdleMinutes(m_idleMinutes); // under the lock, so a change in between isn't missed
                 m_currentSocket = &client;
                 m_currentId = ++m_viewerCounter;
                 m_currentSince = std::chrono::steady_clock::now();

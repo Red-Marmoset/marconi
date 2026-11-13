@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <MarconiCore/Wire/WireMessages.h>
 
@@ -45,6 +46,15 @@ namespace Marconi
             bool filesEnabled = false;
             // The one folder viewers may reach ("/" to them), or empty for the whole computer.
             std::string fileRoot;
+
+            // Who may connect: addresses ("192.168.1.20", "::1") and networks ("192.168.1.0/24", "fd00::/8"). Empty
+            // means anyone who can reach the port, which is how the server behaved before there was a list. The
+            // listener refuses to start if an entry can't be read, rather than quietly letting everyone in.
+            std::vector<std::string> allowedAddresses;
+
+            // End a viewer's session after this many minutes with nothing sent from it (no mouse, key, clipboard or
+            // file activity). 0 = never.
+            int idleMinutes = 0;
         };
     } // namespace Server
 } // namespace Marconi
