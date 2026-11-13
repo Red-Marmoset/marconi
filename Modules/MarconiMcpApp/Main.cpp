@@ -24,6 +24,7 @@
 #include <io.h>
 #include <windows.h>
 #else
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -40,6 +41,7 @@ namespace
         std::printf("  --status            for each AI tool, one JSON line: installed, where, and whether Marconi\n");
         std::printf("                      is in it\n");
         std::printf("  --show-errors       with --register or --unregister, also show a failure in a message box\n");
+        std::printf("  --quiet             with those, print only the answer (the log still goes to the log file)\n");
         std::printf("  --version      print the version and exit\n");
         std::printf("  --help         show this\n");
         std::printf("\nThe password for connections can come from the MARCONI_PASSWORD environment variable.\n");
@@ -67,6 +69,30 @@ namespace
             return nullptr;
         }
         return fdopen(messages, "w");
+#endif
+    }
+
+    // Sends standard output and standard error nowhere, once the answers have their own copy of standard output.
+    void SilenceConsole()
+    {
+        std::fflush(stdout);
+        std::fflush(stderr);
+#ifdef _WIN32
+        const int nothing = _open("NUL", _O_WRONLY);
+        if (nothing >= 0)
+        {
+            _dup2(nothing, _fileno(stdout));
+            _dup2(nothing, _fileno(stderr));
+            _close(nothing);
+        }
+#else
+        const int nothing = open("/dev/null", O_WRONLY);
+        if (nothing >= 0)
+        {
+            dup2(nothing, fileno(stdout));
+            dup2(nothing, fileno(stderr));
+            close(nothing);
+        }
 #endif
     }
 
@@ -236,6 +262,7 @@ int main(int argc, char** argv)
 {
     bool readOnly = false;
     bool showErrors = false;
+    bool quiet = false;
     std::string registerTool;
     std::string unregisterTool;
     bool status = false;
@@ -262,6 +289,10 @@ int main(int argc, char** argv)
         {
             showErrors = true;
         }
+        else if (std::strcmp(argv[i], "--quiet") == 0)
+        {
+            quiet = true;
+        }
         else if (std::strcmp(argv[i], "--version") == 0)
         {
             std::printf("%s\n", Marconi::GetVersionString());
@@ -283,6 +314,10 @@ int main(int argc, char** argv)
         if (FILE* answers = TakeStandardOutput())
         {
             g_answers = answers;
+            if (quiet)
+            {
+                SilenceConsole();
+            }
         }
     }
     if (!registerTool.empty() || !unregisterTool.empty())

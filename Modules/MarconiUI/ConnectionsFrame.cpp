@@ -2,6 +2,7 @@
 // Start window: quick connect box, the address book of saved connections, and machines found on the network
 
 #include "ConnectionsFrame.h"
+#include "AiToolsDialog.h"
 
 #include "AppIcon.h"
 #include "Appearance.h"
@@ -698,6 +699,14 @@ namespace MarconiUI
             }
         });
         layout->Add(logs, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
+
+        // Which AI tools on this computer can use Marconi (MarconiMcp), with Add and Remove for each.
+        wxButton* aiTools = new wxButton(&dialog, wxID_ANY, "AI tools...");
+        aiTools->Bind(wxEVT_BUTTON, [&dialog](wxCommandEvent&) {
+            AiToolsDialog tools(&dialog);
+            tools.ShowModal();
+        });
+        layout->Add(aiTools, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
 
         // Everything Marconi keeps for this user, gone in one go; also what the Windows uninstaller offers.
         bool removeEverything = false;

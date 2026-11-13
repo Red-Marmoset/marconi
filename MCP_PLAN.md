@@ -60,6 +60,12 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   worked. Not yet run: `Package.ps1`, `Build.ps1` and `PackageProject.ps1` (PowerShell isn't available here), the
   real plug-in, and a real Windows PC.
 
+- **Phase 6 done** 2026-11-13 (0.11.1): Settings > "AI tools..." (`Modules/MarconiUI/AiToolsDialog.cpp`) lists
+  Claude Code, Codex and Claude Desktop with their state and Add/Remove, running the MarconiMcp beside Marconi
+  (`--status`, `--register`, `--unregister`, with the new `--quiet` so only the answer comes back) on a worker
+  thread. Placed in Settings rather than the menus (the plan asked to show the owner first: easy to move). Checked
+  on Linux under Xvfb with the real Claude Code and Codex: both found, added, shown as "Can use Marconi", removed.
+
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
 1. **MCP is the way in.** Claude's "connectors" are MCP servers, and Claude Code, Codex and Claude Desktop all take

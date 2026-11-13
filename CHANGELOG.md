@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.1
+
+- Settings has an AI tools window that connects Marconi to the AI tools on this computer, or disconnects it.
+
 ## 0.11.0
 
 - AI tools such as Claude Code and Codex can use other computers through Marconi: connect, see the screen, and use the mouse, keyboard and clipboard.

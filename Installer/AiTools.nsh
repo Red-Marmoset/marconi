@@ -32,7 +32,7 @@ Function AiRegister
     ${If} $AllUsers == 1
         ShellExecAsUser::ShellExecAsUser "" "$INSTDIR\${MCP_EXE}" "--register $R0 --show-errors"
     ${Else}
-        nsExec::ExecToStack '"$INSTDIR\${MCP_EXE}" --register $R0'
+        nsExec::ExecToStack '"$INSTDIR\${MCP_EXE}" --register $R0 --quiet'
         Pop $R1 ; the exit code, or "error" if it couldn't start
         Pop $R2 ; what it printed
         ${If} $R1 != 0
