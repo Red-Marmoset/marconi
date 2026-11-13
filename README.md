@@ -242,6 +242,30 @@ Windows' Settings > Apps, or run `Uninstall.exe` in `Program Files\Marconi Serve
 firewall rule, and keeps the settings and password unless you tick the option to remove them too. Running the
 installer with `/S` installs without any questions; Marconi Server then asks for a password the first time it starts.
 
+### Updating it from Marconi
+
+When Marconi connects to a Marconi Server that is older than the one that came with it, a bar across the top of the
+window asks whether to update it: **Update Now**, **Not Now**, or **Don't Ask Again for This Computer** (remembered
+with the saved connection). F8 > **Update Marconi Server on the Other Computer...** does the same whenever you like.
+Marconi sends the installer over the encrypted connection, Marconi Server checks it, installs it and starts again,
+and Marconi reconnects by itself and tells you which version is now running. Your settings and password stay as they
+were. If the update can't be installed, the old version keeps working and Marconi says so.
+
+The computer being updated decides whether to allow it. Its tray icon has **Let a newer Marconi update this server**:
+
+- **Ask me each time** (the default): a window on that computer asks the person there. Until they answer (or two
+  minutes pass, which counts as no), the viewer's mouse and keyboard don't reach that computer, so nobody can click
+  yes for them from afar.
+- **Yes, without asking**, for a computer nobody sits at. Windows still asks for permission on that computer's screen
+  before it installs anything, so someone has to say yes there for now.
+- **No**: Marconi is told it can't update this server.
+
+Whatever the setting, Marconi Server only runs an installer that is a newer Marconi Server, arrived exactly as sent,
+and is signed by the same publisher as the copy that is running. A copy that isn't signed (a test version) can't
+check that, so it refuses updates unless you also tick **Also take updates that aren't signed** in the same menu,
+which isn't recommended. Updating from Marconi works on Windows only for now; on Linux and Mac, Marconi says the
+server can't update itself there. A Marconi Server older than this feature has to be updated by hand once.
+
 ### What it does and doesn't do yet
 
 It does: show this computer's screen and take the other computer's keyboard and mouse, always encrypted, behind an

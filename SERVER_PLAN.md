@@ -323,8 +323,9 @@ Measurement is part of the work, not an afterthought: `--bench` on the server, t
   with an administrators-only ACL. Five failures lock login out for a growing period and are logged.
 - UDP packets carry a session id and are AES-GCM encrypted and authenticated with keys agreed over the control
   channel; anything that doesn't authenticate is dropped silently.
-- The service never runs code the client sends. The later "update the server from the client" step (section 7)
-  only runs an installer whose signature the server has checked.
+- The service never runs code the client sends. Updating the server from a newer viewer ("Self-update" below) only
+  runs a newer Marconi Server installer whose hash, version and signature the server has checked, and by default only
+  after the person at the computer allows it.
 - The protocol parser is fuzzed the way `RandomInputTests.cpp` fuzzes the RFB client.
 
 ### Running as a Windows service (Phase 3)
@@ -378,6 +379,140 @@ captured and input can be injected into it. The design, the same as TightVNC's a
 - The installer comes from the client's own install folder, or `Build\Installer\` in a development build; if it
   isn't there, only the link is offered.
 - Nothing needs re-saving afterwards: the next connect probes, finds the Marconi server on 1895, and prefers it.
+
+### Self-update (a newer Marconi updates an older Marconi Server)
+
+The owner's words: "the server can self update by talking to the client if the connected client is a newer version".
+Written on branch `claude/server-selfupdate` (merged into `main`); the portable parts are tested on Linux, the Windows
+parts are written and never built.
+
+**1. Trigger and consent.**
+
+- `Hello` now also carries the viewer's version (`clientVersion`, appended: older servers ignore the extra bytes,
+  older viewers simply don't send it). `Welcome` already carried the server's version. A new capability bit,
+  `Capability::ServerUpdate` (bit 7), says the server understands the update messages; servers older than this never
+  grant it, so the viewer says "too old to be updated from here, install the new version by hand once".
+- The viewer offers an update only when the installer it carries (`ServerInstaller::Find`: next to `Marconi.exe`, or
+  `Build/Installer` in a development build) is strictly newer than the server's version, the server granted the
+  capability, and the saved connection doesn't say "don't ask again" (`ServerUpdate::DecideOffer`). It compares the
+  installer's version, not its own: the installer is what gets installed.
+- On connecting it first sends a check-only `UpdateOffer` ("what would you say?"); the bar appears only when the
+  answer is "would accept" or "needs someone there to allow it". The bar: "Marconi Server on <name> is older (0.x)
+  than the one that came with this Marconi (0.y). Update it now?" with **Update Now**, **Not Now** (for this window)
+  and **Don't Ask Again for This Computer** (saved with the connection, `SkipServerUpdate`; only offered for a saved
+  connection). F8 > **Update Marconi Server on the Other Computer...** (next to the install item) does the same on
+  demand and explains in plain words when it can't.
+- The server decides by its own setting, tray menu **Let a newer Marconi update this server**:
+  **Ask me each time** (default), **Yes, without asking**, **No** (`Settings::updatePermission`, file key
+  `ViewerUpdates` = `ask`/`allow`/`off`). Why "ask" is the default: it is safe (nothing happens without a person at the
+  computer) and still lets an owner who sits at both computers update in one click; "off" would make the feature
+  invisible, and "allow" would let anyone with the password trigger an install unattended.
+- **The viewer can't answer the question for the person there.** While the question is open the session drops the
+  viewer's pointer, keys, text and controller input (`UpdateService::IsHoldingInput`), so a stranger who knows the
+  password can't click "Allow" on the remote screen. The question times out after 2 minutes as a no
+  (`kApprovalSeconds`), and is withdrawn if the viewer leaves. Without this, "ask" would protect nothing: the viewer
+  controls the mouse. "Enter" in the window means no.
+- A viewer with the password may update only as the setting says. "Yes, without asking" is meant for unattended
+  computers, and the tray warns before turning it on. Decision for the owner: whether "Yes, without asking" should also
+  be offered at all before the service can install without a permission prompt (see 4).
+
+**2. Integrity and authenticity.** The server checks, in this order, after the whole file arrived
+(`CheckArrivedInstaller`, all tested): size equals the offer; SHA-256 of the file *as read back from disk* equals the
+hash the viewer sent over TLS; the product name and version written in the file's own version information
+(`VIProductVersion`/`ProductName`, read with `GetFileVersionInfo`) are "Marconi Server" and the offered version; that
+version is strictly newer than the running one (no downgrades, no reinstalls); the Authenticode signature
+(`WinVerifyTrust`, `InstallerPlatform_Windows.cpp`) is acceptable:
+
+| Running server | Installer | Result |
+|---|---|---|
+| validly signed by S | validly signed by S | accepted |
+| validly signed by S | signed by anyone else, unsigned, broken | refused, whatever the settings |
+| not signed (a development build) | validly signed by `kExpectedPublisher` ("Red Marmoset Studios Ltd.") | accepted |
+| not signed | unsigned | refused unless **Also take updates that aren't signed** (off by default) |
+| any | broken or untrusted signature | refused |
+
+A server that isn't signed and doesn't allow unsigned updates answers the offer itself with "can't check updates"
+before anything is sent. `PackageServer.ps1` signs `MarconiServer.exe` and the installer only when
+`MARCONI_SIGN_THUMBPRINT` is set, so **an unsigned build can only be updated with "allow unsigned" ticked**: such an
+update cannot be verified beyond its hash, and the tray's warning says so. (Whether the published releases are signed
+was not checked here.) Revocation is not checked (`WTD_REVOKE_NONE`) so offline computers work; owner's call.
+
+Threat model:
+
+- *A viewer that knows the password but shouldn't install software* (a stranger, or a compromised viewer computer):
+  it already controls the signed-in session; what self-update must not add is code running as administrator. With
+  the signature rules it can only install a genuine, newer Marconi Server, and with "ask" not even that without the
+  person there. Unsigned updates (opt-in) are arbitrary code; that is why the option is off and warned about.
+- *A viewer lying about the version* (offering an old, vulnerable but genuinely signed installer as "newer"): caught,
+  because the version comes from inside the signed file, not from the offer.
+- *Man in the middle*: excluded by TLS with the pinned certificate; the hash travels inside it. *Replay*: TLS
+  prevents it, and the same installer again is "not newer".
+- *Swapping the file between the check and the run*: the file sits in the server's own folder (`<data folder>/updates`,
+  owner-only on Linux; on Windows the data folder's permissions from the installer), under a fixed name chosen by the
+  server, never a path from the viewer; the hash is taken from disk just before starting it, and the Windows launcher
+  holds the file open without write or delete sharing until the program exits.
+- *Partial or out-of-order upload*: pieces must arrive in order and never past the offered size; anything else is
+  refused and the half file deleted; a viewer that leaves mid-way leaves nothing behind. *Oversize*: limit
+  `kMaxUpdateBytes` (64 MB; the installer is a few MB). *Disk full*: free space is checked before accepting (size plus
+  32 MB spare) and a failed write is reported as "ran out of disk space". *Two at once*: one update per server process.
+- Not covered: someone who can already write to the server's data folder or Program Files (an administrator, or
+  malware running as the signed-in user, which can change the settings file too) is outside this model.
+
+**3. Transfer.** Four small messages, numbers 106-109 (`Wire/WireUpdateMessages.h`): `UpdateOffer` (flags with
+check-only, product, version, platform `windows-x64`, size, SHA-256), `UpdateAnswer` (send it / would accept / needs
+approval / asking the person / not newer / wrong product / not supported here / turned off / declined / too large /
+busy / no room / can't verify / bad offer, plus the server's version), `UpdateChunk` (offset and up to 64 KB),
+`UpdateResult` (installing / hash mismatch / signature refused / write failed / no room / launch failed / bad upload /
+version mismatch / not newer). Not resumable. Not the file-transfer channel: those messages take paths from the viewer
+and are off by default, and the update must land where the server chooses.
+
+**4. Running it.** Windows: after the checks the tray program starts the installer with `/S /restart`, then sends
+`UpdateResult(Installing)` and `Bye("Marconi Server is updating...")` and quits. Running as the signed-in user it uses
+ShellExecute's "runas", so **Windows' permission prompt appears on the server's screen and someone there must answer
+it**: it is on the secure desktop, which a program running as the user can neither show to the viewer nor click (the
+viewer's picture stops until it is answered). Once the Windows service runs the server as SYSTEM (Phase 3) the
+installer could start without a prompt (the launcher already starts it directly, detached and outside any job, when
+it is elevated), but the session helper isn't given an update environment yet, so a service-run server answers "not
+supported here". The installer (`MarconiServer.nsi`) gained: `/restart` (start Marconi Server at the end even though
+it had closed itself before Setup looked for it); silent upgrades keep the earlier "Start with Windows", Start menu
+and firewall choices instead of turning them all on; settings and password were already kept. Linux and macOS: not
+supported (a .deb needs root, a Mac app bundle has no silent self-replacement here), the server answers "can't update
+itself on that system" and the viewer says so; recommended to keep it that way and tell the person to install the
+package. The decision logic is portable; only `InstallerPlatform_Windows.cpp` is Windows code.
+
+**5. Failure and rollback.** Before the old version's uninstaller runs, Setup copies its files aside; if copying the
+new files fails (`SetOverwrite try` + error flag, then `Abort`), `.onInstFailed` puts the old files, its Apps entry
+and "Start with Windows" back and starts it again. The viewer, reconnecting, compares versions
+(`ServerUpdate::CheckAfterReconnect`): "is now version X", or "The update didn't finish: ... still version 0.x; the
+previous version keeps working". If the server doesn't come back, the reconnect bar keeps trying for 5 minutes as
+usual. A failed check or start before the installer ran leaves everything as it was and the viewer is told why.
+
+**6. Viewer UI.** The bar (`ServerUpdateBar`, blue, top of the window) shows each step: asking, "Waiting for someone
+at <name> to allow the update...", "Sending the update to <name>: 45%", "... is checking the update", "... is
+updating. Marconi reconnects by itself in a moment. If Windows asks for permission on that computer, say yes there."
+The disconnect that follows becomes a reconnect titled "Marconi Server on <name> is updating, reconnecting in a
+moment" (`DisconnectInfo::serverUpdating`) and, once back, the bar says what version runs. All texts are in
+`MarconiCore/ServerUpdate.cpp` (tested for every status).
+
+**Tested on Linux** (MarconiCoreTest: messages round-trip, limits, a fuzz pass, Hello old and new layouts, the
+viewer's decision and texts, the uploader against a scripted server; MarconiServerTest: the decision table, the
+signature table, every check on the arrived file, SHA-256 from disk, the service with stand-in inspector, launcher and
+approver (allow, ask then yes, no, timeout, viewer leaving mid-question and mid-upload, out of order, past the size,
+wrong hash, older file, other publisher, launch refused, no room, can't verify, busy, no environment), and the real
+client against the real server over TLS with a stand-in installer: success ends with the launcher called with
+`/S /restart` on the staged file and the viewer told it is updating; wrong hash and oversize refused; downgrade,
+setting off, no launcher and a no refused; input held while asking and back after a no).
+`makensis /WX` compiles the changed installer (with the usual stand-ins for the payload and ShellExecAsUser).
+
+**Not verified anywhere:** everything in `InstallerPlatform_Windows.cpp` (it was never compiled); the tray's question
+window and menu (built, not clicked); the viewer's bar (built, never seen: a Linux server can't update itself, so it
+never appears here); the installer's `/restart`, the kept choices and the rollback on a real Windows; how long the
+UAC prompt can stay open.
+
+**For the owner to decide:** the publisher name in `kExpectedPublisher` must match the code-signing certificate's
+subject; whether to check revocation; whether to start signing releases (until then updates need "allow unsigned");
+whether "Yes, without asking" should stay before the service can install without a prompt; whether the service
+helper should get updates (it needs the installer to stop and start the service too).
 
 ## 4. Phases
 
@@ -1153,8 +1288,7 @@ What has to be checked on a Mac (nothing below has been done):
 - Sound from the other computer (Opus over the datagram channel; WASAPI loopback on Windows).
 - A relay or hole-punching service for computers behind NAT with no port forwarding.
 - An RFB listener on the server so other VNC viewers can connect.
-- Updating the server from the client ("Update Marconi Server on the Other Computer") by uploading the installer
-  and having the server run it silently after checking its signature.
+- ~~Updating the server from the client~~: asked for by the owner and written; see "Self-update" in section 3.
 - Blanking the server's screen while a viewer is connected.
 - A virtual display driver, so a server with no monitor or a laptop with its lid closed can be resized to any window.
 - HEVC, AV1 and 4:4:4 colour where both ends support them; Windows GameInput for more than four pads.

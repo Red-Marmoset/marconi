@@ -50,8 +50,11 @@ Also planned or missing, from the plans and the README's "Not available yet":
 - Marconi Server controls, all written and tried on Linux only: who can connect (by address), disconnecting idle
   viewers, a message when someone connects, a log file for each run, the password asked for in the tray, file
   sharing off until switched on, and a Linux package.
-- Not in `SERVER_PLAN.md` unless the owner asks: other VNC viewers connecting to Marconi Server, updating the server
-  from the client, blanking the server's screen, a virtual display, touch and pen input.
+- Updating Marconi Server from a newer Marconi (Windows servers): written; the checks, the protocol and a whole update
+  with a stand-in installer are tested on Linux; the Windows signature check, the installer start and the tray's
+  question window are written but never built or run (`SERVER_PLAN.md` "Self-update").
+- Not in `SERVER_PLAN.md` unless the owner asks: other VNC viewers connecting to Marconi Server, blanking the
+  server's screen, a virtual display, touch and pen input.
 - The client: SSH sessions, encryption without a certificate (TigerVNC's "TLSVnc"), and over Remote Desktop the
   clipboard and changing the screen size.
 - Phones and tablets (`MOBILE_PLAN.md`): a first run on real devices, the iPad app catching up with Android, Remote

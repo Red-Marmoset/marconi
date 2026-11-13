@@ -5,6 +5,9 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi offers to update an older Marconi Server it connects to, and F8 has Update Marconi Server on the Other Computer (Windows servers; not yet tried on Windows).
+- Marconi Server's tray menu chooses whether a newer Marconi may update it: ask each time (the default), without asking, or never.
+- Marconi Server's installer keeps earlier choices when updating silently, and puts the old version back if it can't finish.
 - The status bar says whether the connection is Marconi Server, VNC or Remote Desktop.
 - Marconi Server's installer starts with the licence accepted, as Marconi's own does.
 - Marconi Server has its own icon in Windows, no longer warns about old Windows controls, and reads the whole screen on a high-resolution display instead of its top-left part (not yet tried on Windows).
