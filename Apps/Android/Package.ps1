@@ -6,7 +6,8 @@
 # with its BuildTool built. When any of those is missing, or no release key is set, it says so and exits with 0, so
 # the installer still gets made.
 #
-# Signing: with the release key these name. Without MARCONI_ANDROID_KEYSTORE the app is not packaged (for a test
+# Signing: with the release key these name. They are the environment variables Project.json's "signing" section
+# names for Android; change the names there. Without MARCONI_ANDROID_KEYSTORE the app is not packaged (for a test
 # build signed with the debug key, run gradlew.bat assembleDebug here instead):
 #   MARCONI_ANDROID_KEYSTORE=<path to the keystore>
 #   MARCONI_ANDROID_KEYSTORE_PASSWORD=<its password>
@@ -29,12 +30,34 @@ function Skip([string]$reason) {
     exit 0
 }
 
-# A release is signed with the release key, so there is nothing to package without one.
-if (-not $env:MARCONI_ANDROID_KEYSTORE) { Skip "MARCONI_ANDROID_KEYSTORE isn't set (the release key; see the top of Apps\Android\Package.ps1)." }
-if (-not (Test-Path $env:MARCONI_ANDROID_KEYSTORE)) { throw "MARCONI_ANDROID_KEYSTORE=$env:MARCONI_ANDROID_KEYSTORE doesn't exist." }
-if (-not $env:MARCONI_ANDROID_KEYSTORE_PASSWORD) { throw "MARCONI_ANDROID_KEYSTORE_PASSWORD isn't set." }
+# BuildTool builds the native library, and says which environment variables Project.json names for the release key.
+$engine = if ($env:UNA_ENGINE_PATH) { $env:UNA_ENGINE_PATH } else { "C:\code\engine" }
+$buildTool = $null
+foreach ($cfg in @('Release', 'MinSizeRel', 'Debug', 'Bootstrap')) {
+    if (Test-Path "$engine\Build\BuildTool\$cfg\BuildTool.exe") { $buildTool = "$engine\Build\BuildTool\$cfg\BuildTool.exe"; break }
+}
+if (-not $buildTool) { Skip "no BuildTool under $engine\Build\BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)." }
+$env:UNA_ENGINE_PATH = $engine
 
-# The tools: a JDK, the SDK with a platform and build tools, an NDK, and BuildTool.
+# The name of the environment variable a signing setting is read from (never what it holds).
+function Signing-Env([string]$setting) {
+    $name = & $buildTool "$root\Project.json" --signing-env $setting
+    if ($LASTEXITCODE -ne 0 -or -not $name) {
+        throw "$buildTool couldn't say which variable holds $setting. Check Project.json's signing section, and that the engine is recent enough to have one (update it and rebuild BuildTool)."
+    }
+    return "$name".Trim()
+}
+
+# A release is signed with the release key, so there is nothing to package without one. Only the password's
+# variable is named here; Gradle reads what it holds.
+$keystoreEnv = Signing-Env 'android.keystore'
+$keystorePasswordEnv = Signing-Env 'android.keystorePassword'
+$keystore = [Environment]::GetEnvironmentVariable($keystoreEnv)
+if (-not $keystore) { Skip "$keystoreEnv isn't set (the release key; see the top of Apps\Android\Package.ps1)." }
+if (-not (Test-Path $keystore)) { throw "$keystoreEnv=$keystore doesn't exist." }
+if (-not [Environment]::GetEnvironmentVariable($keystorePasswordEnv)) { throw "$keystorePasswordEnv isn't set." }
+
+# The other tools: a JDK, the SDK with a platform and build tools, and an NDK.
 $java = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\java.exe")) { "$env:JAVA_HOME\bin\java.exe" } else { (Get-Command java -ErrorAction SilentlyContinue).Source }
 if (-not $java) { Skip "no Java found (install a JDK, 17 or newer, or set JAVA_HOME)." }
 
@@ -49,19 +72,11 @@ if (-not $ndk -and (Test-Path "$sdk\ndk")) {
 if (-not $ndk -or -not (Test-Path "$ndk\toolchains\llvm")) { Skip "no Android NDK (install one from the SDK manager, or set ANDROID_NDK_HOME)." }
 $env:ANDROID_NDK_HOME = $ndk
 
-$engine = if ($env:UNA_ENGINE_PATH) { $env:UNA_ENGINE_PATH } else { "C:\code\engine" }
-$buildTool = $null
-foreach ($cfg in @('Release', 'MinSizeRel', 'Debug', 'Bootstrap')) {
-    if (Test-Path "$engine\Build\BuildTool\$cfg\BuildTool.exe") { $buildTool = "$engine\Build\BuildTool\$cfg\BuildTool.exe"; break }
-}
-if (-not $buildTool) { Skip "no BuildTool under $engine\Build\BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)." }
-$env:UNA_ENGINE_PATH = $engine
-
 # aapt, from the newest build tools, reads the version the app was stamped with.
 $aapt = Get-ChildItem "$sdk\build-tools" -Directory | Sort-Object { [version]$_.Name } | Select-Object -Last 1 | ForEach-Object { Join-Path $_.FullName 'aapt.exe' }
 if (-not $aapt -or -not (Test-Path $aapt)) { Skip "no aapt in $sdk\build-tools." }
 
-$signing = "release key $env:MARCONI_ANDROID_KEYSTORE"
+$signing = "release key $keystore"
 
 Write-Host "[Package.ps1] Android: SDK=$sdk"
 Write-Host "[Package.ps1] Android: NDK=$ndk"

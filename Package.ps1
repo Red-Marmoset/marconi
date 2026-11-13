@@ -13,7 +13,8 @@
 #
 # Signing: unsigned by default, which makes Windows warn before running the installer and Marconi. To publish, sign
 # with a code-signing certificate from the current user's certificate store (where a hardware token's certificate
-# shows up):
+# shows up). Project.json's "signing" section names these environment variables (windows.thumbprintEnv; the
+# timestamp variable's name follows from it):
 #   MARCONI_SIGN_THUMBPRINT=<the certificate's SHA-1 thumbprint>
 #   MARCONI_SIGN_TIMESTAMP_URL=<RFC 3161 timestamp server>   optional; http://timestamp.digicert.com by default
 # signtool (Windows SDK) then signs Marconi.exe, the uninstaller and the setup executable, with a timestamp so the
@@ -38,6 +39,12 @@ $engine = if ($env:UNA_ENGINE_PATH) { $env:UNA_ENGINE_PATH } else { "C:\code\eng
 $script = Join-Path $engine "Packaging\PackageProject.ps1"
 if (-not (Test-Path $script)) {
     Write-Host "ERROR: the una engine at $engine has no Packaging\PackageProject.ps1. Update it (git pull), or set UNA_ENGINE_PATH." -ForegroundColor Red
+    exit 1
+}
+# Project.json names the signing variables in its "signing" section, which an older engine doesn't read: it would
+# make an unsigned installer without saying why.
+if (-not (Select-String -LiteralPath $script -Pattern 'thumbprintEnv' -SimpleMatch -Quiet)) {
+    Write-Host "ERROR: the una engine at $engine is too old to read Project.json's signing section. Update it (git pull)." -ForegroundColor Red
     exit 1
 }
 & $script -ProjectDir $PSScriptRoot -NoZip -Clean:$Clean -SkipBuild:$SkipBuild -AllowDirty:$AllowDirty

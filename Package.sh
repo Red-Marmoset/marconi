@@ -14,7 +14,8 @@
 # Signing: with the Developer ID Application certificate in this Mac's keychain when there is exactly one, else
 # ad hoc, which runs on the Mac that built it (on another Mac, Gatekeeper blocks a downloaded copy until it's
 # allowed in System Settings > Privacy & Security, "Open Anyway"). To choose a certificate, or to notarize, which
-# publishing needs:
+# publishing needs, set the environment variables Project.json's "signing" section names (macos.identityEnv and
+# macos.notaryProfileEnv):
 #   MARCONI_SIGN_IDENTITY="Developer ID Application: Red Marmoset Studios Ltd. (TEAMID)"   or "-" for ad hoc
 #   MARCONI_NOTARY_PROFILE=<profile>   from: xcrun notarytool store-credentials <profile>
 #
@@ -25,7 +26,8 @@
 # from /usr/bin) and the licence and changelog in /usr/share/doc/marconi. The package depends on the system
 # libraries the app links against, worked out by dpkg-shlibdeps (from the dpkg-dev package), so it needs a build
 # machine no newer than the oldest release it should install on. The package is not signed.
-#   MARCONI_DEB_MAINTAINER="Name <email>"   the package's Maintainer field, if not the owner's below
+#   MARCONI_DEB_MAINTAINER="Name <email>"   the package's Maintainer field, if not the owner's below (the variable
+#                                           Project.json's signing section names as linux.maintainerEnv)
 #
 # The version is MAJOR.MINOR.PATCH from Project.json plus the revision, the number of commits in the history (see
 # README.md). Release builds should come from a clean, full clone so the version identifies the source exactly.
@@ -92,6 +94,11 @@ if [[ $SKIP_BUILD -eq 0 ]]; then
     bash "$ROOT/Build.sh" "${BUILD_ARGS[@]}"
 fi
 
+# Which environment variables hold the signing inputs is Project.json's to say; BuildTool reads it.
+source "$ROOT/Tools/SigningSettings.sh"
+find_buildtool
+[[ -n "$BUILDTOOL" ]] || fail "no BuildTool under ${UNA_ENGINE_PATH:-$ROOT/../engine}/Build/BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)."
+
 EXE="$ROOT/Build/Marconi/Release/Marconi"
 [[ -x "$EXE" ]] || fail "$EXE not found. Run without --skip-build."
 
@@ -146,7 +153,7 @@ package_macos() {
     cp "$ROOT/LICENSE" "$app/Contents/Resources/LICENSE.txt"
 
     # The Developer ID certificate in the keychain, when there is exactly one and no choice was made
-    IDENTITY="${MARCONI_SIGN_IDENTITY:-}"
+    IDENTITY="$(signing_input macos.identity)"
     if [[ -z "$IDENTITY" ]]; then
         local found
         found="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | tr -d '"' | sort -u || true)"
@@ -177,8 +184,10 @@ package_macos() {
 
     if [[ "$IDENTITY" != "-" ]]; then
         codesign --force --timestamp --sign "$IDENTITY" "$OUT_FILE"
-        if [[ -n "${MARCONI_NOTARY_PROFILE:-}" ]]; then
-            xcrun notarytool submit "$OUT_FILE" --keychain-profile "$MARCONI_NOTARY_PROFILE" --wait
+        local notaryProfile
+        notaryProfile="$(signing_input macos.notaryProfile)"
+        if [[ -n "$notaryProfile" ]]; then
+            xcrun notarytool submit "$OUT_FILE" --keychain-profile "$notaryProfile" --wait
             xcrun stapler staple "$OUT_FILE"
         fi
     fi
@@ -194,7 +203,8 @@ package_linux() {
     fi
 
     local maintainer
-    maintainer="${MARCONI_DEB_MAINTAINER:-Sem Essessi <sem.essessi@redmarmosetstudios.com>}"
+    maintainer="$(signing_input linux.maintainer)"
+    [[ -n "$maintainer" ]] || maintainer="Sem Essessi <sem.essessi@redmarmosetstudios.com>"
 
     local arch stageDir pkg
     arch="$(dpkg --print-architecture)"
