@@ -6,6 +6,7 @@
 #include "ClipboardSync.h"
 #include "ConnectionLostBar.h"
 #include "FullScreenBar.h"
+#include "SendKeys.h"
 #include "SystemKeys.h"
 #include "VncCanvas.h"
 
@@ -168,7 +169,9 @@ namespace MarconiUI
         void OnCommand(wxCommandEvent& event);
         void UpdateControls();
         void UpdateStatus();
-        void SendKeyCombination(std::initializer_list<uint32_t> keysyms);
+        void SendKeyCombination(const std::vector<uint32_t>& keysyms);
+        // The other computer's system, when the connection says what it is.
+        bool GetKnownRemoteSystem(RemoteSystem& system) const;
         wxMenu* CreateSendKeysMenu() const;
         void UpdateSystemKeyCapture();
         void ToggleFullScreen();

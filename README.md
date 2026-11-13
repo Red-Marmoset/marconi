@@ -84,8 +84,9 @@ From the menu you can:
 - go full screen or back;
 - turn view-only and clipboard sharing on or off, or send your clipboard to the other computer and get its
   clipboard by hand;
-- send Ctrl+Alt+Del, Alt+Tab, the Windows key and other shortcuts your own computer would otherwise act on (or F8
-  itself) to the other computer;
+- send Ctrl+Alt+Del, Alt+Tab, the Windows key, a Mac's screenshot shortcuts and other shortcuts your own computer
+  would otherwise act on (or F8 itself) to the other computer, from a menu for each of Windows, Mac and Linux (just
+  the Mac one when the other computer is a Mac using its own screen sharing);
 - send system shortcuts such as Alt+Tab, the Windows key and Cmd+Tab to the other computer as you press them, on
   Windows and macOS (macOS asks you to allow Marconi under Privacy & Security > Accessibility first; Linux desktops
   don't allow this);

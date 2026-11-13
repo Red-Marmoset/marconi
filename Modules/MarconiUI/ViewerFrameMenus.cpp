@@ -20,7 +20,9 @@
 #include <wx/msgdlg.h>
 #include <wx/utils.h>
 
+#include <cstring>
 #include <memory>
+#include <vector>
 
 namespace MarconiUI
 {
@@ -171,10 +173,6 @@ namespace MarconiUI
         menu->Enable(ID_SYSTEM_KEYS, SystemKeyCapture::IsSupported());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
         menu->Check(ID_FILES, m_files->IsShown());
-        for (int id = ID_SEND_CTRL_ALT_DEL; id <= ID_SEND_F10; ++id) // every Send Keys item
-        {
-            menu->Enable(id, m_connected && !m_canvas->IsViewOnly());
-        }
         menu->Enable(ID_REFRESH, m_connected);
         menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
         menu->Enable(ID_GET_CLIPBOARD, m_connected);
@@ -182,30 +180,75 @@ namespace MarconiUI
         return menu;
     }
 
+    bool ViewerFrame::GetKnownRemoteSystem(RemoteSystem& system) const
+    {
+        // Only macOS's own Screen Sharing says what it is. Remote Desktop is usually Windows but Linux runs it too,
+        // and other VNC servers run anywhere.
+        if (m_rfb != nullptr && m_rfb->IsAppleServer())
+        {
+            system = RemoteSystem::Mac;
+            return true;
+        }
+        return false;
+    }
+
     wxMenu* ViewerFrame::CreateSendKeysMenu() const
     {
-        // Shortcuts the local system would act on itself, so they can't simply be typed.
+        // Shortcuts the local system would act on itself, so they can't simply be typed. When the other computer's
+        // system is known only its shortcuts are shown; otherwise each system has a submenu.
+        bool enabled = m_connected && !m_canvas->IsViewOnly();
+        RemoteSystem known = RemoteSystem::Windows;
+        bool isKnown = GetKnownRemoteSystem(known);
+
         wxMenu* keys = new wxMenu();
-        keys->Append(ID_SEND_CTRL_ALT_DEL, "Ctrl+Alt+&Del");
-        keys->Append(ID_SEND_ALT_TAB, "Alt+&Tab");
-        keys->Append(ID_SEND_ALT_F4, "Alt+F&4");
-        keys->Append(ID_SEND_WINDOWS_KEY, "&Windows Key");
-        keys->Append(ID_SEND_CTRL_ESC, "Ctrl+&Esc");
-        keys->Append(ID_SEND_CTRL_SHIFT_ESC, "Ctrl+&Shift+Esc");
-        keys->Append(ID_SEND_PRINT_SCREEN, "&Print Screen");
-        keys->Append(ID_SEND_CMD_TAB, "&Cmd+Tab (Mac)");
-        keys->AppendSeparator();
-        // The Mac's screenshot shortcuts: the first three save a file, the last two copy to the clipboard.
-        keys->Append(ID_SEND_MAC_SCREENSHOT, "Cmd+Shift+&3 (Mac: screenshot)");
-        keys->Append(ID_SEND_MAC_SCREENSHOT_AREA, "Cmd+Shift+&4 (Mac: screenshot of an area)");
-        keys->Append(ID_SEND_MAC_SCREENSHOT_TOOL, "Cmd+Shift+&5 (Mac: screenshot tool)");
-        keys->Append(ID_SEND_MAC_COPY_SCREEN, "Cmd+Ctrl+Shift+3 (Mac: copy the screen)");
-        keys->Append(ID_SEND_MAC_COPY_SCREEN_AREA, "Cmd+Ctrl+Shift+4 (Mac: copy an area)");
+        const std::vector<SendKeysShortcut>& shortcuts = GetSendKeysShortcuts();
+        wxMenu* systemMenu = nullptr;
+        wxMenu* groupMenu = nullptr;
+        const char* groupName = nullptr; // groupMenu's name
+        for (size_t i = 0; i < shortcuts.size() && i < kMaxSendKeysShortcuts; ++i)
+        {
+            const SendKeysShortcut& shortcut = shortcuts[i];
+            if (isKnown && shortcut.system != known)
+            {
+                continue;
+            }
+            if (i == 0 || shortcut.system != shortcuts[i - 1].system)
+            {
+                if (isKnown)
+                {
+                    systemMenu = keys;
+                }
+                else
+                {
+                    systemMenu = new wxMenu();
+                    keys->AppendSubMenu(systemMenu, wxString::FromUTF8(GetRemoteSystemName(shortcut.system)));
+                }
+                groupMenu = nullptr;
+            }
+            wxMenu* parent = systemMenu;
+            if (shortcut.group == nullptr)
+            {
+                groupMenu = nullptr;
+            }
+            else
+            {
+                if (groupMenu == nullptr || std::strcmp(shortcut.group, groupName) != 0)
+                {
+                    groupMenu = new wxMenu();
+                    groupName = shortcut.group;
+                    systemMenu->AppendSubMenu(groupMenu, wxString::FromUTF8(shortcut.group));
+                }
+                parent = groupMenu;
+            }
+            wxMenuItem* item = parent->Append(ID_SEND_SHORTCUT_FIRST + static_cast<int>(i),
+                                              wxString::FromUTF8(shortcut.label));
+            item->Enable(enabled);
+        }
         keys->AppendSeparator();
         // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
-        keys->Append(ID_SEND_F8, "F&8");
-        keys->Append(ID_SEND_F9, "F&9");
-        keys->Append(ID_SEND_F10, "F1&0");
+        keys->Append(ID_SEND_F8, "F&8")->Enable(enabled);
+        keys->Append(ID_SEND_F9, "F&9")->Enable(enabled);
+        keys->Append(ID_SEND_F10, "F1&0")->Enable(enabled);
         return keys;
     }
 
@@ -297,45 +340,9 @@ namespace MarconiUI
         case ID_SEND_CTRL_ALT_DEL:
             SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Alt_L, Marconi::Keysym::Delete});
             break;
-        case ID_SEND_ALT_TAB:
-            SendKeyCombination({Marconi::Keysym::Alt_L, Marconi::Keysym::Tab});
-            break;
-        case ID_SEND_ALT_F4:
-            SendKeyCombination({Marconi::Keysym::Alt_L, Marconi::Keysym::F1 + 3});
-            break;
-        case ID_SEND_WINDOWS_KEY:
-            SendKeyCombination({Marconi::Keysym::Super_L});
-            break;
-        case ID_SEND_CTRL_ESC:
-            SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Escape});
-            break;
-        case ID_SEND_CTRL_SHIFT_ESC:
-            SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Shift_L, Marconi::Keysym::Escape});
-            break;
-        case ID_SEND_PRINT_SCREEN:
-            SendKeyCombination({Marconi::Keysym::Print});
-            break;
-        case ID_SEND_CMD_TAB:
-            SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Tab});
-            break;
-        case ID_SEND_MAC_SCREENSHOT:
-        case ID_SEND_MAC_SCREENSHOT_AREA:
-        case ID_SEND_MAC_SCREENSHOT_TOOL:
-            SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Shift_L,
-                                static_cast<uint32_t>('3' + event.GetId() - ID_SEND_MAC_SCREENSHOT)});
-            break;
-        case ID_SEND_MAC_COPY_SCREEN:
-        case ID_SEND_MAC_COPY_SCREEN_AREA:
-            SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Control_L, Marconi::Keysym::Shift_L,
-                                static_cast<uint32_t>('3' + event.GetId() - ID_SEND_MAC_COPY_SCREEN)});
-            break;
         case ID_SEND_KEYS:
         {
             std::unique_ptr<wxMenu> keys(CreateSendKeysMenu());
-            for (int id = ID_SEND_CTRL_ALT_DEL; id <= ID_SEND_F10; ++id)
-            {
-                keys->Enable(id, m_connected && !m_canvas->IsViewOnly());
-            }
             m_canvas->ReleaseInput();
             if (event.GetEventObject() == m_fullScreenBar)
             {
@@ -409,7 +416,16 @@ namespace MarconiUI
             }
             break;
         default:
-            if (event.GetId() >= ID_ZOOM_LEVEL_FIRST && event.GetId() <= ID_ZOOM_LEVEL_LAST)
+            if (event.GetId() >= ID_SEND_SHORTCUT_FIRST && event.GetId() <= ID_SEND_SHORTCUT_LAST)
+            {
+                size_t index = static_cast<size_t>(event.GetId() - ID_SEND_SHORTCUT_FIRST);
+                const std::vector<SendKeysShortcut>& shortcuts = GetSendKeysShortcuts();
+                if (index < shortcuts.size())
+                {
+                    SendKeyCombination(shortcuts[index].keysyms);
+                }
+            }
+            else if (event.GetId() >= ID_ZOOM_LEVEL_FIRST && event.GetId() <= ID_ZOOM_LEVEL_LAST)
             {
                 m_canvas->SetZoom(ScaleMode::Fixed, Marconi::Zoom::kLevels[event.GetId() - ID_ZOOM_LEVEL_FIRST]);
             }
@@ -442,7 +458,7 @@ namespace MarconiUI
         SyncClipboardToServer();
     }
 
-    void ViewerFrame::SendKeyCombination(std::initializer_list<uint32_t> keysyms)
+    void ViewerFrame::SendKeyCombination(const std::vector<uint32_t>& keysyms)
     {
         if (m_canvas->IsViewOnly() || !m_session)
         {
