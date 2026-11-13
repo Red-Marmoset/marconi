@@ -55,6 +55,10 @@ namespace Marconi
 
         UpdateService::~UpdateService()
         {
+            if (m_launchThread.joinable())
+            {
+                m_launchThread.join(); // the installer is being started: wait for it to be done either way
+            }
             bool wasWaiting = false;
             {
                 std::lock_guard<std::mutex> lock(m_guard->mutex); // waits out an answer being handled right now
@@ -197,7 +201,8 @@ namespace Marconi
                         m_environment->inspector != nullptr &&
                         m_environment->inspector->InspectRunningServer().signature == SignatureState::Valid;
                 }
-                const bool inProgress = m_state == State::Asking || m_state == State::Receiving || m_started;
+                const bool inProgress = m_state == State::Asking || m_state == State::Receiving ||
+                                        m_state == State::Launching || m_started;
                 context.busy = inProgress || s_updateUnderWay.load();
                 if (!offer.IsCheckOnly() && context.supported)
                 {
@@ -405,8 +410,20 @@ namespace Marconi
                 Fail(status, detail);
                 return;
             }
+            m_state = State::Launching;
+            if (m_launchThread.joinable())
+            {
+                m_launchThread.join(); // an earlier try that failed to start: long finished
+            }
+            m_launchThread = std::thread([this]() { RunLauncher(); });
+        }
+
+        void UpdateService::RunLauncher()
+        {
             std::string error;
-            if (!m_environment->launcher->Launch(StagedPath(), SilentInstallArguments(), error))
+            const bool launched = m_environment->launcher->Launch(StagedPath(), SilentInstallArguments(), error);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (!launched)
             {
                 Fail(Wire::UpdateResult::Status::LaunchFailed, error);
                 return;

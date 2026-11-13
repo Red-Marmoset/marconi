@@ -129,6 +129,10 @@ namespace MarconiServerTest
             bool Launch(const std::string& installerPath, const std::vector<std::string>& arguments,
                         std::string& error) override
             {
+                while (block) // stands for Windows' permission prompt waiting for an answer
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                }
                 std::lock_guard<std::mutex> lock(mutex);
                 ++calls;
                 path = installerPath;
@@ -146,6 +150,7 @@ namespace MarconiServerTest
             std::vector<std::string> args;
             std::string contentAtLaunch;
             bool succeed = true;
+            std::atomic<bool> block{false};
         };
 
         class FakeApprover : public Server::UpdateApprover
@@ -288,6 +293,8 @@ namespace MarconiServerTest
                     Feed(chunk.Encode());
                 }
             }
+            // The installer is started on a thread of its own: wait until the log is what is expected.
+            bool LogBecomes(const std::string& expected) { return WaitUntil([&]() { return Log() == expected; }); }
             std::string Staged() const
             {
                 return (fs::path(environment.stagingFolder) / Server::UpdateService::kStagedFileName).string();
@@ -545,13 +552,13 @@ namespace MarconiServerTest
             CHECK(d.Log() == A(Answer::SendIt));
             CHECK(!d.service->IsHoldingInput());
             d.SendFile(file);
-            CHECK(d.Log() == A(Answer::SendIt) + " " + R(Result::Installing) + " B");
+            CHECK(d.LogBecomes(A(Answer::SendIt) + " " + R(Result::Installing) + " B"));
             CHECK(d.launcher.calls == 1);
             CHECK(d.launcher.path == d.Staged());
             CHECK(d.launcher.args == std::vector<std::string>({"/S", "/restart"}));
             CHECK(d.launcher.contentAtLaunch == std::string(file.begin(), file.end()));
             CHECK(d.inspector.inspected == d.Staged());
-            CHECK(d.ended == 1 && d.started == 1);
+            CHECK(WaitUntil([&]() { return d.ended == 1 && d.started == 1; }));
             CHECK(d.service->HasStartedInstaller());
             d.Offer(file); // a second offer after starting the installer is refused as busy
             CHECK(d.Log().substr(d.Log().size() - 3) == A(Answer::Busy));
@@ -573,6 +580,8 @@ namespace MarconiServerTest
                 CHECK(!d.service->IsHoldingInput());
                 CHECK(d.Log() == A(Answer::AskingPerson) + " " + A(Answer::SendIt));
                 d.SendFile(file);
+                CHECK(d.LogBecomes(A(Answer::AskingPerson) + " " + A(Answer::SendIt) + " " + R(Result::Installing) +
+                                   " B"));
                 CHECK(d.launcher.calls == 1);
             } // its started installer keeps the one-at-a-time mark until it goes
 
@@ -691,14 +700,14 @@ namespace MarconiServerTest
                 d.Make();
                 d.Offer(file);
                 d.SendFile(file);
-                CHECK(d.Log() == A(Answer::SendIt) + " " + R(Result::Installing) + " B"); // signed by the same
+                CHECK(d.LogBecomes(A(Answer::SendIt) + " " + R(Result::Installing) + " B")); // signed by the same
             }
             {
                 Direct d;
                 d.launcher.succeed = false;
                 d.Offer(file);
                 d.SendFile(file);
-                CHECK(d.Log() == A(Answer::SendIt) + " " + R(Result::LaunchFailed));
+                CHECK(d.LogBecomes(A(Answer::SendIt) + " " + R(Result::LaunchFailed)));
                 CHECK(d.ended == 0 && d.started == 0);
             }
             {
@@ -714,6 +723,18 @@ namespace MarconiServerTest
                 d.Offer(file);
                 CHECK(d.Log() == A(Answer::CannotVerify));
             }
+        });
+
+        RunTest("while the installer is being started the viewer's messages are still read", []() {
+            Direct d;
+            d.launcher.block = true;
+            Wire::Bytes file = Content(1000);
+            d.Offer(file);
+            d.SendFile(file);
+            d.Offer(file); // answered at once although the start is still waiting
+            CHECK(d.Log() == A(Answer::SendIt) + " " + A(Answer::Busy));
+            d.launcher.block = false;
+            CHECK(d.LogBecomes(A(Answer::SendIt) + " " + A(Answer::Busy) + " " + R(Result::Installing) + " B"));
         });
 
         RunTest("one update at a time across viewers, and a server that can't update itself says so", []() {

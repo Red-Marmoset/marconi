@@ -4,10 +4,10 @@
 
 #include "ViewerFrame.h"
 
-#include "ConnectionStore.h"
 #include "ServerInstall.h"
 #include "ServerUpdateBar.h"
 
+#include <MarconiConnections/ConnectionStore.h>
 #include <MarconiCore/Reconnect.h>
 #include <MarconiCore/ServerUpdate.h>
 #include <MarconiCore/Wire/WireClient.h>

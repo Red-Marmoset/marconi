@@ -72,6 +72,7 @@ namespace Marconi
                 Idle,
                 Asking,    // waiting for the person here
                 Receiving, // taking UpdateChunks
+                Launching, // every check passed; the installer is being started (Windows may be asking for permission)
                 Done,      // finished, one way or the other (a new offer may start again unless the installer ran)
             };
 
@@ -79,7 +80,8 @@ namespace Marconi
             void HandleChunk(const Wire::UpdateChunk& chunk);
             void OnApproval(bool allowed);   // from the approver or the timer, through the guard below
             bool BeginReceiving();           // opens the staged file; false after reporting why
-            void FinishReceiving();          // the whole file is here: check it and start it
+            void FinishReceiving();          // the whole file is here: check it, then start it on m_launchThread
+            void RunLauncher();              // m_launchThread: starts the installer, then tells the viewer
             void Fail(Wire::UpdateResult::Status status, const std::string& detail);
             void Answer(Wire::UpdateAnswer::Status status, const std::string& detail = std::string());
             void ReleaseBusy();
@@ -115,6 +117,9 @@ namespace Marconi
 
             std::shared_ptr<Guard> m_guard;
             std::thread m_timer; // declines the question when nobody answers in time
+            // Starting the installer can wait minutes for Windows' permission prompt, so it has its own thread and
+            // the viewer's messages keep being read meanwhile.
+            std::thread m_launchThread;
         };
     } // namespace Server
 } // namespace Marconi

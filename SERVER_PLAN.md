@@ -470,7 +470,8 @@ and are off by default, and the update must land where the server chooses.
 `UpdateResult(Installing)` and `Bye("Marconi Server is updating...")` and quits. Running as the signed-in user it uses
 ShellExecute's "runas", so **Windows' permission prompt appears on the server's screen and someone there must answer
 it**: it is on the secure desktop, which a program running as the user can neither show to the viewer nor click (the
-viewer's picture stops until it is answered). Once the Windows service runs the server as SYSTEM (Phase 3) the
+viewer's picture stops until it is answered). The start runs on a thread of its own, so the viewer's messages keep
+being read while the prompt waits. Once the Windows service runs the server as SYSTEM (Phase 3) the
 installer could start without a prompt (the launcher already starts it directly, detached and outside any job, when
 it is elevated), but the session helper isn't given an update environment yet, so a service-run server answers "not
 supported here". The installer (`MarconiServer.nsi`) gained: `/restart` (start Marconi Server at the end even though
