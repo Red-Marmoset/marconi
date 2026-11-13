@@ -145,6 +145,8 @@ namespace MarconiUI
                               SystemKeyCapture::IsSupported()
                                   ? wxString()
                                   : wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
+        menu->AppendCheckItem(ID_SEND_GAMEPADS, "Send Game &Controllers to the Other Computer",
+                              "Needs a Marconi Server. Controllers are sent only while this window is in front.");
         menu->Append(ID_REFRESH, "&Refresh Screen");
         menu->Append(ID_INSTALL_SERVER, "Install Marconi Server on the Other Computer...");
         menu->AppendSeparator();
@@ -170,6 +172,7 @@ namespace MarconiUI
         menu->Check(ID_FULL_SCREEN, IsFullScreen());
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
+        menu->Check(ID_SEND_GAMEPADS, m_sendGamepads);
         menu->Check(ID_SYSTEM_KEYS, m_sendSystemKeys);
         menu->Enable(ID_SYSTEM_KEYS, SystemKeyCapture::IsSupported());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
@@ -364,6 +367,19 @@ namespace MarconiUI
             m_sendSystemKeys = !m_sendSystemKeys;
             UpdateSystemKeyCapture();
             break;
+        case ID_SEND_GAMEPADS:
+            m_sendGamepads = !m_sendGamepads;
+            StartGamepads(); // stops them when switched off; says why in the status bar if it can't start
+            if (m_sendGamepads && !m_connected)
+            {
+                SetStatusText("Game controllers will be sent once connected.");
+                return;
+            }
+            if (!m_sendGamepads || m_gamepadForwarder)
+            {
+                break;
+            }
+            return; // keep the message StartGamepads put in the status bar
         case ID_SCREENSHOT:
         {
             std::unique_ptr<wxMenu> screenshot(CreateScreenshotMenu());

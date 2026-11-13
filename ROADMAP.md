@@ -33,7 +33,7 @@ The ideas from the owner's phone chat of 2026-11-13 are folded in below, each ne
 | Sound | Planned on a branch | `PERFORMANCE_PLAN.md` step 6 (unmerged). `SERVER_PLAN.md` section 7 still lists it as "not in this plan unless the owner asks". |
 | Reaching computers away from home without port forwarding (a relay) | Idea | `SERVER_PLAN.md` decision 10 says none is planned, because it needs a service Red Marmoset would have to run. Today: port forwarding, a VPN, or connecting through SSH. |
 | Recording a session (for bug reports and trailers) | Idea | Today Marconi saves single screenshots. |
-| Game controllers from a phone or laptop | Planned | `SERVER_PLAN.md` Phase 7 (and Phase 8 for Macs), decision 6 on the Windows driver. Not started. |
+| Game controllers from a phone or laptop | Written, tried with stand-ins only | `SERVER_PLAN.md` Phase 7 progress. The protocol, the server (Linux uinput; Windows ViGEmBus; no Mac), the viewer menu item and the Windows and Linux readers are written and tested with fake controllers. Never run with a real controller, `/dev/uinput` or ViGEmBus. Not on phones, not on a Mac viewer or server, and not on the datagram channel yet. Relative mouse and scancodes (Phase 7 step 4) not done. |
 | A terminal in the same app, opening SSH computers found on the network | Idea | Today Marconi finds SSH computers on the network and recognises `ssh://` addresses, but says it can't open them. It uses SSH only to carry VNC and for Mac file transfer. |
 | Watching an iPad or iPhone's screen (view only), through a ReplayKit companion app | Idea | The details are in a separate email, not copied here yet. |
 | "Follow along": watching live what an AI tool is doing through Marconi, with a big Stop button | Idea | `MarconiMcp` connects by itself with no window, and "AI control of the viewer's own window" is not planned (`MCP_PLAN.md` section 8). Marconi Server takes one viewer at a time today, so watching alongside would need it to take more (Phase 6 step 7). |
@@ -44,7 +44,7 @@ Also planned or missing, from the plans and the README's "Not available yet":
   on Windows: the installer from the F8 menu, the Windows service, clipboard, files and the extra screens. The tray
   program talking to the Windows service (Phase 3) is written, tried on Linux only. Still planned: the macOS server
   (written, never built), Wayland on Linux (Phase 8), several viewers at once (Phase 6 step 7), video (Phase 4),
-  datagrams (Phase 5) and game controllers (Phase 7).
+  datagrams (Phase 5). Game controllers (Phase 7) are written and tried only with stand-ins.
 - Marconi Server controls, all written and tried on Linux only: who can connect (by address), disconnecting idle
   viewers, a message when someone connects, a log file for each run, the password asked for in the tray, file
   sharing off until switched on, and a Linux package.

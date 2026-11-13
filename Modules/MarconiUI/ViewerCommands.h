@@ -33,6 +33,7 @@ namespace MarconiUI
         ID_SEND_F10,
         ID_SEND_KEYS,   // the toolbar button that opens the Send Keys menu
         ID_SYSTEM_KEYS, // send system shortcuts to the other computer
+        ID_SEND_GAMEPADS, // send game controllers to the other computer
         ID_SCREENSHOT,  // the toolbar button that opens the Screenshot menu
         ID_SCREENSHOT_SAVE,
         ID_SCREENSHOT_COPY,

@@ -441,6 +441,31 @@ namespace MarconiServerTest
         });
 #endif
 
+#if defined(__linux__)
+        RunTest("the real Linux backend makes a controller, or says in plain words why it can't", []() {
+            std::unique_ptr<Server::VirtualGamepadBackend> backend = Server::CreateSystemGamepadBackend();
+            CHECK(backend != nullptr && backend->GetName() == "uinput");
+            Wire::GamepadResult::Status status = Wire::GamepadResult::Status::Ok;
+            std::string message;
+            std::unique_ptr<Server::VirtualGamepad> pad =
+                backend->Create(Wire::GamepadType::Xbox, [](uint16_t, uint16_t) {}, status, message);
+            if (pad != nullptr)
+            {
+                // A real /dev/uinput here: the device was made; feed it a state and let it go.
+                Wire::GamepadState state = StateWith(0, 1, Wire::GamepadButton::A);
+                CHECK(pad->Update(state));
+                pad.reset();
+                std::printf("  (this computer has uinput: a real virtual controller was made and removed)\n");
+            }
+            else
+            {
+                std::printf("  (no usable uinput here: \"%s\")\n", message.c_str());
+                CHECK(status == Wire::GamepadResult::Status::NoDriver || status == Wire::GamepadResult::Status::Failed);
+                CHECK(!message.empty());
+            }
+        });
+#endif
+
         RunTest("a server with no controller backend doesn't offer controllers", []() {
             Rig rig(nullptr);
             CHECK(!rig.client->SupportsGamepads());
