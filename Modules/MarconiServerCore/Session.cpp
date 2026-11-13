@@ -3,6 +3,8 @@
 
 #include "Session.h"
 
+#include "FileService.h"
+
 #include <MarconiCore/Wire/WireCompress.h>
 
 #include <Log/Log.h>
@@ -80,7 +82,9 @@ namespace Marconi
 
             Wire::Welcome welcome;
             welcome.version = Wire::kProtocolVersion;
-            welcome.capabilities = hello.capabilities & kServerCapabilities;
+            welcome.capabilities =
+                hello.capabilities &
+                (kServerCapabilities | (m_settings.filesEnabled ? Wire::Capability::Files : uint64_t(0)));
             welcome.serverName = m_settings.serverName;
             welcome.serverVersion = m_settings.serverVersion;
             welcome.displays = m_screen.GetDisplays();
@@ -169,6 +173,10 @@ namespace Marconi
                         m_stop = true;
                         break;
                     default:
+                        if (m_files != nullptr)
+                        {
+                            m_files->Handle(type, body); // file messages; anything else it leaves
+                        }
                         break; // a message this build doesn't act on yet: its length already let us skip it
                     }
                 }
@@ -269,10 +277,13 @@ namespace Marconi
                 return;
             }
 
+            m_files = std::make_unique<FileService>(m_settings.filesEnabled, m_settings.fileRoot,
+                                                    [this](const Wire::Bytes& framed) { return Send(framed); });
             std::thread input([this, &reader]() { RunInputLoop(reader); });
             RunFrameLoop();
             m_stop = true;
             input.join();
+            m_files->Stop();
         }
     } // namespace Server
 } // namespace Marconi

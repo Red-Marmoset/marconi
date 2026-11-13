@@ -36,6 +36,8 @@ namespace
         printf("  --make-hash TEXT      print the hash of a password and exit (store it, not the password)\n");
         printf("  --cert-file PATH      load the server's certificate from PATH (made on first run with --key-file)\n");
         printf("  --key-file PATH       load the server's private key from PATH (made on first run with --cert-file)\n");
+        printf("  --no-files            don't let viewers browse or copy this computer's files\n");
+        printf("  --file-root PATH      let viewers reach only this folder (default: the whole computer)\n");
         printf("  --help                show this\n");
         printf("\nWithout --cert-file/--key-file the server makes a fresh certificate each run, so viewers are\n");
         printf("asked to trust it again every time. Point both at files to keep one identity across restarts.\n");
@@ -100,6 +102,17 @@ int main(int argc, char** argv)
                 return 2;
             }
             settings.passwordHash = Marconi::Server::HashPassword(text);
+        }
+        else if (arg == "--no-files")
+        {
+            settings.filesEnabled = false;
+        }
+        else if (arg == "--file-root")
+        {
+            if (!TakeValue(argc, argv, i, "--file-root", settings.fileRoot))
+            {
+                return 2;
+            }
         }
         else if (arg == "--password-hash")
         {

@@ -33,6 +33,7 @@ namespace Test
         MarconiTest::RunDesktopSizeTests();
         MarconiTest::RunSettingsTests();
         MarconiTest::RunWireTests();
+        MarconiTest::RunWireFileTests();
         MarconiTest::RunSshTunnelTests();
         MarconiTest::RunRdpTests();
         MarconiTest::RunRdpBitmapTests();

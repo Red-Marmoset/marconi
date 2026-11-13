@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <MarconiCore/Files/MarconiFiles.h>
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Wire/WireChannel.h>
@@ -29,6 +30,7 @@ namespace Marconi
             std::string clientName; // shown in the server's log and its "someone connected" notice
             int connectTimeoutMs = 10000;
             uint64_t capabilities = Capability::MultipleDisplays; // what this client offers; grows with each phase
+            bool offerFiles = true; // also offer file transfer (the Files capability)
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
@@ -70,6 +72,11 @@ namespace Marconi
             std::chrono::steady_clock::duration GetTimeSinceInput() const override;
             TrafficStats TakeTrafficStats() override;
 
+            // File transfer with the server, once connected: true if the server agreed to it. The pointer stays
+            // valid as long as this client does; its calls fail while there is no connection.
+            bool SupportsFiles() const { return m_supportsFiles.load(); }
+            Files::MarconiFiles* GetFiles() { return &m_files; }
+
         private:
             void Run(ClientOptions options);
             bool Handshake(MessageReader& reader, ClientOptions& options, DisconnectInfo& info);
@@ -93,6 +100,8 @@ namespace Marconi
             std::string m_encryptionName; // guarded by m_nameMutex
             std::atomic<bool> m_stopping{false};
             std::atomic<bool> m_supportsResize{false};
+            std::atomic<bool> m_supportsFiles{false};
+            Files::MarconiFiles m_files;
 
             std::vector<Rfb::Rect> m_frameRects; // changed rects collected between FrameBegin and FrameEnd
             mutable std::mutex m_infoMutex;

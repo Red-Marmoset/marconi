@@ -5,6 +5,7 @@
 #pragma once
 
 #include "Auth.h"
+#include "FileService.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Settings.h"
@@ -12,6 +13,7 @@
 #include <MarconiCore/Wire/WireChannel.h>
 
 #include <atomic>
+#include <memory>
 #include <cstdint>
 #include <mutex>
 #include <thread>
@@ -59,6 +61,7 @@ namespace Marconi
             uint64_t m_frameId = 0;
             int m_frameIntervalMs = 16;
             std::mutex m_writeMutex;
+            std::unique_ptr<FileService> m_files; // answers the viewer's file messages
             std::atomic<bool> m_stop{false};
         };
     } // namespace Server

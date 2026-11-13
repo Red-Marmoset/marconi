@@ -4,6 +4,7 @@
 #pragma once
 
 #include <MarconiCore/Files/LocalFiles.h>
+#include <MarconiCore/Files/MarconiFiles.h>
 #include <MarconiCore/Files/SftpFiles.h>
 #include <MarconiCore/Files/TightFiles.h>
 #include <MarconiCore/Files/TransferQueue.h>
@@ -51,6 +52,8 @@ namespace MarconiUI
         void SetTrustedHostKey(const wxString& fingerprint) { m_remote.trustedKey = fingerprint; }
         // The VNC connection offers TightVNC file transfer (or no longer does, with nullptr): use it instead of SFTP.
         void SetTightFiles(Marconi::Files::TightFiles* files, const wxString& displayName);
+        // The Marconi connection offers file transfer (or no longer does, with nullptr): use it instead of SFTP.
+        void SetMarconiFiles(Marconi::Files::MarconiFiles* files, const wxString& displayName);
         // Files dropped on the remote screen: copy them to the remote Desktop (connecting first if needed).
         void UploadToDesktop(const std::vector<std::string>& localPaths);
         bool IsBusy() const;
@@ -94,6 +97,7 @@ namespace MarconiUI
         Marconi::Files::LocalFiles m_local;
         std::unique_ptr<Marconi::Files::SftpFiles> m_sftp;
         Marconi::Files::TightFiles* m_tight = nullptr; // owned by the viewer
+        Marconi::Files::MarconiFiles* m_marconi = nullptr; // owned by the viewer's Marconi client
         std::unique_ptr<Marconi::Files::TransferQueue> m_queue;
         State m_state = State::Idle;
         std::thread m_worker; // connects and logs in
