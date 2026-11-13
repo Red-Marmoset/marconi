@@ -34,6 +34,8 @@ namespace Test
         MarconiTest::RunSettingsTests();
         MarconiTest::RunWireTests();
         MarconiTest::RunWireFileTests();
+        MarconiTest::RunDatagramTests();
+        MarconiTest::RunDatagramLoopbackTests();
         MarconiTest::RunSshTunnelTests();
         MarconiTest::RunRdpTests();
         MarconiTest::RunRdpBitmapTests();

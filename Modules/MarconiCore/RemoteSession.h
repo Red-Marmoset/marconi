@@ -146,6 +146,12 @@ namespace Marconi
         // message). False when this kind of connection has no such message, so the caller sends the lock keys
         // instead (Win+L). True means the request was sent, not that the lock happened.
         virtual bool SendLock() { return false; }
+
+        // How the connection's datagram channel is doing, for the status bar: "UDP", "UDP, 3% loss", "over TCP"
+        // (Wire::DatagramStatusText). Empty when the connection has no datagram channel (everything but a Marconi
+        // server that offered one). GetRoundTripMs is the channel's measured round trip, -1 when unknown.
+        virtual std::string GetTransportStatus() const { return std::string(); }
+        virtual int GetRoundTripMs() const { return -1; }
     };
 
     namespace Rfb

@@ -40,9 +40,24 @@ namespace MarconiUI
         {
             return;
         }
-        // The ping-based round-trip readout is a VNC feature for now; a Marconi connection shows nothing here.
+        // The ping-based round-trip readout is a VNC feature. A Marconi connection shows its datagram channel
+        // instead ("UDP, 2% loss, 31 ms", or "over TCP" when UDP is blocked), and nothing while it has none.
         if (m_rfb == nullptr)
         {
+            if (!m_session)
+            {
+                return;
+            }
+            wxString text = wxString::FromUTF8(m_session->GetTransportStatus());
+            int roundTripMs = m_session->GetRoundTripMs();
+            if (!text.empty() && roundTripMs >= 0)
+            {
+                text += wxString::Format(", %d ms", roundTripMs);
+            }
+            if (GetStatusBar() != nullptr && text != GetStatusBar()->GetStatusText(1))
+            {
+                SetStatusText(text, 1);
+            }
             return;
         }
         if (++m_healthTicks % kPingEverySeconds == 1)

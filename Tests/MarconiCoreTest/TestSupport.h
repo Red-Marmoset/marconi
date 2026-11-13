@@ -156,6 +156,8 @@ namespace MarconiTest
     void RunSettingsTests();
     void RunWireTests();
     void RunWireFileTests();
+    void RunDatagramTests();
+    void RunDatagramLoopbackTests();
     void RunSshTunnelTests();
     void RunRdpTests();
     void RunRdpBitmapTests();
