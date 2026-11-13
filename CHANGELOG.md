@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.10.1
+
+- The Mac disk image opens in a square window with an arrow from Marconi to the Applications folder.
+
 ## 0.10.0
 
 - The phone and tablet apps have landscape layouts.
