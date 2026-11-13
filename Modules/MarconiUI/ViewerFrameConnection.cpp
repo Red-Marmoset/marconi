@@ -219,6 +219,7 @@ namespace MarconiUI
         options.host = m_options.address.host;
         options.port = port;
         options.password = m_options.credentials.password;
+        options.askForPassword = !m_options.headless;
         options.clientName = "Marconi";
         options.trustedCertificateSha256 = m_options.trustedCertificateSha256;
         EnsureWireClient().Connect(options);

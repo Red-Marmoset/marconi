@@ -27,6 +27,9 @@ namespace Marconi
             std::string host;
             uint16_t port = kDefaultPort;
             std::string password;   // sent at login (inside TLS once encryption is added)
+            // With no password above, ask the listener's OnCredentialsRequired for one before the login; declining
+            // ends the connection with no error. Off, an empty password is sent as it is (tests, --allow-no-password).
+            bool askForPassword = false;
             std::string clientName; // shown in the server's log and its "someone connected" notice
             int connectTimeoutMs = 10000;
             bool offerFiles = true; // also offer file transfer (the Files capability)

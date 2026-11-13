@@ -124,6 +124,7 @@ namespace MarconiServerTest
         void OnServerClipboard(const Marconi::Rfb::ClipboardContent& content) override;
         void OnDisconnected(const Marconi::DisconnectInfo& info) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
+        bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
 
         bool WaitFor(const std::function<bool()>& predicate, int timeoutMs = 5000);
 
@@ -139,6 +140,9 @@ namespace MarconiServerTest
         int certificateQuestions = 0;              // how many times the server's certificate was queried
         std::vector<uint8_t> lastCertificateSha256; // the fingerprint last asked about
         bool trustCertificate = true;              // what OnUntrustedCertificate returns
+        int passwordQuestions = 0;                 // how many times the client asked for a password
+        bool givePassword = false;                 // whether OnCredentialsRequired answers (false: the user cancels)
+        std::string passwordToGive;                // the password it answers with
     };
 
     void RunSessionTests();

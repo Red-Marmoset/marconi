@@ -320,6 +320,18 @@ namespace Marconi
             }
             Welcome welcome = Welcome::Decode(welcomeReader);
 
+            if (options.askForPassword && options.password.empty())
+            {
+                // Asked here, after the certificate was trusted, so the password only ever goes to a trusted server.
+                Rfb::Credentials credentials;
+                if (!m_listener.OnCredentialsRequired(Rfb::CredentialsKind::Password, credentials))
+                {
+                    info.error.clear(); // cancelled: close without an error
+                    return false;
+                }
+                options.password = credentials.password;
+            }
+
             Login login;
             login.password = options.password;
             if (!Send(login.Encode()))
