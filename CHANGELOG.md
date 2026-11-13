@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- A Marconi Server installer for Windows, included in Marconi's own setup.
+- F8 menu: Install Marconi Server on the Other Computer, which copies the installer to its desktop.
+- Settings: Share this computer, which runs the Marconi Server installer here.
+- Marconi Server keeps its settings and logs in ProgramData on Windows when its installer made that folder.
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.

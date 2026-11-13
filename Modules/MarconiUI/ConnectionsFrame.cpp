@@ -6,6 +6,7 @@
 #include "AppIcon.h"
 #include "Appearance.h"
 #include "Controls.h"
+#include "ServerInstall.h"
 #include "ConnectionDialog.h"
 #include "UserData.h"
 #include "ViewerFrame.h"
@@ -698,6 +699,11 @@ namespace MarconiUI
             }
         });
         layout->Add(logs, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
+
+        // Marconi Server on this computer, from the installer that came with Marconi.
+        wxButton* share = new wxButton(&dialog, wxID_ANY, "Share this computer...");
+        share->Bind(wxEVT_BUTTON, [&dialog](wxCommandEvent&) { ShareThisComputer(&dialog); });
+        layout->Add(share, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
 
         // Everything Marconi keeps for this user, gone in one go; also what the Windows uninstaller offers.
         bool removeEverything = false;

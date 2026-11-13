@@ -93,8 +93,8 @@ Phase 1 is written but not finished:
   on Linux in test-pattern mode.
 - **Not in the server yet:** clipboard, file transfer, several displays, screen resizing, cursor shape (all
   Phase 6), and the settings kept in `ProgramData` or the registry (it uses a per-user folder).
-- **Phases 2 to 8 have not been started.** There is no server installer (`Installer/` holds only the client's
-  `Marconi.nsi`), no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
+- **Phase 2 is written but not run on Windows** (see its status under Phase 2). Phases 3 to 8 have not been started:
+  no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
 - **Nothing measured yet:** the table in section 8 is empty.
 - **Next step:** run 1.6 and 1.7 on a Windows machine and fix what it shows, then Phase 2.
 
@@ -435,6 +435,48 @@ encrypted, and `MarconiCoreTest` and `MarconiServerTest` pass.
 Done when: connected to a Windows PC with TightVNC, the menu item puts the installer on its desktop, running it
 there (on the remote screen) installs the server, and reconnecting uses the Marconi server without changing the
 saved connection.
+
+**Phase 2 status (written on Linux, none of it run on Windows).**
+
+- Done and checked here: `Installer/MarconiServer.nsi` and the client's `Installer/Marconi.nsi` (with the new "Marconi
+  Server installer" component) both compile with makensis 3.09 under `/WX`, with a stand-in payload and the
+  ShellExecAsUser calls swapped for `Exec` (the plug-in is Windows-only). The tray program's `--set-password-file`
+  (UTF-16 or UTF-8, hashes, erases the file, exit code 0 or 1) was run under a virtual display and wrote the hash;
+  `ReadPasswordFile` and `ServerInstaller::Find` have tests (MarconiServerTest 104 passed; MarconiCoreTest 1915 passed,
+  2 failed in `SocketTests.cpp` lines 89-90, a connect-timeout check that needs an unroutable address; this sandbox has
+  no such network, so they are not from this change). The client and tray both build on Linux.
+- Needs a Windows run: `PackageServer.ps1` and `Package.ps1` (never executed); the whole installer (pages, UAC, the
+  password file hand-off, `icacls` on `%ProgramData%\Marconi Server`, the `netsh` rule, the Run key, the uninstaller,
+  upgrade over an older version, `/S`); `ServerConfig`'s ProgramData branch (compiled only on Windows); the F8 flow
+  against a real TightVNC (the copy uses the existing `UploadToRemoteDesktop`, which asks once for the drop folder and
+  defaults to the Public Desktop); "Share this computer..." (`wxLaunchDefaultApplication` on the setup file, so Windows
+  shows its permission prompt).
+- Differences from the plan, for the owner to confirm:
+  1. **The saved password is not handed to the installer.** Section 1 point 4 says the client passes the connection's
+     saved password over the encrypted link. TightVNC's link is usually not encrypted, and sending a password file
+     beside the installer would leave it on the other computer's desktop, so the installer asks for a password on its
+     own page instead and the dialog says it needn't match the VNC password. The hand-off in the installer is a private
+     temporary file read by `MarconiServer.exe --set-password-file` (hashed, erased); a client-supplied file could use
+     the same entry point.
+  2. **`/S` installs set no password, and the server then lets anyone in** (point 9 says it should refuse every
+     connection until a password is set; `Auth` currently allows everyone when no hash is set). The tray's first-run
+     prompt appears at its first start and accepts an empty password. Not changed here (server core is other
+     agents' ground); decide whether `Auth` should refuse.
+  3. **The tray program ships as `MarconiServer.exe`** (built as `MarconiServerTray.exe`), as the plan's name for it.
+  4. **Settings folder permissions.** The installer gives administrators and SYSTEM full control and the account signed
+     in at the screen (`WTSQuerySessionInformation`, user name only) modify rights, since until Phase 3 the tray
+     runs as that user. Any other account falls back to its own folder (its own password and certificate) and would
+     also try the same port. Phase 3 (the service) replaces this. A domain account's name may not resolve in `icacls`.
+  5. **Firewall rule** is for the program on TCP port 1895 on every profile; a changed port needs the rule changed.
+  6. **No server version resource and no icon in the exe yet**, so `PackageServer.ps1` can't check the built
+     program's version the way the client's packaging does (the installer's version is Project.json plus the commit
+     count). The installer's icon and the shortcut's are the client's.
+  7. **Uninstaller's data option** removes only `%ProgramData%\Marconi Server`; a per-user fallback folder stays (its
+     exact Windows path from wx was not checked).
+  8. The download-link fallback points at the repository's latest release page, not at a file: whether releases carry
+     the server installer is the owner's call at publishing time (`PackageServer.ps1` prints its SHA-256).
+  9. The F8 item offers file sending for TightVNC or SSH-tunnelled connections only; it can't tell what the other
+     computer runs, so it says the server is for Windows.
 
 ### Phase 3: a real service
 

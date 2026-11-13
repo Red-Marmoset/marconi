@@ -11,9 +11,11 @@ namespace Marconi
 {
     namespace ServerUI
     {
-        // The server's saved settings and the folder they live in. Everything is kept under one per-user data folder
-        // ("Marconi Server"): a small settings file, the TLS certificate and key, and the logs. (An all-users
-        // location and a Windows service come with a later phase; for now the server runs as the signed-in user.)
+        // The server's saved settings and the folder they live in. Everything is kept under one data folder: a small
+        // settings file, the TLS certificate and key, and the logs. On Windows that is ProgramData\Marconi Server when
+        // the installer made it and this account can write in it (every account shares it, and the Windows service of
+        // a later phase will use it); otherwise, and always on Linux and macOS, a per-user folder.
+        // (Not yet run on Windows: the ProgramData choice is compiled only there.)
         class ServerConfig
         {
         public:

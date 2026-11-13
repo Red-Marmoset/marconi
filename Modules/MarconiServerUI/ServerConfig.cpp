@@ -3,9 +3,11 @@
 
 #include "ServerConfig.h"
 
+#include <wx/file.h>
 #include <wx/filename.h>
 #include <wx/fileconf.h>
 #include <wx/stdpaths.h>
+#include <wx/utils.h>
 
 namespace Marconi
 {
@@ -26,6 +28,33 @@ namespace Marconi
                 return wxFileConfig(wxEmptyString, wxEmptyString, file.GetFullPath(), wxEmptyString,
                                     wxCONFIG_USE_LOCAL_FILE);
             }
+
+#ifdef __WXMSW__
+            // The shared folder the installer makes (ProgramData, then "Marconi Server") if it exists and a file can
+            // be made in it, else empty. It is never made here: the installer makes it, with the right permissions.
+            wxString FindSharedDirectory()
+            {
+                wxString programData;
+                if (!wxGetEnv("ProgramData", &programData) || programData.IsEmpty())
+                {
+                    return wxEmptyString;
+                }
+                wxString folder = wxFileName(programData, "Marconi Server").GetFullPath();
+                if (!wxFileName::DirExists(folder))
+                {
+                    return wxEmptyString;
+                }
+                wxFileName probe(folder, "write-test.tmp");
+                wxFile file;
+                if (!file.Create(probe.GetFullPath(), true))
+                {
+                    return wxEmptyString;
+                }
+                file.Close();
+                wxRemoveFile(probe.GetFullPath());
+                return folder;
+            }
+#endif
         } // namespace
 
         ServerConfig::ServerConfig()
@@ -33,6 +62,20 @@ namespace Marconi
             // Ask for the XDG layout, as the client does, so on Linux the folder goes under the user's home rather
             // than a dot-file at the top of it. The app and vendor names (set in OnInit) decide the folder's name.
             wxStandardPaths::Get().SetFileLayout(wxStandardPaths::FileLayout_XDG);
+
+#ifdef __WXMSW__
+            // On Windows the installer makes a folder shared by every account, ProgramData\Marconi Server, so the
+            // settings, password, certificate and logs belong to the computer rather than to whoever is signed in
+            // (and the Windows service of a later phase can use them). It is used when it exists and this account
+            // may write in it; otherwise (a copy run by hand, or an account the installer gave no access) the
+            // per-user folder below is the fallback.
+            m_dataDir = FindSharedDirectory();
+            if (!m_dataDir.IsEmpty())
+            {
+                return;
+            }
+#endif
+
             m_dataDir = wxStandardPaths::Get().GetUserLocalDataDir();
             if (!wxFileName::DirExists(m_dataDir))
             {
