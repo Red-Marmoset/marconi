@@ -201,7 +201,7 @@ namespace Marconi
             };
         } // namespace
 
-        std::unique_ptr<InputSink> CreateSystemInput()
+        std::unique_ptr<InputSink> CreateSystemInput(std::string& /*error*/)
         {
             return std::make_unique<WindowsInput>();
         }

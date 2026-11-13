@@ -6,6 +6,9 @@
 
 #include "SystemScreen.h"
 
+#include "DirtyTracker.h"
+#include "X11Support.h"
+
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xfixes.h>
@@ -19,8 +22,6 @@ namespace Marconi
     {
         namespace
         {
-            constexpr int kTile = 64;
-
             class LinuxScreen : public ScreenSource
             {
             public:
@@ -34,10 +35,8 @@ namespace Marconi
 
                 bool Open(std::string& error)
                 {
-                    m_display = XOpenDisplay(nullptr);
-                    if (m_display == nullptr)
+                    if (!X11OpenDisplay(m_display, error))
                     {
-                        error = "could not open the X display (is DISPLAY set? Wayland-only sessions aren't supported yet)";
                         return false;
                     }
                     m_root = DefaultRootWindow(m_display);
@@ -66,8 +65,23 @@ namespace Marconi
                     {
                         return false;
                     }
-                    XImage* image = XGetImage(m_display, m_root, 0, 0, static_cast<unsigned>(m_width),
-                                              static_cast<unsigned>(m_height), AllPlanes, ZPixmap);
+                    // XGetImage fails with an X error (which would end the program) if the screen shrank since
+                    // Measure; catch that and let the session retry.
+                    XImage* image = nullptr;
+                    {
+                        X11ScopedErrorCatcher catcher;
+                        image = XGetImage(m_display, m_root, 0, 0, static_cast<unsigned>(m_width),
+                                          static_cast<unsigned>(m_height), AllPlanes, ZPixmap);
+                        XSync(m_display, False);
+                        if (catcher.Failed())
+                        {
+                            if (image != nullptr)
+                            {
+                                XDestroyImage(image);
+                            }
+                            return false;
+                        }
+                    }
                     if (image == nullptr)
                     {
                         return false;
@@ -78,7 +92,7 @@ namespace Marconi
                     {
                         return false;
                     }
-                    FindDirty(out);
+                    m_dirty.Update(out);
                     return true;
                 }
 
@@ -100,10 +114,19 @@ namespace Marconi
                     out.argb.resize(static_cast<size_t>(image->width) * image->height);
                     for (size_t i = 0; i < out.argb.size(); ++i)
                     {
-                        // XFixes gives premultiplied ARGB in an unsigned long; the wire wants alpha 0 or 255.
+                        // XFixes gives premultiplied ARGB in an unsigned long; the wire wants alpha 0 or 255 and
+                        // colours that are not premultiplied, so edges don't come out dark.
                         uint32_t pixel = static_cast<uint32_t>(image->pixels[i]);
                         uint32_t alpha = pixel >> 24;
-                        out.argb[i] = (alpha >= 128 ? 0xFF000000u : 0u) | (pixel & 0x00FFFFFFu);
+                        if (alpha < 128)
+                        {
+                            out.argb[i] = 0;
+                            continue;
+                        }
+                        uint32_t red = std::min<uint32_t>(255, ((pixel >> 16) & 0xFF) * 255 / alpha);
+                        uint32_t green = std::min<uint32_t>(255, ((pixel >> 8) & 0xFF) * 255 / alpha);
+                        uint32_t blue = std::min<uint32_t>(255, (pixel & 0xFF) * 255 / alpha);
+                        out.argb[i] = 0xFF000000u | (red << 16) | (green << 8) | blue;
                     }
                     XFree(image);
                     return true;
@@ -156,57 +179,12 @@ namespace Marconi
                     return true;
                 }
 
-                // Compares with the last picture tile by tile; neighbouring changed tiles in a row become one rectangle.
-                void FindDirty(Capture& out)
-                {
-                    out.dirty.clear();
-                    const bool first = m_previous.size() != out.pixels.size() || m_previousWidth != m_width;
-                    if (first)
-                    {
-                        out.dirty.push_back({0, 0, m_width, m_height});
-                    }
-                    else
-                    {
-                        for (int ty = 0; ty < m_height; ty += kTile)
-                        {
-                            int tileHeight = std::min(kTile, m_height - ty);
-                            int runStart = -1;
-                            for (int tx = 0; tx <= m_width; tx += kTile)
-                            {
-                                bool changed = false;
-                                if (tx < m_width)
-                                {
-                                    int tileWidth = std::min(kTile, m_width - tx);
-                                    for (int y = ty; y < ty + tileHeight && !changed; ++y)
-                                    {
-                                        size_t offset = static_cast<size_t>(y) * m_width + tx;
-                                        changed = std::memcmp(out.pixels.data() + offset, m_previous.data() + offset,
-                                                              static_cast<size_t>(tileWidth) * 4) != 0;
-                                    }
-                                }
-                                if (changed && runStart < 0)
-                                {
-                                    runStart = tx;
-                                }
-                                else if (!changed && runStart >= 0)
-                                {
-                                    out.dirty.push_back({runStart, ty, std::min(tx, m_width) - runStart, tileHeight});
-                                    runStart = -1;
-                                }
-                            }
-                        }
-                    }
-                    m_previous = out.pixels;
-                    m_previousWidth = m_width;
-                }
-
                 Display* m_display = nullptr;
                 Window m_root = 0;
                 bool m_hasFixes = false;
                 int m_width = 0;
                 int m_height = 0;
-                int m_previousWidth = 0;
-                std::vector<uint32_t> m_previous;
+                DirtyTracker m_dirty;
             };
         } // namespace
 

@@ -23,9 +23,14 @@ namespace Marconi
             wxMenu* CreatePopupMenu() override;
 
         private:
+            void ShowProblem();
             void OnSetPassword(wxCommandEvent& event);
             void OnChangePort(wxCommandEvent& event);
             void OnCopyFingerprint(wxCommandEvent& event);
+            void OnShowProblem(wxCommandEvent& event);
+            void OnCheckAgain(wxCommandEvent& event);
+            void OnOpenScreenSettings(wxCommandEvent& event);
+            void OnOpenControlSettings(wxCommandEvent& event);
             void OnQuit(wxCommandEvent& event);
 
             ServerController& m_controller;

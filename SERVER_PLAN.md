@@ -581,6 +581,79 @@ Outline only; planned in detail when reached.
   server app bundle, signed and notarized. Either way the server feeds it `GamepadState`.
 - The client's install menu then offers the right installer per server, using SFTP for Macs.
 
+#### Phase 8 progress: macOS (written, never built) and Linux X11 (built and tested)
+
+**Linux X11** (`SystemScreen_Linux.cpp`, `SystemInput_Linux.cpp`, `X11Support.h`): built and tested under Xvfb by
+`Tests/MarconiServerTest/X11Tests.cpp` (run with `DISPLAY` set to an Xvfb `-screen 0 1024x768x24`; without a display
+the tests print SKIP). The tests draw a known pattern with Xlib and check the grabbed pixels, the dirty rectangles
+(64x64 tiles, joined along a row, partial tiles at the screen edge, nothing when nothing changed), and that XTest
+pointer, buttons, wheel, keys, Shift and typed text (including a character with no key) reach an X client. Fixed along
+the way: an X error from a shrinking screen no longer ends the program; keys with no keycode are typed by borrowing a
+spare key; cursor colours are no longer premultiplied. The dirty-tile code is shared (`DirtyTracker.h`).
+Wayland: `XDG_SESSION_TYPE=wayland`, or no `DISPLAY`, gives a plain-words message (console prints it, the tray shows it
+in a dialog and a menu item, `ServerController::GetProblem`) and the server serves the test pattern. The tray program
+with no `DISPLAY` and no `WAYLAND_DISPLAY` prints the same message and exits. Not done: Wayland capture (PipeWire and the
+portal), XDamage, several monitors (one display covering the whole root window), a systemd user service, a Linux server
+package, releasing held keys and buttons when a viewer vanishes, and X's own I/O error handler (an X server that dies
+ends the program).
+
+**macOS** (`SystemScreen_Mac.cpp`, `SystemInput_Mac.cpp`, `MacDisplays.h`; frameworks in `Module.manifest`): written
+without a Mac. Only syntax-checked against hand-written stub headers, so no claim is made that it compiles against the
+real SDK, still less that it works. Decisions:
+
+- **Capture:** `CGDisplayCreateImage` per display (looked up with `dlsym`, since Apple is retiring it). ScreenCaptureKit
+  only once this has been run and measured (also what Phase 4's GPU frames want). Needs the Screen Recording permission,
+  checked with `CGPreflightScreenCaptureAccess` (a refusal is explained in plain words and the server falls back to the
+  test pattern; macOS only applies the permission to a program started afterwards).
+- **Retina:** the viewer gets the desktop **in points** (what the Mac user sees as the screen size), each display's
+  pixels scaled down by Core Graphics. Pictures, pointer coordinates and bandwidth stay in step; 2x detail is lost. A
+  "full pixels" setting is not built.
+- **Displays:** all active displays form one desktop (their bounding rectangle, black gaps), as on Windows; each is
+  also listed with its `CGDirectDisplayID`, position and size. Re-read at every grab, so plugging a display in or out
+  changes the size (the viewer side of resizing is Phase 6). No cursor image yet (needs AppKit).
+- **Input:** `CGEventPost` at the HID tap, needing the Accessibility permission (`AXIsProcessTrustedWithOptions`, which
+  also shows macOS's prompt). Mouse with click counts and drags, wheel (a notch is three lines), keys by a fixed
+  keysym-to-virtual-key table, characters typed with `CGEventKeyboardSetUnicodeString` (also for `TypeText`) except when
+  Control, Option or Command is held, when the US key position is used so shortcuts work. Modifiers are mapped
+  literally (Ctrl to Control, Alt to Option, Windows to Command): whether a Windows viewer's Ctrl should become Command is
+  the owner's call. Hardware scancodes are ignored.
+- **Tray (`MarconiServerUI`):** wx's default tray type on macOS is a menu-bar status item, so the tray icon already
+  lives in the menu bar; `ServerInfo.plist` sets `LSUIElement` so there is no Dock icon. A permission problem shows in
+  a dialog at start, as a "Problem" line in the menu, with "Open Screen Recording settings", "Open Accessibility
+  settings" and "Check again" items (the screen permission still needs a restart of the app).
+- **Package:** `PackageServer.sh` makes `Marconi Server.app` on a `.dmg` (Developer ID signing and notarizing as in
+  `Package.sh`; not called from it yet). Sign every build with the same identity, or the permissions have to be given
+  again after each rebuild.
+- **Start at login (plan, nothing installs it):** a per-user launch agent
+  (`Installer/macOS/com.redmarmoset.MarconiServer.plist`, into `~/Library/LaunchAgents`), not a daemon, because only a
+  program in the login session may read the screen or post events. Next step: a tray menu item "Start at login" that
+  writes or removes that file (or uses `SMAppService.mainApp` on macOS 13 and later, which needs a small `.mm`). Showing
+  the login window itself (before anyone has logged in) is not possible this way and is not planned.
+
+What has to be checked on a Mac (nothing below has been done):
+
+1. It compiles and links: `./Build.sh Server/Project.json`, `./Build.sh ServerUI/Project.json`, and the tests.
+2. Screen Recording: first run shows the prompt; after allowing it and restarting, the picture is the real desktop, not
+   just the wallpaper. Is `CGDisplayCreateImage` still present and working on the Mac's macOS version (it is marked as
+   going away; if not, ScreenCaptureKit is needed)?
+3. Colours: the picture is not tinted or dark (sRGB conversion, the byte order of the pixels), the top byte is clean.
+4. Retina: on a built-in display the viewer shows the full desktop at the "looks like" size, sharp enough, and the mouse
+   lands where it should at 1x and 2x, with a second display left of and above the main one (negative coordinates), and
+   with displays of different scales. Plug and unplug a display while connected.
+5. CPU and latency of a full-screen grab at 60 Hz (the numbers go in section 8).
+6. Accessibility: the prompt appears; with it off, the plain-words text shows; "Check again" after allowing works
+   without a restart.
+7. Mouse: move, left, right, middle, double and triple click, drag, scroll direction (vertical and horizontal; the
+   horizontal sign is a guess), scroll amount.
+8. Keyboard: letters, shifted symbols, digits, Return, Backspace, Delete, arrows, Home/End/Page keys (Mac mapping),
+   F1 to F12, keypad, Shift/Control/Option/Command (do modifier key events work as plain key events, or do they need
+   `kCGEventFlagsChanged`?), Caps Lock, held keys repeating, Command-C and Command-V, typing an accented letter and an
+   emoji through `TypeText`, a non-US layout.
+9. The menu-bar icon (size and look, light and dark menu bars), the dialogs from a program with no Dock icon, Quit.
+10. `PackageServer.sh`: the `.app` runs from `/Applications`, the signature verifies, notarization passes, and
+    permissions survive a rebuild signed with the same identity.
+11. The viewer's behaviour against it (probe, TLS, password) is unchanged by the platform, but run it once.
+
 ## 5. Testing throughout
 
 - `Tests/MarconiServerTest` runs with no display: `FakeScreen` (the test pattern), `RecordingInput`,

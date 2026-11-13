@@ -173,12 +173,17 @@ int main(int argc, char** argv)
         systemScreen = Marconi::Server::CreateSystemScreen(screenError);
         if (!systemScreen)
         {
-            printf("No screen capture on this computer yet (%s); serving the test pattern instead.\n",
-                   screenError.c_str());
+            printf("Can't share this computer's screen.\n%s\nServing a test pattern instead.\n", screenError.c_str());
         }
         else
         {
-            systemInput = Marconi::Server::CreateSystemInput();
+            std::string inputError;
+            systemInput = Marconi::Server::CreateSystemInput(inputError);
+            if (!systemInput)
+            {
+                printf("Viewers will see this screen but can't control it.\n%s\n",
+                       inputError.empty() ? "Mouse and keyboard control isn't available here yet." : inputError.c_str());
+            }
         }
     }
 

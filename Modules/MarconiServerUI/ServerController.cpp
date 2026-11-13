@@ -28,16 +28,34 @@ namespace Marconi
             m_systemScreen = Server::CreateSystemScreen(screenError);
             if (m_systemScreen)
             {
-                m_systemInput = Server::CreateSystemInput();
+                std::string inputError;
+                m_systemInput = Server::CreateSystemInput(inputError);
+                if (!m_systemInput)
+                {
+                    m_problem = "Viewers can see this screen but can't control it. " + inputError;
+                    LOG_WARNING("Server", "No input control: %s", inputError.c_str());
+                }
                 m_screen = m_systemScreen.get();
                 m_input = m_systemInput.get();
                 m_servedDescription = "this computer's screen";
                 return;
             }
 
-            // No capture on this computer yet: serve a moving test pattern and log the input that comes in.
-            LOG_INFO("Server", "No screen capture on this computer yet (%s); serving a test pattern.",
-                     screenError.c_str());
+            // No capture here: serve a moving test pattern and log the input that comes in, and keep the reason to
+            // show in the tray menu.
+            m_problem = "Can't share this computer's screen. " + screenError;
+            {
+                // Ask for the control permission now too (on a Mac this shows its prompt), so both can be given
+                // in one go. The input made here is thrown away: a test pattern must not move the real mouse.
+                std::string inputError;
+                Server::CreateSystemInput(inputError);
+                if (!inputError.empty() && inputError != screenError)
+                {
+                    m_problem += " " + inputError;
+                }
+            }
+            LOG_WARNING("Server", "Can't share this computer's screen (%s); serving a test pattern.",
+                        screenError.c_str());
             m_pattern = std::make_unique<Server::TestPatternScreen>(1280, 720);
             m_loggingInput = std::make_unique<Server::LoggingInputSink>();
             m_screen = m_pattern.get();
@@ -116,6 +134,27 @@ namespace Marconi
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             return m_servedDescription;
+        }
+
+        bool ServerController::CheckScreenAndInputAgain(std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            StopLocked();
+            m_listener.reset();
+            m_screen = nullptr;
+            m_input = nullptr;
+            m_systemScreen.reset();
+            m_systemInput.reset();
+            m_pattern.reset();
+            m_loggingInput.reset();
+            m_problem.clear();
+            return StartLocked(error);
+        }
+
+        std::string ServerController::GetProblem() const
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_problem;
         }
 
         bool ServerController::ChangePort(uint16_t port, std::string& error)

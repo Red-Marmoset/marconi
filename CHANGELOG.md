@@ -9,6 +9,9 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - F8 menu: Install Marconi Server on the Other Computer, which copies the installer to its desktop.
 - Settings: Share this computer, which runs the Marconi Server installer here.
 - Marconi Server keeps its settings and logs in ProgramData on Windows when its installer made that folder.
+- Marconi Server on a Mac can share the screen and take mouse and keyboard control, once allowed in System Settings (not yet tried on a Mac).
+- Marconi Server says in plain words when it can't share the screen or can't be controlled, for example on a Wayland desktop or before a Mac permission is given.
+- Marconi Server on Linux no longer closes when the screen size changes, and types characters that have no key.
 
 ## 0.9.7
 
