@@ -144,6 +144,7 @@ namespace MarconiUI
                                   ? wxString()
                                   : wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
         menu->Append(ID_REFRESH, "&Refresh Screen");
+        menu->Append(ID_INSTALL_SERVER, "Install Marconi Server on the Other Computer...");
         menu->AppendSeparator();
         menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
         menu->AppendCheckItem(ID_FILES, "Transfer &Files\tF10");
@@ -180,6 +181,7 @@ namespace MarconiUI
         menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
         menu->Enable(ID_GET_CLIPBOARD, m_connected);
         menu->Enable(ID_PASTE_FILES, m_connected && ClipboardHasFiles());
+        menu->Enable(ID_INSTALL_SERVER, m_connected);
         return menu;
     }
 
@@ -284,6 +286,9 @@ namespace MarconiUI
             return; // keep the status bar message; the automatic send below would repeat it
         case ID_GET_CLIPBOARD:
             m_clipboard.GetNow();
+            return;
+        case ID_INSTALL_SERVER:
+            InstallServerOnOtherComputer();
             return;
         case ID_PASTE_FILES:
             PasteFilesFromClipboard();

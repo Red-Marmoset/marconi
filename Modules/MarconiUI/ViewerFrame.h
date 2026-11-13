@@ -182,6 +182,7 @@ namespace MarconiUI
         void RequestMatchingSize();
         void UploadToRemoteDesktop(const std::vector<std::string>& paths);
         void PasteFilesFromClipboard();
+        void InstallServerOnOtherComputer();
         void SaveSettings();
         void WaitForPicture();
         void CheckForPicture();

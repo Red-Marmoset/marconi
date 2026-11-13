@@ -9,6 +9,7 @@
 
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/IdentityStore.h>
+#include <MarconiServerCore/PasswordFile.h>
 #include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/Settings.h>
 
@@ -88,6 +89,16 @@ namespace Marconi
             Log::InitializeFileLogging(m_config->GetLogDirectory().utf8_string(), "MarconiServer");
             LOG_INFO("Server", "Marconi Server %s starting", GetVersionString());
 
+            for (int i = 1; i + 1 < argc; ++i)
+            {
+                if (wxString(argv[i]) == "--set-password-file")
+                {
+                    m_commandOnly = true;
+                    m_commandResult = SetPasswordFromFile(argv[i + 1]);
+                    return true; // OnRun returns the result without starting anything
+                }
+            }
+
             // Build the settings from what's saved, and make or load the lasting TLS identity so viewers aren't asked
             // to trust the server again after every restart.
             Server::Settings settings;
@@ -145,6 +156,42 @@ namespace Marconi
             // There is no window; the tray icon keeps the program running until Quit.
             SetExitOnFrameDelete(false);
             return true;
+        }
+
+        int ServerApp::SetPasswordFromFile(const wxString& path)
+        {
+            std::string password;
+            std::string error;
+            if (!Server::ReadPasswordFile(path.utf8_string(), password, error))
+            {
+                LOG_WARNING("Server", "Could not set the password from a file: %s", error.c_str());
+                return 1;
+            }
+            // Hash first and erase the file straight away, so the plain password sits on disk for as short a time as
+            // possible; the hash is what is stored.
+            std::string hash = Server::HashPassword(password);
+            password.assign(password.size(), '\0');
+            if (!Server::ErasePasswordFile(path.utf8_string()))
+            {
+                LOG_WARNING("Server", "The password file could not be removed");
+            }
+            if (hash.empty())
+            {
+                LOG_WARNING("Server", "The password could not be hashed");
+                return 1;
+            }
+            m_config->SetPasswordHash(wxString::FromUTF8(hash.c_str()));
+            LOG_INFO("Server", "The access password was set from a file");
+            return 0;
+        }
+
+        int ServerApp::OnRun()
+        {
+            if (m_commandOnly)
+            {
+                return m_commandResult;
+            }
+            return wxApp::OnRun();
         }
 
         int ServerApp::OnExit()

@@ -212,22 +212,59 @@ Marconi can now also work the other way round. **Marconi Server** is a separate 
 computer, so someone using Marconi on another computer can see its screen and control it. You don't need any other
 VNC server.
 
-It's new and still being built, so for now you start it by hand (an installer, and a way to set it up from the
-Marconi window, are coming next):
+It's an early version, and so far it has only been tried on Linux with a test picture. The Windows screen sharing and
+the installer below have been written but not yet tried on a real Windows computer, so expect rough edges.
 
-1. Start the server program. It puts a small icon in the system tray (near the clock). The first time, it asks you
-   to choose an access password — anyone connecting has to type it. You can leave it empty for no password, though a
-   password is a good idea.
-2. On the other computer, open Marconi and connect to `marconi://` followed by this computer's name or network
-   address (for example `marconi://office-pc`). The first time, Marconi shows you the server's identity and asks if
-   you trust it; after that it connects without asking, and warns you if the identity ever changes.
-3. The connection is always private: the screen and everything you type are encrypted.
+### Installing it from Marconi
 
-From the tray icon you can set or change the password, change the port the server listens on, and quit. The server
-keeps its settings and a log in a "marconi-server" folder in your user account.
+You don't have to walk to the other computer. While you are connected to a Windows computer over VNC:
 
-Right now the server shows this computer's actual screen on Windows; on macOS and Linux it shows a moving test
-picture for the moment, while the screen-sharing part for those systems is finished.
+1. Press F8 and choose **Install Marconi Server on the Other Computer...**. Marconi explains what will happen. If the
+   connection can carry files (TightVNC does), it copies the Marconi Server installer to that computer's desktop.
+   Otherwise it can copy the download address to the clipboard for you to open in a web browser over there.
+2. On the other computer's screen, in Marconi, double-click the installer on its desktop and say yes when Windows asks
+   for permission.
+3. Setup asks you to choose an **access password**. Anyone who knows it can control that computer, so pick one you
+   would not mind guarding. It doesn't have to match the VNC password. Setup also lets Marconi Server through Windows
+   Firewall (you can untick that) and starts it whenever someone signs in (you can untick that too).
+4. When Setup finishes, close the connection and connect again. Marconi finds Marconi Server by itself and uses it;
+   your saved connection stays as it is.
+
+To share the computer you are sitting at, open Marconi's **Settings** and choose **Share this computer...**, which
+starts the same installer here.
+
+The installer comes inside Marconi's own Windows setup (it is an option you can untick). To remove Marconi Server, use
+Windows' Settings > Apps, or run `Uninstall.exe` in `Program Files\Marconi Server`. That removes the program and the
+firewall rule, and keeps the settings and password unless you tick the option to remove them too. Running the
+installer with `/S` installs without any questions and without a password; Marconi Server then asks for one the first
+time it starts.
+
+### What it does and doesn't do yet
+
+It does: show this computer's screen and take the other computer's keyboard and mouse, always encrypted, behind an
+access password.
+
+It doesn't yet: share the clipboard, copy files, show more than one screen, change the screen's size, show the other
+computer's mouse pointer shape, play sound, or carry game controllers. It also runs only while someone is signed in
+to Windows, so it can't show the sign-in screen or keep going through a restart on its own. If you change its port,
+the Windows Firewall rule (made for port 1895) has to be changed to match. A server with no password lets anyone who
+reaches it in, so set one. Other VNC viewers can't connect to it; it only talks to Marconi.
+
+### Starting it by hand
+
+Start the server program (`MarconiServerTray`, built from `ServerUI/Project.json`). It puts a small icon in the system
+tray (near the clock) and, the first time, asks you to choose an access password. On the other computer, connect to
+`marconi://` followed by this computer's name or network address (for example `marconi://office-pc`). The first time,
+Marconi shows you the server's identity and asks if you trust it; after that it connects without asking, and warns you
+if the identity ever changes. From the tray icon you can set or change the password, change the port the server
+listens on, and quit.
+
+Where it keeps its settings and logs: on Windows, in `C:\ProgramData\Marconi Server` when the installer made that folder
+(the installer lets the account that was signed in during Setup change things there); otherwise, and on macOS and
+Linux, in a "marconi-server" folder in your own user account.
+
+On macOS and Linux the server shows a moving test picture for the moment, while the screen-sharing part for those
+systems is finished.
 
 ## Keeping Marconi up to date
 
@@ -384,6 +421,14 @@ logs" option is ticked, which runs `Marconi.exe --remove-my-data` for the accoun
 uninstaller is running as a different account). `Uninstall.exe /S` uninstalls silently, keeping the data. The
 installer accepts `/S`, `/D=<folder>`, and `/CURRENTUSER` or `/ALLUSERS` to choose without asking; a silent install
 with neither picks the kind already installed, or everyone when run as administrator, or otherwise just you.
+
+`Package.ps1` also builds the Marconi Server installer first (`PackageServer.ps1`, from `Installer/MarconiServer.nsi`),
+as `Build\Installer\MarconiServer-<version>-win64-setup.exe` with the same version and the same signing settings,
+prints its SHA-256, and puts it inside the Marconi installer as the "Marconi Server installer" option. The server
+installer needs the same NSIS and ShellExecAsUser plug-in as the client's. It installs for the whole computer (it asks
+for administrator permission straight away), asks for an access password, adds a Windows Firewall rule for port 1895,
+starts the tray program when someone signs in, and has an uninstaller. Neither the script nor the installer has been
+run on Windows yet (see `SERVER_PLAN.md`, Phase 2).
 
 `Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico` and
 `Marconi.icns` and the Linux package's PNGs in `Installer/Linux/icons`, are rendered by

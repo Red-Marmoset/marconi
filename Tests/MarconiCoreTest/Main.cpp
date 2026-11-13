@@ -44,6 +44,7 @@ namespace Test
         MarconiTest::RunRdpInputOutputTests();
         MarconiTest::RunRdpLicenseTests();
         MarconiTest::RunUpdateTests();
+        MarconiTest::RunServerInstallerTests();
         MarconiTest::RunRdpPointerTests();
         MarconiTest::RunRdpClientTests();
 

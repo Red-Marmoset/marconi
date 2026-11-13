@@ -22,6 +22,7 @@ namespace MarconiUI
         ID_SEND_CLIPBOARD,
         ID_GET_CLIPBOARD,
         ID_PASTE_FILES,
+        ID_INSTALL_SERVER,
         ID_SEND_CTRL_ALT_DEL,
         ID_SEND_ALT_TAB,
         ID_SEND_ALT_F4,
