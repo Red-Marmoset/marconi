@@ -45,7 +45,7 @@ namespace MarconiUI
                                   ? wxString::FromUTF8(Marconi::FormatAddress(m_options.address))
                                   : m_options.suggestedName;
         m_saveBar->SetContent("Save " + name + " to your connections?" +
-                                  (m_rememberForSave ? " Its password is saved with it." : wxString()),
+                                  (m_rememberForSave ? wxString(" Its password is saved with it.") : wxString()),
                               {{"Save", [this]() { SaveThisComputer(); }}, {"Not now", [this]() { HideSaveBar(); }}});
         m_aui.GetPane("SaveConnection").BestSize(m_saveBar->GetBestSize()).Show();
         m_aui.Update();
