@@ -86,6 +86,13 @@ and TLS slots in later; the access password moved from 1.4 into 1.5, because it 
 
 Phase 1 is written but not finished:
 
+- **Linux X11 server works end to end (branch `claude/server-blitz`).** `SystemScreen_Linux.cpp` (XGetImage, 64x64 tile
+  differencing, XFixes cursor) and `SystemInput_Linux.cpp` (XTest) compile, `MarconiServerTest` passes (92), and a real
+  run under Xvfb showed an xterm window from the server's screen in the desktop client's headless snapshot over the
+  encrypted connection. Not yet checked: XTest input arriving, speed, several monitors.
+- **Building here:** needs the engine submodules pinned to the engine's recorded commits, plus `libgtk-3-dev`,
+  `libsecret-1-dev`, `libxxf86vm-dev`, `libsm-dev`, `libxkbcommon-dev`, `libxtst-dev`, `libxfixes-dev`. Headless client
+  runs refuse an untrusted certificate: save a connection with the server's fingerprint and use `--saved`.
 - **Not yet run on Windows.** `SystemScreen_Windows.cpp` (GDI grab) and `SystemInput_Windows.cpp` (`SendInput`)
   exist but have never been built or run on a Windows machine; the `_Posix` versions are empty stubs, so on macOS
   and Linux the server shows the test pattern. Phase 1's "done when" (two machines, `marconi://pc` shows the
