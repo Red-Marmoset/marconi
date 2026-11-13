@@ -5,6 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.10.2
+
+- Send Keys has a menu for each of Windows, Mac and Linux, sorted by what the shortcuts do.
+- Send Keys can send the Mac's screenshot shortcuts, lock the screen, and send more Mac and Linux shortcuts.
+- When the other computer is a Mac using its own screen sharing, Send Keys shows only the Mac shortcuts.
+
 ## 0.10.1
 
 - The Mac disk image opens in a square window with an arrow from Marconi to the Applications folder.
