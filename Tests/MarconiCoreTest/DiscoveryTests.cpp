@@ -53,7 +53,7 @@ namespace MarconiTest
         RunTest("DNS query encoding", []() {
             std::vector<uint8_t> query = Net::Dns::EncodeQuery(0x1234, {{"_rfb._tcp.local", Net::Dns::kTypePtr}});
             CHECK(query == HexBytes("1234 0000 0001 0000 0000 0000"
-                                    "045f726662 045f746370 056c6f63616c 00 000c 0001"));
+                                    "045f726662 045f746370 056c6f63616c 00 000c 8001"));
         });
 
         RunTest("DNS response round trip with PTR, SRV and A", []() {
