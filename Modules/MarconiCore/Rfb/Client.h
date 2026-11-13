@@ -190,8 +190,9 @@ namespace Marconi
             void HandleFramebufferUpdate(InStream& in);
             void HandleServerCutText(InStream& in);
             void HandleCursor(InStream& in, const Rect& rect);
-            void HandleExtendedDesktopSize(InStream& in, const Rect& rect);
-            void ResizeFramebuffer(int width, int height);
+            // Both return whether the desktop's size changed.
+            bool HandleExtendedDesktopSize(InStream& in, const Rect& rect);
+            bool ResizeFramebuffer(int width, int height);
             bool IsAppleMislabelledRect(const Rect& rect);
             bool IsWholeDesktop(const Rect& rect);
             bool DecodeAppleWholeDesktop(Decoder& decoder, InStream& in, const Rect& rect);

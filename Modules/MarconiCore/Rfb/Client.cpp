@@ -719,7 +719,8 @@ namespace Marconi
             uint16_t count = in.U16();
             std::vector<Rect> dirty;
             std::vector<std::string> described; // "WxH+X+Y enc N" per rectangle, for the log
-            bool resized = false;
+            bool resized = false;    // the desktop's size changed
+            bool sizeNotice = false; // the server described the desktop's size (changed or not)
 
             // A count of 0xFFFF with LastRect means "until a LastRect rectangle".
             for (uint32_t i = 0; i < count; ++i)
@@ -743,14 +744,14 @@ namespace Marconi
                 }
                 if (encoding == Encoding::DesktopSize)
                 {
-                    ResizeFramebuffer(rect.width, rect.height);
-                    resized = true;
+                    resized = ResizeFramebuffer(rect.width, rect.height) || resized;
+                    sizeNotice = true;
                     continue;
                 }
                 if (encoding == Encoding::ExtendedDesktopSize)
                 {
-                    HandleExtendedDesktopSize(in, rect);
-                    resized = true;
+                    resized = HandleExtendedDesktopSize(in, rect) || resized;
+                    sizeNotice = true;
                     continue;
                 }
                 if (encoding == Encoding::Cursor)
@@ -845,6 +846,13 @@ namespace Marconi
                 }
                 SendUpdateRequest(false);
             }
+            else if (sizeNotice && m_resendPixelFormatOnResize)
+            {
+                // The same size again. Still say the pixel format, in case a display-mode switch kept the size, but
+                // don't ask for the whole desktop: some servers (x11vnc) answer that request with another size
+                // notice, and the two would go round in circles with no picture.
+                SendPixelFormat();
+            }
         }
 
         bool Client::IsAppleMislabelledRect(const Rect& rect)
@@ -909,23 +917,24 @@ namespace Marconi
             return true;
         }
 
-        void Client::ResizeFramebuffer(int width, int height)
+        bool Client::ResizeFramebuffer(int width, int height)
         {
             CheckDesktopSize(width, height);
             {
                 std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
                 if (width == m_framebuffer.GetWidth() && height == m_framebuffer.GetHeight())
                 {
-                    return;
+                    return false;
                 }
                 m_framebuffer.Resize(width, height);
             }
             LOG_INFO("Rfb", "Desktop resized to %dx%d", width, height);
             m_detailedUpdates = kDetailedUpdates;
             m_listener.OnDesktopResized(width, height);
+            return true;
         }
 
-        void Client::HandleExtendedDesktopSize(InStream& in, const Rect& rect)
+        bool Client::HandleExtendedDesktopSize(InStream& in, const Rect& rect)
         {
             // x = reason (0 server, 1 our request, 2 another client), y = status, w/h = new size; then screens.
             uint8_t count = in.U8();
@@ -947,15 +956,16 @@ namespace Marconi
             {
                 LOG_WARNING("Rfb", "The server refused to resize the desktop (status %d)", rect.y);
                 m_listener.OnDesktopResizeRefused(rect.y);
-                return;
+                return false;
             }
             {
                 std::lock_guard<std::mutex> lock(m_infoMutex);
                 m_screens = screens;
             }
-            ResizeFramebuffer(rect.width, rect.height);
+            const bool resized = ResizeFramebuffer(rect.width, rect.height);
             LOG_INFO("Rfb", "The server has %zu display%s", screens.size(), screens.size() == 1 ? "" : "s");
             m_listener.OnScreenLayout(screens);
+            return resized;
         }
 
         std::vector<Screen> Client::GetScreens() const

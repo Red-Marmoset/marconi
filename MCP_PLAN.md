@@ -26,9 +26,13 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   MarconiCoreTest checks the exact pointer, key and clipboard messages each tool sends (all pass). By hand,
   Claude Code clicked into a terminal on x11vnc (Xvfb, this machine only) and typed commands that ran, while a
   Marconi viewer on a second, view-only port watched. Two things found on the way (findings 10 and 11): screenshots
-  now wait for the screen's answer to input and ask for the whole desktop each time, and x11vnc stops sending
-  Marconi pictures because of a loop in `Rfb::Client` (section 7, decision 4). Phase 2's check is complete except
-  for "Claude sees its own result in the screenshot" on x11vnc, which waits on that decision.
+  now wait for the screen's answer to input and ask for the whole desktop each time, and x11vnc stopped sending
+  Marconi pictures because of a loop in `Rfb::Client` (section 7, decision 4).
+- **Phase 2 done** 2026-11-13: the loop is fixed in `Rfb::Client` as the owner chose (decision 4 (b), 0.9.13, with a
+  test in `DesktopSizeTests`). On x11vnc, three connections in a row then all got a picture (before, the second got
+  none), and the session log held two size notices instead of thousands. Claude Code clicked into the terminal,
+  typed `echo` with a random word, and its one screenshot straight after showed the command and its output, as did
+  the watching viewer.
 
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
@@ -394,7 +398,8 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
     and the extended clipboard. The same behaviour explains the occasional `DesktopSizeTests` failure (the
     SetPixelFormat and update request can arrive before the SetDesktopSize the test reads). The pixel-format resend
     is there for macOS switching display modes (its comment); whether macOS needs it when the size doesn't change
-    can't be checked here. Decision 4 in section 7.
+    can't be checked here. Fixed as decision 4 in section 7 chose; the resend stays, so macOS should behave as
+    before, but that wants a run on a Mac.
 11. **The viewer's log folder on Linux is `~/.marconi/logs`**, not `~/.local/share/marconi/logs` as the comment in
     `MarconiApp.cpp` says: wxWidgets' XDG file layout only moves the settings file (`GetUserLocalDataDir` is
     `~/.<app name>` in `src/unix/stdpaths.cpp`), and a real run wrote its logs and snapshots there. MarconiMcp logs
@@ -406,21 +411,16 @@ revision Codex and Claude Desktop use; where Claude Desktop installs on Windows.
 
 ## 7. Decisions needed from the owner
 
-4. **Open: the desktop-size loop (finding 10).** It's in the VNC client, so it affects the viewer too.
-   - (a) Recommended: treat an ExtendedDesktopSize rectangle as a resize only when the size changed. The loop stops;
-     the risk is a macOS display-mode switch that keeps the size but forgets our pixel format, which can't be
-     checked without a Mac.
-   - (b) As (a), but still resend the pixel format (without asking for the whole desktop) when the size is
-     unchanged. Keeps the macOS safety net; whether x11vnc still drops pictures after a SetPixelFormat needs a try.
-   - (c) Leave the client alone; MarconiMcp (and the viewer) stay unreliable on x11vnc.
-
-Answered 2026-11-13:
+None open. Answered 2026-11-13:
 
 1. **Registering when installing for everyone:** Setup starts `MarconiMcp --register ...` as the signed-in user
    (ShellExecAsUser, as "Start Marconi now" does), and MarconiMcp shows its own message only if registering fails.
 2. **One connection at a time** for now, built so several can be added later: the connection lives in one object
    the tools look up, so a later `connection` argument can pick between several without changing the tools.
 3. **`Apps.json` starts with** Claude Code, Codex, Claude Desktop, Blender and Ollama.
+4. **The desktop-size loop (finding 10): (b).** A desktop-size notice with an unchanged size still resends the pixel
+   format (kept for macOS display-mode switches, which work well and mustn't break) but no longer asks for the whole
+   desktop; a real change of size does both, as before.
 
 ## 8. Not in this plan unless the owner asks
 

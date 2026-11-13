@@ -83,12 +83,42 @@ namespace MarconiTest
             CHECK(s.client.GetScreens().size() == 1);
         });
 
+        RunTest("The same size again resends the pixel format but doesn't ask for the whole desktop", []() {
+            // x11vnc answers a request for the whole desktop with another size notice; asking each time made the
+            // two go round in circles with no picture.
+            Session s;
+            s.SendLayout(0, 0, 200, 100, kTwoScreens);
+            Rfb::InStream& in = s.server.In();
+            CHECK(in.U8() == Rfb::ClientMessage::SetPixelFormat); // kept for macOS display-mode switches
+            in.Skip(19);
+            CHECK(in.U8() == Rfb::ClientMessage::FramebufferUpdateRequest);
+            CHECK(in.U8() == 1); // only the changes, as after any update
+            in.Skip(8);
+
+            // A real change of size still asks for the whole desktop.
+            s.SendLayout(0, 0, 300, 150, {{1, 0, 0, 300, 150, 0}});
+            CHECK(in.U8() == Rfb::ClientMessage::SetPixelFormat);
+            in.Skip(19);
+            CHECK(in.U8() == Rfb::ClientMessage::FramebufferUpdateRequest);
+            CHECK(in.U8() == 0);
+            in.Skip(8);
+            CHECK(in.U8() == Rfb::ClientMessage::FramebufferUpdateRequest);
+            CHECK(in.U8() == 1);
+            in.Skip(8);
+        });
+
         RunTest("Asking for a new screen size sends SetDesktopSize with one display of that size", []() {
             Session s;
             s.SendLayout(0, 0, 200, 100, kTwoScreens);
             CHECK(s.listener.WaitFor([&]() { return s.listener.screenLayouts == 1; }));
-            s.client.RequestDesktopSize(640, 360);
+            // The client's answer to the size notice first (pixel format, then a request for changes), so it can't
+            // arrive in the middle of what this test reads.
             Rfb::InStream& in = s.server.In();
+            CHECK(in.U8() == Rfb::ClientMessage::SetPixelFormat);
+            in.Skip(19);
+            CHECK(in.U8() == Rfb::ClientMessage::FramebufferUpdateRequest);
+            in.Skip(9);
+            s.client.RequestDesktopSize(640, 360);
             CHECK(in.U8() == Rfb::ClientMessage::SetDesktopSize);
             in.Skip(1);
             CHECK(in.U16() == 640 && in.U16() == 360);
