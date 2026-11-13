@@ -31,6 +31,15 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi Server: sends the mouse pointer's shape and position as they change.
 - Marconi connections lock the other computer's screen when you disconnect, if that option is on.
 - Marconi Server can run as a Windows service, so it keeps working at the sign-in screen and through permission prompts (written, not yet tried on Windows).
+
+## 0.10.4
+
+- On this network finds Android phones and tablets that announce themselves, such as with droidVNC-NG.
+
+## 0.10.3
+
+- The installer's licence page starts with "I accept" ticked.
+
 ## 0.10.2
 
 - Send Keys has a menu for each of Windows, Mac and Linux, sorted by what the shortcuts do.
