@@ -11,6 +11,7 @@
 #include <MarconiServerCore/ScreenSource.h>
 #include <MarconiServerCore/Settings.h>
 #include <MarconiServerCore/TestPatternScreen.h>
+#include <MarconiServerCore/VirtualGamepad.h>
 
 #include <cstdint>
 #include <memory>
@@ -98,6 +99,7 @@ namespace Marconi
             std::unique_ptr<Server::TestPatternScreen> m_pattern;
             std::unique_ptr<Server::InputSink> m_loggingInput;
             std::unique_ptr<Server::ClipboardAccess> m_clipboard; // shared only with the real screen
+            std::unique_ptr<Server::VirtualGamepadBackend> m_gamepads; // makes viewers' controllers; real screen only
             Server::ScreenSource* m_screen = nullptr;
             Server::InputSink* m_input = nullptr;
             std::string m_servedDescription;

@@ -6,12 +6,14 @@
 
 #include "Auth.h"
 #include "FileService.h"
+#include "GamepadHost.h"
 #include "ClipboardAccess.h"
 #include "ConnectionNotifier.h"
 #include "IdleWatch.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Settings.h"
+#include "VirtualGamepad.h"
 
 #include <MarconiCore/Wire/WireChannel.h>
 
@@ -56,6 +58,9 @@ namespace Marconi
             // Shares this computer's clipboard with the viewer (text and images, both ways). Null, the default,
             // leaves clipboard sharing off: the Welcome then doesn't grant it. Call before Run().
             void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
+            // Lets the viewer's game controllers appear on this computer, made by `backend` (null, the default,
+            // leaves controllers off: the Welcome then doesn't grant them). Call before Run().
+            void SetGamepads(VirtualGamepadBackend* backend) { m_gamepadBackend = backend; }
             // Tells `notifier` (null = nobody) when this viewer connects (after the login) and when it goes away.
             // `address` is where it connected from, for the notice. Call before Run().
             void SetNotifier(ConnectionNotifier* notifier, const std::string& address)
@@ -105,6 +110,8 @@ namespace Marconi
             int m_frameIntervalMs = 16;
             std::mutex m_writeMutex;
             std::unique_ptr<FileService> m_files; // answers the viewer's file messages
+            VirtualGamepadBackend* m_gamepadBackend = nullptr;
+            std::unique_ptr<GamepadHost> m_gamepads; // the viewer's controllers, once granted; input thread only
 
             // Clipboard sharing. `m_clipboardActive` is set once the viewer was granted it. The change handler only
             // raises `m_clipboardChanged`; the frame loop does the reading. `m_recentHashes` holds hashes of what

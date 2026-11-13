@@ -155,6 +155,7 @@ namespace Marconi
             Session session(transport, m_screen, m_input, m_settings, &m_auth);
             session.SetFrameIntervalMs(m_frameIntervalMs);
             session.SetClipboard(m_clipboard);
+            session.SetGamepads(m_gamepadBackend);
             session.SetNotifier(m_notifier, client.GetPeerAddress());
             if (m_idleClock)
             {

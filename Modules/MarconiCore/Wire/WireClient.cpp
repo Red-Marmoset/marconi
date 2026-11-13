@@ -106,6 +106,27 @@ namespace Marconi
             return WriteMessage(*m_transport, framed);
         }
 
+        bool Client::SendGamepadConnect(const GamepadConnect& message)
+        {
+            return m_gamepadsGranted.load() && Send(message.Encode());
+        }
+
+        bool Client::SendGamepadDisconnect(const GamepadDisconnect& message)
+        {
+            return m_gamepadsGranted.load() && Send(message.Encode());
+        }
+
+        bool Client::SendGamepadState(const GamepadState& message)
+        {
+            return m_gamepadsGranted.load() && Send(message.Encode());
+        }
+
+        void Client::SetGamepadListener(Gamepad::GamepadListener* listener)
+        {
+            std::lock_guard<std::mutex> lock(m_gamepadMutex); // waits out a call that is running
+            m_gamepadListener = listener;
+        }
+
         void Client::MarkInput()
         {
             m_lastInputTime = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -262,6 +283,26 @@ namespace Marconi
                     case Type::ClipboardData:
                         HandleClipboardData(ClipboardData::Decode(body));
                         break;
+                    case Type::GamepadRumble:
+                    {
+                        GamepadRumble rumble = GamepadRumble::Decode(body);
+                        std::lock_guard<std::mutex> lock(m_gamepadMutex);
+                        if (m_gamepadListener != nullptr)
+                        {
+                            m_gamepadListener->OnGamepadRumble(rumble);
+                        }
+                        break;
+                    }
+                    case Type::GamepadResult:
+                    {
+                        GamepadResult result = GamepadResult::Decode(body);
+                        std::lock_guard<std::mutex> lock(m_gamepadMutex);
+                        if (m_gamepadListener != nullptr)
+                        {
+                            m_gamepadListener->OnGamepadResult(result);
+                        }
+                        break;
+                    }
                     case Type::Pong:
                         Pong::Decode(body);
                         break;
@@ -295,6 +336,7 @@ namespace Marconi
             m_connected = false;
             m_encrypted = false;
             m_supportsFiles = false;
+            m_gamepadsGranted = false;
             m_files.Close();
             m_listener.OnDisconnected(info);
         }
@@ -359,6 +401,7 @@ namespace Marconi
             }
 
             m_supportsFiles = (welcome.capabilities & Capability::Files) != 0;
+            m_gamepadsGranted = (welcome.capabilities & options.capabilities & Capability::Gamepads) != 0;
             m_files.Reopen(); // a server that doesn't share files still answers file requests, with a refusal
             {
                 std::lock_guard<std::mutex> lock(m_clipboardMutex);
