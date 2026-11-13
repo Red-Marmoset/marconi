@@ -73,6 +73,11 @@ namespace Marconi
                 m_clipboard = Server::CreateSystemClipboard(); // the test pattern stands in for a computer that isn't there
             }
             m_listener->SetClipboard(m_clipboard.get());
+            if (m_systemScreen && !m_gamepads)
+            {
+                m_gamepads = Server::CreateSystemGamepadBackend();
+            }
+            m_listener->SetGamepads(m_gamepads.get());
             m_listener->SetNotifier(m_notifier);
             if (!m_listener->Start(error))
             {

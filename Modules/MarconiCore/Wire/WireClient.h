@@ -5,6 +5,7 @@
 #pragma once
 
 #include <MarconiCore/Files/MarconiFiles.h>
+#include <MarconiCore/Gamepad/GamepadLink.h>
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Wire/WireChannel.h>
@@ -35,7 +36,7 @@ namespace Marconi
             bool offerFiles = true; // also offer file transfer (the Files capability)
             // What this client offers; grows with each phase.
             uint64_t capabilities =
-                Capability::MultipleDisplays | Capability::ResizeDisplay | Capability::Clipboard;
+                Capability::MultipleDisplays | Capability::ResizeDisplay | Capability::Clipboard | Capability::Gamepads;
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
@@ -44,7 +45,7 @@ namespace Marconi
         // Runs the protocol on a background thread. The listener's callbacks arrive on that thread; a UI listener
         // marshals them to the UI thread, exactly as it does for the VNC client. The framebuffer, input and the
         // rest of RemoteSession are safe to use from any thread.
-        class Client : public RemoteSession
+        class Client : public RemoteSession, public Gamepad::GamepadLink
         {
         public:
             explicit Client(SessionListener& listener);
@@ -84,6 +85,14 @@ namespace Marconi
             bool SupportsFiles() const { return m_supportsFiles.load(); }
             Files::MarconiFiles* GetFiles() { return &m_files; }
 
+            // Game controllers (Gamepad::GamepadLink): true once the server agreed to take them. The sends fail
+            // while there is no connection or no agreement.
+            bool SupportsGamepads() const override { return m_gamepadsGranted.load(); }
+            bool SendGamepadConnect(const GamepadConnect& message) override;
+            bool SendGamepadDisconnect(const GamepadDisconnect& message) override;
+            bool SendGamepadState(const GamepadState& message) override;
+            void SetGamepadListener(Gamepad::GamepadListener* listener) override;
+
         private:
             void Run(ClientOptions options);
             bool Handshake(MessageReader& reader, ClientOptions& options, DisconnectInfo& info);
@@ -112,6 +121,9 @@ namespace Marconi
             std::atomic<bool> m_supportsResize{false};
             std::atomic<bool> m_supportsFiles{false};
             Files::MarconiFiles m_files;
+            std::atomic<bool> m_gamepadsGranted{false};
+            std::mutex m_gamepadMutex; // held while the listener is called, so it can't be freed under a call
+            Gamepad::GamepadListener* m_gamepadListener = nullptr; // guarded by m_gamepadMutex
 
             // Clipboard sharing, once the server granted it. `m_offered` is what we last told the server we have (it
             // asks for it when someone pastes); the await flags and `m_incoming` collect what we asked the server for,

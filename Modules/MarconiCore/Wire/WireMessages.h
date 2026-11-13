@@ -93,6 +93,13 @@ namespace Marconi
             FileWrite = 70,       // client -> server: write this range (no answer unless it fails)
             FileClose = 71,       // client -> server: close the handle
             FileWriteFailed = 72, // server -> client: an earlier FileWrite did not work
+
+            // Game controllers (the messages are in WireGamepadMessages.h); numbers 80 to 89 are theirs
+            GamepadConnect = 80,    // client -> server: a controller was plugged in (its slot, kind and name)
+            GamepadDisconnect = 81, // client -> server: that controller was unplugged
+            GamepadState = 82,      // client -> server: the controller's whole state, with a sequence number
+            GamepadRumble = 83,     // server -> client: shake the controller this hard
+            GamepadResult = 84,     // server -> client: the answer to a GamepadConnect
         };
 
         // One rectangle of the screen. Plain ints so the protocol layer needs nothing from the VNC code.

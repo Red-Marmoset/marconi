@@ -794,6 +794,69 @@ tester needs them.
 
 Done when: a game on the server plays from the client with a pad, with rumble, at the Phase 4 and 5 latencies.
 
+#### Phase 7 progress: steps 1, 2, 3, 5 and 6 written; tried with stand-ins only (branch `claude/server-gamepads`)
+
+What exists, all behind interfaces so a platform piece can be replaced without touching the rest:
+
+- **Protocol** (`Wire/WireGamepadMessages.*`, message numbers 80 to 84; the capability bit `Capability::Gamepads` was
+  already reserved at bit 4 and is used as it is): `GamepadConnect` (slot 0 to 3, kind Xbox/PlayStation/Generic, name),
+  `GamepadDisconnect`, `GamepadState`, `GamepadRumble` (server to viewer) and `GamepadResult` (the server's answer to a
+  connect: Ok, NoDriver, TooMany, NotSupported, Failed, with a plain-words sentence). A state is 16 bytes and carries the
+  controller's whole state plus a 16-bit sequence number that wraps, so it can move to the datagram channel later: a
+  lost one is harmless and a late one is ignored (`IsNewerSequence`). Buttons use XInput's bit values (the Guide button is
+  0x0400), sticks are -32768 to 32767 with up positive, triggers 0 to 255, battery 0 to 100 or 0xFF for unknown. Decode
+  refuses a slot of 4 or more, cuts bits that aren't buttons, and limits the name length. Round-trip and fuzz tests
+  are in `Tests/MarconiCoreTest/WireGamepadTests.cpp`.
+- **Server** (`MarconiServerCore`): `VirtualGamepad.h` is the interface (`VirtualGamepadBackend::Create` makes a pad and takes the
+  rumble callback; `VirtualGamepad::Update` sets its whole state; destroying it removes it). `GamepadHost` is made per
+  viewer: it maps each viewer pad to a virtual one, limits the count (4), ignores states for an unconnected slot or with a
+  sequence that isn't newer, and on disconnect, replacement or the viewer leaving, sets the neutral state before removing
+  the pad (no stuck buttons). `Session` grants the capability when the listener has a backend, and a heartbeat state
+  with no change does not count as the viewer being active (so the idle limit still works). The backend is made by
+  `CreateSystemGamepadBackend()` and given to the listener only when the real screen is served (not the test pattern).
+  When a backend can't make a pad, the viewer is told why in the `GamepadResult`.
+  - Linux `VirtualGamepad_Linux.cpp` (+ `UinputMapping.h`, `UinputMapping_Linux.cpp`): an Xbox 360 style device (USB IDs
+    045e:028e) with xpad's evdev codes and ranges, the d-pad as the hat axes, Y inverted as xpad does, and force feedback
+    (upload, play, erase, gain, lengths) turned into rumble messages. **Never run against the kernel**: this machine has no
+    `/dev/uinput` (the kernel has `CONFIG_INPUT_UINPUT` off). The mapping and the rumble bookkeeping are unit tested; the
+    device creation and the force feedback handshake are not.
+  - Windows `VirtualGamepad_Windows.cpp`: **not built on Windows.** A small dynamic binding of ViGEmClient
+    (`vigem_alloc`, `vigem_connect`, `vigem_target_x360_alloc`/`_add`/`_update`, the notification callback for rumble),
+    loaded with `LoadLibrary("ViGEmClient.dll")` so the server runs without the driver and says "Game controllers need the
+    ViGEmBus driver, which isn't installed on this computer" when asked. All ViGEm-specific code is in this one file. To
+    check: ViGEmClient is normally a static library, so a `ViGEmClient.dll` has to be built from its source (MIT) and shipped
+    next to the server, or this file changed to link it; the function signatures and the 12-byte report layout come from
+    memory of its header, not from a compile. The installer does not offer ViGEmBus yet (Phase 7 step 3's installer part).
+    Every kind of controller is made as an Xbox 360 pad; a DualShock 4 target (`vigem_target_ds4_alloc`) is not used.
+  - macOS `VirtualGamepad_Mac.cpp`: says "Game controllers aren't available on a Mac yet." Not built on a Mac.
+- **Viewer** (`MarconiCore/Gamepad`): `GamepadSource` (slots, `Read` the state of a slot, `SetRumble`), `GamepadLink`
+  (what the forwarder needs from a connection; `Wire::Client` implements it), and `GamepadForwarder`, which does the
+  rules: announce a pad when it appears, send a state when it changes (at most one every 8 ms per pad) and every 250 ms as
+  a heartbeat, and when forwarding stops (setting off, window not in front, view only, no server support) or a pad is
+  unplugged, send a neutral state and a disconnect. A refusal is shown once in the status bar and not retried until the
+  pad is replugged. Rumble is applied to the matching pad, ignoring one with an older sequence. The window
+  (`ViewerFrameGamepads.cpp`, menu item **Send Game Controllers to the Other Computer**, off by default and not saved)
+  runs it from an 8 ms timer.
+  - Windows `GamepadSource_Windows.cpp`: **not built on Windows.** XInput loaded dynamically (4 pads, rumble). The Guide
+    button and the battery are not read (they need `XInputGetStateEx` and `XInputGetBatteryInformation`). **GameInput**
+    (Windows 11) would remove the four-pad limit and see PlayStation pads directly; it would be a second source behind
+    the same interface, not started.
+  - Linux `GamepadSource_Linux.cpp`: evdev (`/dev/input/event*`, found again each second), the xpad layout, rumble with
+    `EVIOCSFF`; a PlayStation pad's square and triangle are swapped to match, from reading the kernel's documentation. It
+    skips the server's own virtual controller (so a viewer on the same computer doesn't send it back to itself). **Never run
+    with a real device**; the code has no test.
+  - macOS, Android and iOS: stubs that say sending controllers isn't available yet (the Mac one should become the Game
+    Controller framework).
+- **Tests** (`Tests/MarconiServerTest/GamepadTests.cpp`, `Tests/MarconiCoreTest/WireGamepadTests.cpp`): host logic with a fake
+  backend; the real Wire client, forwarder and server over a loopback socket with a fake pad on each side (connect,
+  state follows, rumble comes back, unplug removes it, losing focus releases, a viewer that vanishes with buttons held
+  leaves nothing pressed, a refusal reaches the viewer, no backend means no capability, bad slots ignored); the uinput
+  mapping and rumble tracker; and the real Linux backend, which here reports "no uinput" in plain words.
+
+Not done: relative mouse and scancodes (step 4), the installer's ViGEmBus offer, the datagram channel (states are on the
+control connection for now), several viewers' pads at once (one viewer at a time anyway), a Mac server driver, a Mac
+viewer source, and any real-hardware test on any platform.
+
 ### Phase 8: macOS and Linux servers
 
 Outline only; planned in detail when reached.

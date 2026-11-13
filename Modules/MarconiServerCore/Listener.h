@@ -65,6 +65,10 @@ namespace Marconi
             // must outlive the listener. Call before Run() or ServeOne().
             void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
 
+            // Lets each viewer's game controllers appear on this computer, made by `backend` (null, the default, offers
+            // none). The backend must outlive the listener. Call before Run() or ServeOne().
+            void SetGamepads(VirtualGamepadBackend* backend) { m_gamepadBackend = backend; }
+
             // The SHA-256 fingerprint of the certificate the server presents, as a lowercase hex string, so it can
             // be shown to the person setting the server up. Empty before Start() or if the identity is bad.
             const std::string& GetCertificateFingerprint() const { return m_fingerprint; }
@@ -106,6 +110,7 @@ namespace Marconi
             std::string m_fingerprint; // the certificate's SHA-256, in hex, for display
             int m_frameIntervalMs = 16;
             ClipboardAccess* m_clipboard = nullptr;
+            VirtualGamepadBackend* m_gamepadBackend = nullptr;
             ConnectionNotifier* m_notifier = nullptr;
             IdleClock m_idleClock;
             std::atomic<int> m_idleMinutes{0};

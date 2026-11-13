@@ -186,6 +186,8 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnHealthTick(); }, m_healthTimer.GetId());
         m_clipboardTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
+        m_gamepadTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnGamepadTick(); }, m_gamepadTimer.GetId());
         m_retryTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnRetryTick(); }, m_retryTimer.GetId());
         m_matchSizeTimer.SetOwner(this);
@@ -267,6 +269,7 @@ namespace MarconiUI
         m_pictureTimer.Stop();
         m_statsTimer.Stop();
         m_clipboardTimer.Stop();
+        StopGamepads();
         m_healthTimer.Stop();
         SetStatusText(wxEmptyString, 1); // no connection, no round trip
     }
@@ -325,6 +328,7 @@ namespace MarconiUI
             m_closing = true;
         }
         m_questionChanged.notify_all();
+        StopGamepads(); // lets go of the controllers while the connection is still there
         if (m_session)
         {
             m_session->Disconnect();

@@ -185,6 +185,10 @@ namespace Marconi
             {
                 offered |= Wire::Capability::ResizeDisplay;
             }
+            if (m_gamepadBackend != nullptr)
+            {
+                offered |= Wire::Capability::Gamepads;
+            }
             m_grantedCapabilities = hello.capabilities & offered;
             welcome.capabilities = m_grantedCapabilities;
             m_clipboardActive = (welcome.capabilities & Wire::Capability::Clipboard) != 0;
@@ -266,7 +270,7 @@ namespace Marconi
                 try
                 {
                     type = Wire::ReadType(body);
-                    if (type != Wire::Type::Ping && type != Wire::Type::Bye)
+                    if (type != Wire::Type::Ping && type != Wire::Type::Bye && type != Wire::Type::GamepadState)
                     {
                         m_idle.Touch(); // anything but a keep-alive counts as the viewer being there
                     }
@@ -336,6 +340,35 @@ namespace Marconi
                             HandleClipboardData(Wire::ClipboardData::Decode(body));
                         }
                         break;
+                    case Wire::Type::GamepadConnect:
+                    {
+                        Wire::GamepadConnect connect = Wire::GamepadConnect::Decode(body);
+                        if (m_gamepads != nullptr)
+                        {
+                            Send(m_gamepads->Connect(connect).Encode());
+                        }
+                        break;
+                    }
+                    case Wire::Type::GamepadDisconnect:
+                    {
+                        Wire::GamepadDisconnect disconnect = Wire::GamepadDisconnect::Decode(body);
+                        if (m_gamepads != nullptr)
+                        {
+                            m_gamepads->Disconnect(disconnect.pad);
+                        }
+                        break;
+                    }
+                    case Wire::Type::GamepadState:
+                    {
+                        Wire::GamepadState pad = Wire::GamepadState::Decode(body);
+                        // A controller held still sends a heartbeat now and then; only a change counts as the viewer
+                        // being there, or a viewer who walked away with a controller connected would never go idle.
+                        if (m_gamepads != nullptr && m_gamepads->Update(pad))
+                        {
+                            m_idle.Touch();
+                        }
+                        break;
+                    }
                     case Wire::Type::Lock:
                         Wire::Lock::Decode(body);
                         LockComputer();
@@ -821,11 +854,17 @@ namespace Marconi
             }
             m_files = std::make_unique<FileService>(m_settings.filesEnabled, m_settings.fileRoot,
                                                     [this](const Wire::Bytes& framed) { return Send(framed); });
+            if ((m_grantedCapabilities & Wire::Capability::Gamepads) != 0 && m_gamepadBackend != nullptr)
+            {
+                m_gamepads = std::make_unique<GamepadHost>(
+                    *m_gamepadBackend, [this](const Wire::GamepadRumble& rumble) { Send(rumble.Encode()); });
+            }
             std::thread input([this, &reader]() { RunInputLoop(reader); });
             RunFrameLoop();
             m_stop = true;
             StopClipboardHandler();
             input.join();
+            m_gamepads.reset(); // whatever the viewer was holding is let go and its controllers removed
             m_files->Stop();
             m_screen.RestoreDisplayModes(); // a changed screen size doesn't outlive the viewer
             // A viewer that got in and then went away (not one the server itself ended) locks the screen when the

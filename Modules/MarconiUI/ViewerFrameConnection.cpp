@@ -126,6 +126,7 @@ namespace MarconiUI
             m_rfb = client.get();
             m_wire = nullptr; // a fallback switches protocols: the previous client goes with m_session
             m_rdp = nullptr;
+            StopGamepads(); // the forwarder uses the connection that is about to be replaced
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -142,6 +143,7 @@ namespace MarconiUI
             m_wire = client.get();
             m_rfb = nullptr;
             m_rdp = nullptr;
+            StopGamepads(); // the forwarder uses the connection that is about to be replaced
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -158,6 +160,7 @@ namespace MarconiUI
             m_rdp = client.get();
             m_rfb = nullptr;
             m_wire = nullptr;
+            StopGamepads(); // the forwarder uses the connection that is about to be replaced
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -622,6 +625,7 @@ namespace MarconiUI
         m_healthTimer.Start(1000);
         m_clipboardChangeCount = GetClipboardChangeCount();
         m_clipboardTimer.Start(500);
+        StartGamepads(); // only does anything when the setting is on
     }
 
     void ViewerFrame::HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info)

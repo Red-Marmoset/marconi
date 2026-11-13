@@ -16,6 +16,7 @@
 #include <MarconiServerCore/SystemInput.h>
 #include <MarconiServerCore/SystemScreen.h>
 #include <MarconiServerCore/TestPatternScreen.h>
+#include <MarconiServerCore/VirtualGamepad.h>
 
 #include "ServerModes.h"
 
@@ -452,8 +453,15 @@ int main(int argc, char** argv)
         systemClipboard = Marconi::Server::CreateSystemClipboard();
     }
 
+    std::unique_ptr<Marconi::Server::VirtualGamepadBackend> gamepadBackend;
+    if (systemScreen)
+    {
+        gamepadBackend = Marconi::Server::CreateSystemGamepadBackend(); // controllers are made only on the real computer
+    }
+
     Marconi::Server::Listener listener(*screen, *input, settings);
     listener.SetClipboard(systemClipboard.get());
+    listener.SetGamepads(gamepadBackend.get());
     ConsoleNotifier consoleNotifier;
     if (notify)
     {

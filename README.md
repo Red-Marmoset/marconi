@@ -95,6 +95,8 @@ From the menu you can:
 - ask the other computer to change its screen size to fit this window, where its server allows it (this changes
   the screen for anyone sitting at it too);
 - save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
+- send game controllers to the other computer (off until you tick it; Marconi Server only, and only while this
+  window is in front; see "Game controllers" under Sharing this computer);
 - refresh the picture, or disconnect.
 
 The right-hand end of the status bar shows how long a message takes to reach the other computer and come back,
@@ -249,11 +251,33 @@ when you disconnect. Copying files is available but off until you turn it on in 
 can also limit who can connect (by address), disconnect a viewer that has been idle, and choose whether you are told
 when someone connects.
 
-It doesn't yet: play sound, carry game controllers, or let more than one person connect at once. It runs as a program
+It doesn't yet: play sound, or let more than one person connect at once. Game controllers are written but only tried
+with stand-ins (see below). It runs as a program
 in the signed-in user's session; a Windows service that also works at the sign-in screen and through a restart is
 written but has not been tried on Windows. If you change its port, the Windows Firewall rule (made for port 1895) has
 to be changed to match. A server with no password refuses every viewer, so set one. Other VNC viewers can't connect to
 it; it only talks to Marconi.
+
+### Game controllers
+
+Tick **Send Game Controllers to the Other Computer** in the viewer's menu (it is off until you do) and the controllers
+plugged into your computer appear on the other one, while the viewer window is in front: up to four, with the
+shaking sent back to your controller. Let go of the window and they are released and removed, so nothing stays
+pressed down over there.
+
+What the other computer needs:
+
+- **Windows:** the free ViGEmBus driver, which Marconi Server does not install. Without it the viewer says "Game
+  controllers need the ViGEmBus driver, which isn't installed on this computer." ViGEmBus's author stopped
+  maintaining it in 2023, though it still works on Windows 11. Marconi Server also needs a `ViGEmClient.dll` next to
+  it; that is not supplied yet.
+- **Linux:** access to `/dev/uinput`, which most systems only give an administrator. If it is missing, the viewer is
+  told how to give Marconi Server access.
+- **Mac:** not available yet.
+
+Your computer can send controllers if it is Windows (Xbox-style controllers) or Linux; a Mac can't yet. PlayStation and
+other controllers are shown to the other computer as Xbox controllers. All of this is written, but it has only been
+tried with stand-ins: no real controller and no real driver has been used yet.
 
 ### Starting it by hand
 
