@@ -31,7 +31,12 @@ BuildTool bootstrapped (the engine and BuildTool revisions this app was made wit
 4. Connect the iPad or iPhone, trust the Mac on it, turn on Developer Mode if asked, select it as the run
    destination and press Run. Use the Release configuration for a smooth picture.
 
-To check that it compiles without a device or signing:
+From the command line, `bash Apps/iPad/Build.sh` generates the project and builds it for any iOS device, and
+`bash Apps/iPad/Build.sh "<the iPad's name>"` also installs it on that device. Always go through it, or name a
+destination yourself: a bare `xcodebuild` may pick the Mac as the place to run, which the team's provisioning
+profile doesn't cover.
+
+To check that it compiles without a device or signing (`bash Apps/iPad/Build.sh --simulator` does the same):
 
 ```sh
 xcodebuild -project Build/Xcode/Marconi/Marconi.xcodeproj -scheme Marconi -configuration Release \

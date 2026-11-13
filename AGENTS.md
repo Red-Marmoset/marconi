@@ -23,7 +23,9 @@ its phases in order, and keep it current (decisions, measurements, finished step
   `Build/Marconi/<Config>/`.
 - **Android:** `./gradlew assembleDebug` in `Apps/Android` (runs `Build.sh`/`Build.ps1` with `--platform Android`
   first; needs `ANDROID_HOME` or `ANDROID_NDK_HOME`). **iPad:** `bash Apps/iPad/GenerateProject.sh` (with
-  `UNA_IOS_TEAM_ID` set for signing), then Xcode. `Tools/make_app_icon.py` also draws the iOS icon.
+  `UNA_IOS_TEAM_ID` set for signing), then Xcode, or `bash Apps/iPad/Build.sh ["device name" | --simulator]` on a
+  Mac, which names the destination (a bare `xcodebuild` may pick the Mac and fail to sign).
+  `Tools/make_app_icon.py` also draws the iOS icon.
 - **Tests:** `.\Build.ps1 -Project Tests\MarconiCoreTest\Project.json -Config Debug -Clean`, then run
   `Build\MarconiCoreTest\Debug\MarconiCoreTest.exe`. The exit code is the number of failures.
 - **Building an engine test from here:** `-Project C:\code\engine\Tests\CryptoTest\Project.json` works too; output
