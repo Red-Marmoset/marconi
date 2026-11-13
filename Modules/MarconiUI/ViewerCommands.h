@@ -24,6 +24,7 @@ namespace MarconiUI
         ID_SEND_CLIPBOARD,
         ID_GET_CLIPBOARD,
         ID_PASTE_FILES,
+        ID_INSTALL_SERVER,
         ID_SEND_CTRL_ALT_DEL, // the toolbar button
         ID_SEND_SHORTCUT_FIRST, // one id per GetSendKeysShortcuts() entry
         ID_SEND_SHORTCUT_LAST = ID_SEND_SHORTCUT_FIRST + static_cast<int>(kMaxSendKeysShortcuts) - 1,
@@ -32,6 +33,7 @@ namespace MarconiUI
         ID_SEND_F10,
         ID_SEND_KEYS,   // the toolbar button that opens the Send Keys menu
         ID_SYSTEM_KEYS, // send system shortcuts to the other computer
+        ID_SEND_GAMEPADS, // send game controllers to the other computer
         ID_SCREENSHOT,  // the toolbar button that opens the Screenshot menu
         ID_SCREENSHOT_SAVE,
         ID_SCREENSHOT_COPY,

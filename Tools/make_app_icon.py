@@ -11,13 +11,17 @@
 #   Apps/iPad/Assets.xcassets/AppIcon.appiconset/Icon-1024.png
 #                                              the iPad and iPhone app's icon: the mark on a white square with no
 #                                              transparency, as iOS wants (it rounds the corners itself)
+#   Modules/MarconiServerUI/Resources/MarconiServer.ico
+#                                              Marconi Server's icon: the same mark in white on a blue circle, as in
+#                                              the tray (only with --server, so the others aren't redrawn)
 #
 # It draws the same picture as Modules/MarconiUI/AppIcon.cpp (the runtime window icon), so keep the two in step.
 # Needs Pillow: pip install pillow
 #
-# Usage: python Tools/make_app_icon.py
+# Usage: python Tools/make_app_icon.py [--server]
 
 import os
+import sys
 
 from PIL import Image, ImageDraw
 
@@ -47,6 +51,31 @@ def draw_icon(size):
     return image.resize((size, size), Image.LANCZOS)
 
 
+SERVER_BLUE = (0x1E, 0x66, 0xD0, 255)
+WHITE = (255, 255, 255, 255)
+
+
+def draw_server_icon(size):
+    # Matches the tray icon drawn in Modules/MarconiServerUI/ServerApp.cpp: a blue circle with the main icon's mark
+    # in white, scaled about its centre to sit inside the circle.
+    big = size * SUPERSAMPLE
+    image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((0, 0, big - 1, big - 1), fill=SERVER_BLUE)
+    s = big / 32.0
+    fit = 0.86
+
+    def at(v):
+        return (16.0 + (v - 16.0) * fit) * s
+
+    points = [(5, 23), (10.5, 9), (16, 20), (21.5, 9), (27, 23)]
+    draw.line([(at(x), at(y)) for x, y in points], fill=WHITE, width=round(4 * s * fit))
+    for x, y in points:
+        radius = (3 if (x, y) in (points[0], points[-1]) else 2) * s * fit
+        draw.ellipse((at(x) - radius, at(y) - radius, at(x) + radius, at(y) + radius), fill=WHITE)
+    return image.resize((size, size), Image.LANCZOS)
+
+
 def draw_mac_icon(size):
     # Apple's icon grid: an 824/1024 plate with a ~185/1024 corner radius, leaving room for the system's shadow.
     big = size * MAC_SUPERSAMPLE
@@ -71,8 +100,20 @@ def draw_ios_icon(size):
     return image.convert("RGB")
 
 
+def make_server_icon(root):
+    resources = os.path.join(root, "Modules", "MarconiServerUI", "Resources")
+    os.makedirs(resources, exist_ok=True)
+    ico = os.path.join(resources, "MarconiServer.ico")
+    images = [draw_server_icon(size) for size in SIZES]
+    images[-1].save(ico, format="ICO", sizes=[(n, n) for n in SIZES], append_images=images[:-1])
+    print("Wrote " + ico)
+
+
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if "--server" in sys.argv[1:]:
+        make_server_icon(root)
+        return
     resources = os.path.join(root, "Modules", "MarconiUI", "Resources")
     os.makedirs(resources, exist_ok=True)
 

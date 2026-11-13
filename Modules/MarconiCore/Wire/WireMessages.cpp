@@ -177,6 +177,16 @@ namespace Marconi
             return message;
         }
 
+        Bytes Lock::Encode() const
+        {
+            return Build(Type::Lock, [](Writer&) {});
+        }
+
+        Lock Lock::Decode(Reader&)
+        {
+            return Lock();
+        }
+
         Bytes Displays::Encode() const
         {
             return Build(Type::Displays, [&](Writer& w) { WriteDisplayList(w, displays); });
@@ -305,6 +315,37 @@ namespace Marconi
             message.hotspotX = r.S32();
             message.hotspotY = r.S32();
             message.argb = r.Blob();
+            return message;
+        }
+
+        Bytes CursorPosition::Encode() const
+        {
+            return Build(Type::CursorPosition, [&](Writer& w) { w.S32(x).S32(y); });
+        }
+
+        CursorPosition CursorPosition::Decode(Reader& r)
+        {
+            CursorPosition message;
+            message.x = r.S32();
+            message.y = r.S32();
+            return message;
+        }
+
+        Bytes DisplayModeResult::Encode() const
+        {
+            return Build(Type::DisplayModeResult, [&](Writer& w) { w.U32(displayId).U8(static_cast<uint8_t>(status)); });
+        }
+
+        DisplayModeResult DisplayModeResult::Decode(Reader& r)
+        {
+            DisplayModeResult message;
+            message.displayId = r.U32();
+            uint8_t status = r.U8();
+            if (status > static_cast<uint8_t>(Status::Failed))
+            {
+                throw WireError("unknown display mode result");
+            }
+            message.status = static_cast<Status>(status);
             return message;
         }
 

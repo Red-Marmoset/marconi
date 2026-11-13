@@ -5,6 +5,47 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- The status bar says whether the connection is Marconi Server, VNC or Remote Desktop.
+- Marconi Server's installer starts with the licence accepted, as Marconi's own does.
+- Marconi Server has its own icon in Windows, no longer warns about old Windows controls, and reads the whole screen on a high-resolution display instead of its top-left part (not yet tried on Windows).
+
+- Windows folders are shown as C:\Users\Sam\Desktop, without a leading slash, and can be typed that way.
+
+- When copying files to a TightVNC computer is refused (for example into the Public Desktop), Marconi says why and asks for another folder, then tries again.
+
+- Game controllers can be sent to a Marconi Server from the viewer's menu (off until ticked); only tried with stand-ins so far.
+- Marconi Server can send the screen as video (H.264) to a viewer that asks for it, with the parts that stop moving sent again sharp; video is still switched off until it has been tried on Windows and Mac, so nothing changes yet.
+- Marconi Server `--stats` logs video frames a second, bitrate and how long each frame took; Marconi `--video` and `--stats` do the same on the viewer (and `--video` is the way to turn video on).
+- Marconi Server keeps a log file for each run (tray, service and helper), the newest 20 kept, with no passwords in it.
+- Marconi Server on Linux: a package (`PackageServerLinux.sh`) that installs it in the applications menu and can start it when you sign in.
+- Marconi Server no longer writes what a viewer types to its log when it has no screen to control.
+- Marconi Server: the tray menu has "Who can connect..." to let in only some computers (by address or network), and it cuts off any other without telling it why.
+- Marconi Server: the tray menu can disconnect a viewer that has done nothing for 5 minutes to 4 hours, and tells the viewer why.
+- Marconi Server shows a message on its own computer when a viewer connects or disconnects (on by default, can be turned off in the tray menu).
+
+- Marconi Server's tray icon, when the Marconi Server service is running, shows the service's status (who is connected, whether a password is set) and can disconnect the viewer or change the password (an administrator is needed), instead of starting a second server. It switches by itself if the service starts or stops.
+- Marconi Server's tray icon now has Marconi's own "M" on a blue circle.
+
+- Marconi asks for the password when connecting to a Marconi Server, and asks again after a wrong one.
+- Marconi Server's tray icon only runs once: starting it again says it is already running.
+- On Windows a second Marconi Server can no longer start on a port another one is using.
+- Marconi Server refuses every login until a password is set, and its tray icon asks for one the first time it starts.
+- Marconi Server's installer no longer asks for a password; the tray icon does.
+
+- A Marconi Server installer for Windows, included in Marconi's own setup.
+- F8 menu: Install Marconi Server on the Other Computer, which copies the installer to its desktop.
+- Settings: Share this computer, which runs the Marconi Server installer here.
+- Marconi Server keeps its settings and logs in ProgramData on Windows when its installer made that folder.
+- Marconi Server on a Mac can share the screen and take mouse and keyboard control, once allowed in System Settings (not yet tried on a Mac).
+- Marconi Server says in plain words when it can't share the screen or can't be controlled, for example on a Wayland desktop or before a Mac permission is given.
+- Marconi Server on Linux no longer closes when the screen size changes, and types characters that have no key.
+- Marconi Server can share its files: browse, copy both ways and drop files on the screen. It is off until you turn it on in the tray menu.
+- Marconi Server shares the clipboard (text and pictures) with the viewer, both ways.
+- Marconi Server: shows each of the computer's screens separately, sends only the one you choose, and can change its screen size to fit your window and put it back when you leave.
+- Marconi Server: sends the mouse pointer's shape and position as they change.
+- Marconi connections lock the other computer's screen when you disconnect, if that option is on.
+- Marconi Server can run as a Windows service, so it keeps working at the sign-in screen and through permission prompts (written, not yet tried on Windows).
+
 ## 0.11.3
 
 - On Windows and macOS, Marconi can be added to Claude Desktop as an extension, from the installer or the AI tools window.
@@ -22,9 +63,17 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - AI tools such as Claude Code and Codex can use other computers through Marconi: connect, see the screen, and use the mouse, keyboard and clipboard.
 - The Windows installer offers to connect Marconi to the AI tools it finds on the computer.
 
-## 0.10.3
+## 0.10.5
 
 - Fixed the picture freezing or staying black on some VNC servers, such as x11vnc on Linux.
+
+## 0.10.4
+
+- On this network finds Android phones and tablets that announce themselves, such as with droidVNC-NG.
+
+## 0.10.3
+
+- The installer's licence page starts with "I accept" ticked.
 
 ## 0.10.2
 

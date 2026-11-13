@@ -33,6 +33,11 @@ namespace Test
         MarconiTest::RunDesktopSizeTests();
         MarconiTest::RunSettingsTests();
         MarconiTest::RunWireTests();
+        MarconiTest::RunWireFileTests();
+        MarconiTest::RunWireGamepadTests();
+        MarconiTest::RunWireVideoTests();
+        MarconiTest::RunDatagramTests();
+        MarconiTest::RunDatagramLoopbackTests();
         MarconiTest::RunSshTunnelTests();
         MarconiTest::RunRdpTests();
         MarconiTest::RunRdpBitmapTests();
@@ -44,6 +49,7 @@ namespace Test
         MarconiTest::RunRdpInputOutputTests();
         MarconiTest::RunRdpLicenseTests();
         MarconiTest::RunUpdateTests();
+        MarconiTest::RunServerInstallerTests();
         MarconiTest::RunRdpPointerTests();
         MarconiTest::RunRdpClientTests();
         MarconiTest::RunMcpTests();

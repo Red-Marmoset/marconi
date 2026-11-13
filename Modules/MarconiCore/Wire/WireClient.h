@@ -4,13 +4,17 @@
 
 #pragma once
 
+#include <MarconiCore/Files/MarconiFiles.h>
+#include <MarconiCore/Gamepad/GamepadLink.h>
 #include <MarconiCore/Net/Socket.h>
 #include <MarconiCore/RemoteSession.h>
+#include <MarconiCore/Video/VideoReceiver.h>
 #include <MarconiCore/Wire/WireChannel.h>
 #include <MarconiCore/Wire/WireMessages.h>
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -26,18 +30,31 @@ namespace Marconi
             std::string host;
             uint16_t port = kDefaultPort;
             std::string password;   // sent at login (inside TLS once encryption is added)
+            // With no password above, ask the listener's OnCredentialsRequired for one before the login; declining
+            // ends the connection with no error. Off, an empty password is sent as it is (tests, --allow-no-password).
+            bool askForPassword = false;
             std::string clientName; // shown in the server's log and its "someone connected" notice
             int connectTimeoutMs = 10000;
-            uint64_t capabilities = Capability::MultipleDisplays; // what this client offers; grows with each phase
+            bool offerFiles = true; // also offer file transfer (the Files capability)
+            // What this client offers; grows with each phase.
+            uint64_t capabilities =
+                Capability::MultipleDisplays | Capability::ResizeDisplay | Capability::Clipboard | Capability::Gamepads;
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
+            // Video (Phase 4). The viewer offers it only when it has a decoder: the platform's, or `videoDecoderFactory`
+            // (a test's, or a build's own) together with the codecs that factory can do in `videoCodecs`.
+            bool offerVideo = false; // opt-in until the Windows and Mac decoders have been run (--video)
+            Video::VideoPreferences video; // what the viewer wants of the stream (Hybrid, no limits by default)
+            Video::VideoDecoderFactory videoDecoderFactory;
+            std::vector<VideoCodec> videoCodecs;
+            bool videoStats = false; // log frames a second, bitrate and decode time every few seconds (--stats)
         };
 
         // Runs the protocol on a background thread. The listener's callbacks arrive on that thread; a UI listener
         // marshals them to the UI thread, exactly as it does for the VNC client. The framebuffer, input and the
         // rest of RemoteSession are safe to use from any thread.
-        class Client : public RemoteSession
+        class Client : public RemoteSession, public Gamepad::GamepadLink
         {
         public:
             explicit Client(SessionListener& listener);
@@ -58,24 +75,49 @@ namespace Marconi
             void SendPointerEvent(int x, int y, uint8_t buttonMask) override;
             void SendKeyEvent(uint32_t keysym, bool down) override;
             void SendClientCutText(const std::string& latin1Text) override;
-            bool HasExtendedClipboard() const override { return false; }
-            bool ServerAcceptsClipboardImages() const override { return false; }
+            bool HasExtendedClipboard() const override { return m_clipboardGranted.load(); }
+            bool ServerAcceptsClipboardImages() const override { return m_clipboardGranted.load(); }
             bool OfferClipboard(const Rfb::ClipboardContent& content) override;
-            bool RequestServerClipboard() override { return false; }
+            bool RequestServerClipboard() override;
             void RequestFullUpdate() override;
             std::vector<Rfb::Screen> GetScreens() const override;
             bool SupportsDesktopResize() const override { return m_supportsResize.load(); }
             void RequestDesktopSize(int width, int height) override;
+            void SelectDisplay(uint32_t displayId) override;
             void SetQuality(int compressLevel, int qualityLevel) override;
             std::chrono::steady_clock::duration GetTimeSinceInput() const override;
             TrafficStats TakeTrafficStats() override;
+            bool SendLock() override;
+
+            // Video: true once the server granted it. Changes what the viewer wants of the stream (picture or still
+            // only, the most bitrate and frame rate, quality); takes effect at once and does nothing without video.
+            bool SupportsVideo() const { return m_videoGranted.load(); }
+            bool IsVideoStreaming() const { return m_videoStreaming.load(); }
+            void SetVideoPreferences(const Video::VideoPreferences& preferences);
+
+            // File transfer with the server, once connected: true if the server agreed to it. The pointer stays
+            // valid as long as this client does; its calls fail while there is no connection.
+            bool SupportsFiles() const { return m_supportsFiles.load(); }
+            Files::MarconiFiles* GetFiles() { return &m_files; }
+
+            // Game controllers (Gamepad::GamepadLink): true once the server agreed to take them. The sends fail
+            // while there is no connection or no agreement.
+            bool SupportsGamepads() const override { return m_gamepadsGranted.load(); }
+            bool SendGamepadConnect(const GamepadConnect& message) override;
+            bool SendGamepadDisconnect(const GamepadDisconnect& message) override;
+            bool SendGamepadState(const GamepadState& message) override;
+            void SetGamepadListener(Gamepad::GamepadListener* listener) override;
 
         private:
             void Run(ClientOptions options);
             bool Handshake(MessageReader& reader, ClientOptions& options, DisconnectInfo& info);
             void HandleStill(const Still& still);
             void HandleMove(const Move& move);
+            void HandleVideoFrame(const VideoFrame& frame);
             void ApplyDisplays(const std::vector<Display>& displays, bool initial);
+            void HandleClipboardOffer(const ClipboardOffer& offer);
+            void HandleClipboardRequest(const ClipboardRequest& request);
+            void HandleClipboardData(ClipboardData&& data);
             bool Send(const Bytes& framed); // one message, serialised; false if not connected or the write failed
             void MarkInput();
 
@@ -93,6 +135,31 @@ namespace Marconi
             std::string m_encryptionName; // guarded by m_nameMutex
             std::atomic<bool> m_stopping{false};
             std::atomic<bool> m_supportsResize{false};
+            std::atomic<bool> m_supportsFiles{false};
+            Files::MarconiFiles m_files;
+            std::atomic<bool> m_gamepadsGranted{false};
+            std::mutex m_gamepadMutex; // held while the listener is called, so it can't be freed under a call
+            Gamepad::GamepadListener* m_gamepadListener = nullptr; // guarded by m_gamepadMutex
+
+            // The video stream's viewer side: made at the start of a connection that offers video, used on the worker
+            // thread (the UI thread only changes its preferences, through the shared pointer taken under the lock).
+            std::shared_ptr<Video::VideoReceiver> GetVideo() const;
+            mutable std::mutex m_videoMutex;
+            std::shared_ptr<Video::VideoReceiver> m_video; // guarded by m_videoMutex
+            std::atomic<bool> m_videoGranted{false};
+            std::atomic<bool> m_videoStreaming{false};
+
+            // Clipboard sharing, once the server granted it. `m_offered` is what we last told the server we have (it
+            // asks for it when someone pastes); the await flags and `m_incoming` collect what we asked the server for,
+            // which is delivered to the listener once every asked-for format has arrived.
+            std::atomic<bool> m_clipboardGranted{false};
+            std::mutex m_clipboardMutex;
+            Bytes m_offeredText;
+            Bytes m_offeredPng;
+            int m_awaitText = 0;  // requests sent for the server's text that it hasn't answered yet
+            int m_awaitImage = 0; // the same for its image (rapid copies leave several outstanding)
+            Rfb::ClipboardContent m_incoming;
+            std::atomic<uint32_t> m_selectedDisplay{0}; // the display being streamed, 0 for the whole desktop
 
             std::vector<Rfb::Rect> m_frameRects; // changed rects collected between FrameBegin and FrameEnd
             mutable std::mutex m_infoMutex;

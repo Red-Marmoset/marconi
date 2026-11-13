@@ -3,7 +3,11 @@
 
 #pragma once
 
+#include "AllowList.h"
 #include "Auth.h"
+#include "ClipboardAccess.h"
+#include "ConnectionNotifier.h"
+#include "IdleWatch.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Session.h"
@@ -12,7 +16,10 @@
 #include <MarconiCore/Net/Socket.h>
 
 #include <atomic>
+#include <chrono>
+#include <mutex>
 #include <string>
+#include <vector>
 
 namespace Marconi
 {
@@ -20,6 +27,14 @@ namespace Marconi
     {
         // Listens on the settings' port and serves one viewer at a time (Phase 1; several at once comes later).
         // The screen and input are shared across connections, since there is one of each on this computer.
+        // Who is connected, for the tray icon.
+        struct ViewerSnapshot
+        {
+            uint32_t id = 0;
+            std::string name;
+            uint32_t connectedSeconds = 0;
+        };
+
         class Listener
         {
         public:
@@ -46,9 +61,48 @@ namespace Marconi
 
             void SetFrameIntervalMs(int ms) { m_frameIntervalMs = ms; }
 
+            // Shares this computer's clipboard with each viewer (null, the default, shares none). The clipboard
+            // must outlive the listener. Call before Run() or ServeOne().
+            void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
+            // Replaces the platform's video encoders for every session this listener serves (tests, or a build with its
+            // own). `codecs` are what the factory can make, best first. Call before Start().
+            void SetVideoEncoderFactory(VideoEncoderFactory factory, std::vector<Wire::VideoCodec> codecs)
+            {
+                m_videoFactory = std::move(factory);
+                m_videoCodecs = std::move(codecs);
+                m_videoFactorySet = true;
+            }
+
+            // Lets each viewer's game controllers appear on this computer, made by `backend` (null, the default, offers
+            // none). The backend must outlive the listener. Call before Run() or ServeOne().
+            void SetGamepads(VirtualGamepadBackend* backend) { m_gamepadBackend = backend; }
+
             // The SHA-256 fingerprint of the certificate the server presents, as a lowercase hex string, so it can
             // be shown to the person setting the server up. Empty before Start() or if the identity is bad.
             const std::string& GetCertificateFingerprint() const { return m_fingerprint; }
+
+            // The viewer that is connected and logged in, if any (one at a time for now). False when nobody is.
+            bool GetViewer(ViewerSnapshot& viewer) const;
+
+            // Changes the password logins are checked against while the server runs ("" = none).
+            void SetPasswordHash(const std::string& passwordHash) { m_auth.SetPasswordHash(passwordHash); }
+
+            // Who may connect (see Settings::allowedAddresses). Takes effect for the next connection; a viewer already
+            // connected is not ended by it. False (with `error`) if an entry can't be read, leaving the list as it was.
+            bool SetAllowedAddresses(const std::vector<std::string>& entries, std::string& error);
+
+            // Tells `notifier` (null = nobody; it must outlive the listener) when a viewer connects or goes away.
+            // Call before Run() or ServeOne().
+            void SetNotifier(ConnectionNotifier* notifier) { m_notifier = notifier; }
+
+            // The idle limit in minutes (0 = never), also for a viewer that is connected now.
+            void SetIdleMinutes(int minutes);
+            // The clock the idle limit is measured with; tests move it by hand. Call before Run() or ServeOne().
+            void SetIdleClock(IdleClock clock) { m_idleClock = std::move(clock); }
+
+            // Ends the viewer with this id (from GetViewer), or the connected one when `viewerId` is 0. False if
+            // there was none to end.
+            bool DisconnectViewer(uint32_t viewerId);
 
         private:
             // Makes sure there is a usable TLS identity (generating a self-signed one if the settings have none)
@@ -63,8 +117,23 @@ namespace Marconi
             uint16_t m_port = 0;
             std::string m_fingerprint; // the certificate's SHA-256, in hex, for display
             int m_frameIntervalMs = 16;
+            ClipboardAccess* m_clipboard = nullptr;
+            VirtualGamepadBackend* m_gamepadBackend = nullptr;
+            VideoEncoderFactory m_videoFactory;
+            std::vector<Wire::VideoCodec> m_videoCodecs;
+            bool m_videoFactorySet = false;
+            ConnectionNotifier* m_notifier = nullptr;
+            IdleClock m_idleClock;
+            std::atomic<int> m_idleMinutes{0};
+            mutable std::mutex m_allowMutex;
+            AllowList m_allow; // guarded by m_allowMutex
             std::atomic<bool> m_stop{false};
-            std::atomic<Session*> m_current{nullptr}; // the live session, so Stop() can end it
+            mutable std::mutex m_currentMutex; // guards the members below
+            Session* m_current = nullptr;      // the live session, so Stop() and DisconnectViewer can end it
+            Net::Socket* m_currentSocket = nullptr; // the live session's connection, shut down to end it
+            uint32_t m_currentId = 0;
+            uint32_t m_viewerCounter = 0;
+            std::chrono::steady_clock::time_point m_currentSince;
         };
     } // namespace Server
 } // namespace Marconi

@@ -4,17 +4,21 @@
 
 #pragma once
 
+#include <MarconiServerCore/ClipboardAccess.h>
+#include <MarconiServerCore/ConnectionNotifier.h>
 #include <MarconiServerCore/InputSink.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/ScreenSource.h>
 #include <MarconiServerCore/Settings.h>
 #include <MarconiServerCore/TestPatternScreen.h>
+#include <MarconiServerCore/VirtualGamepad.h>
 
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace Marconi
 {
@@ -51,13 +55,33 @@ namespace Marconi
             // A plain phrase for what the server is sending: "this computer's screen" or "a test pattern".
             std::string GetServedDescription() const;
 
+            // Why the screen can't be shared, or can't be controlled, in plain words for the person at this computer
+            // (for example a missing permission on a Mac, or a Wayland desktop on Linux). Empty when all is well.
+            std::string GetProblem() const;
+
+            // Looks again for this computer's screen and input (after the person has allowed them in the system's
+            // settings) and restarts the listener on whatever it finds. False (with `error`) if it can't listen.
+            bool CheckScreenAndInputAgain(std::string& error);
+
             // Changes the port and restarts the listener on it. False (with `error`) if the new port can't be opened;
             // the old listener is left stopped either way.
             bool ChangePort(uint16_t port, std::string& error);
 
-            // Changes the access password (already hashed; empty means no password) and restarts so logins are
-            // checked against it.
+            // Lets viewers browse and copy this computer's files, or stops them (restarts the listener).
+            bool ChangeFilesEnabled(bool enabled, std::string& error);
+
+            // Changes the access password (already hashed) and restarts so logins are checked against it.
             bool ChangePasswordHash(const std::string& passwordHash, std::string& error);
+
+            // Who may connect (Settings::allowedAddresses), applied at once to the running server without a restart.
+            // False (with `error`, in plain words) if an entry can't be read; nothing then changes.
+            bool ChangeAllowedAddresses(const std::vector<std::string>& entries, std::string& error);
+
+            // Disconnect a viewer after this many minutes of no input (0 = never), also for the one connected now.
+            void ChangeIdleMinutes(int minutes);
+
+            // Where connection notices go (null = nowhere). It must outlive the controller. Call before Start.
+            void SetNotifier(Server::ConnectionNotifier* notifier);
 
             const Server::Settings& GetSettings() const { return m_settings; }
 
@@ -74,9 +98,13 @@ namespace Marconi
             std::unique_ptr<Server::InputSink> m_systemInput;
             std::unique_ptr<Server::TestPatternScreen> m_pattern;
             std::unique_ptr<Server::InputSink> m_loggingInput;
+            std::unique_ptr<Server::ClipboardAccess> m_clipboard; // shared only with the real screen
+            std::unique_ptr<Server::VirtualGamepadBackend> m_gamepads; // makes viewers' controllers; real screen only
             Server::ScreenSource* m_screen = nullptr;
             Server::InputSink* m_input = nullptr;
             std::string m_servedDescription;
+            std::string m_problem;
+            Server::ConnectionNotifier* m_notifier = nullptr;
 
             std::unique_ptr<Server::Listener> m_listener;
             std::thread m_thread;

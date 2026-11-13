@@ -3,9 +3,13 @@
 
 #include "ServerConfig.h"
 
+#include <MarconiServerCore/AllowList.h>
+
+#include <wx/file.h>
 #include <wx/filename.h>
 #include <wx/fileconf.h>
 #include <wx/stdpaths.h>
+#include <wx/utils.h>
 
 namespace Marconi
 {
@@ -16,6 +20,10 @@ namespace Marconi
             const char* kConfigFile = "settings.ini";
             const char* kPortKey = "/Server/Port";
             const char* kPasswordHashKey = "/Server/PasswordHash";
+            const char* kFilesEnabledKey = "/Server/FilesEnabled";
+            const char* kAllowedKey = "/Server/AllowedAddresses";
+            const char* kIdleMinutesKey = "/Server/IdleMinutes";
+            const char* kNotifyKey = "/Server/NotifyOnConnect";
             const char* kConfiguredKey = "/Server/Configured";
             const uint16_t kDefaultPort = 1895;
 
@@ -26,6 +34,33 @@ namespace Marconi
                 return wxFileConfig(wxEmptyString, wxEmptyString, file.GetFullPath(), wxEmptyString,
                                     wxCONFIG_USE_LOCAL_FILE);
             }
+
+#ifdef __WXMSW__
+            // The shared folder the installer makes (ProgramData, then "Marconi Server") if it exists and a file can
+            // be made in it, else empty. It is never made here: the installer makes it, with the right permissions.
+            wxString FindSharedDirectory()
+            {
+                wxString programData;
+                if (!wxGetEnv("ProgramData", &programData) || programData.IsEmpty())
+                {
+                    return wxEmptyString;
+                }
+                wxString folder = wxFileName(programData, "Marconi Server").GetFullPath();
+                if (!wxFileName::DirExists(folder))
+                {
+                    return wxEmptyString;
+                }
+                wxFileName probe(folder, "write-test.tmp");
+                wxFile file;
+                if (!file.Create(probe.GetFullPath(), true))
+                {
+                    return wxEmptyString;
+                }
+                file.Close();
+                wxRemoveFile(probe.GetFullPath());
+                return folder;
+            }
+#endif
         } // namespace
 
         ServerConfig::ServerConfig()
@@ -33,6 +68,20 @@ namespace Marconi
             // Ask for the XDG layout, as the client does, so on Linux the folder goes under the user's home rather
             // than a dot-file at the top of it. The app and vendor names (set in OnInit) decide the folder's name.
             wxStandardPaths::Get().SetFileLayout(wxStandardPaths::FileLayout_XDG);
+
+#ifdef __WXMSW__
+            // On Windows the installer makes a folder shared by every account, ProgramData\Marconi Server, so the
+            // settings, password, certificate and logs belong to the computer rather than to whoever is signed in
+            // (and the Windows service of a later phase can use them). It is used when it exists and this account
+            // may write in it; otherwise (a copy run by hand, or an account the installer gave no access) the
+            // per-user folder below is the fallback.
+            m_dataDir = FindSharedDirectory();
+            if (!m_dataDir.IsEmpty())
+            {
+                return;
+            }
+#endif
+
             m_dataDir = wxStandardPaths::Get().GetUserLocalDataDir();
             if (!wxFileName::DirExists(m_dataDir))
             {
@@ -61,7 +110,7 @@ namespace Marconi
             return logs.GetPath();
         }
 
-        uint16_t ServerConfig::GetPort() const
+        uint16_t ServerConfig::GetListenPort() const
         {
             wxFileConfig config = MakeConfig(m_dataDir);
             long port = config.ReadLong(kPortKey, kDefaultPort);
@@ -72,7 +121,7 @@ namespace Marconi
             return static_cast<uint16_t>(port);
         }
 
-        void ServerConfig::SetPort(uint16_t port)
+        void ServerConfig::SetListenPort(uint16_t port)
         {
             wxFileConfig config = MakeConfig(m_dataDir);
             config.Write(kPortKey, static_cast<long>(port));
@@ -90,6 +139,64 @@ namespace Marconi
             wxFileConfig config = MakeConfig(m_dataDir);
             config.Write(kPasswordHashKey, hash);
             config.Write(kConfiguredKey, true);
+            config.Flush();
+        }
+
+        bool ServerConfig::GetFilesEnabled() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return config.ReadBool(kFilesEnabledKey, false);
+        }
+
+        void ServerConfig::SetFilesEnabled(bool enabled)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kFilesEnabledKey, enabled);
+            config.Flush();
+        }
+
+        std::vector<std::string> ServerConfig::GetAllowedAddresses() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return Server::SplitAllowEntries(config.Read(kAllowedKey, wxEmptyString).utf8_string());
+        }
+
+        void ServerConfig::SetAllowedAddresses(const std::vector<std::string>& entries)
+        {
+            std::string joined;
+            for (const std::string& entry : entries)
+            {
+                joined += (joined.empty() ? "" : ";") + entry; // entries never hold a semicolon or a space
+            }
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kAllowedKey, wxString::FromUTF8(joined.c_str()));
+            config.Flush();
+        }
+
+        int ServerConfig::GetIdleMinutes() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            long minutes = config.ReadLong(kIdleMinutesKey, 0);
+            return (minutes < 0 || minutes > 100000) ? 0 : static_cast<int>(minutes);
+        }
+
+        void ServerConfig::SetIdleMinutes(int minutes)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kIdleMinutesKey, static_cast<long>(minutes < 0 ? 0 : minutes));
+            config.Flush();
+        }
+
+        bool ServerConfig::GetNotifyEnabled() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return config.ReadBool(kNotifyKey, true);
+        }
+
+        void ServerConfig::SetNotifyEnabled(bool enabled)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kNotifyKey, enabled);
             config.Flush();
         }
 

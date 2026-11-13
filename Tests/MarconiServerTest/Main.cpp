@@ -14,8 +14,19 @@ namespace Test
         MarconiServerTest::RunPasswordTests();
         MarconiServerTest::RunIdentityTests();
         MarconiServerTest::RunSessionTests();
+        MarconiServerTest::RunServiceTests();
+        MarconiServerTest::RunRuleTests();
+        MarconiServerTest::RunTrayTests();
         MarconiServerTest::RunListenerTests();
         MarconiServerTest::RunEndToEndTests();
+        MarconiServerTest::RunX11Tests();
+        MarconiServerTest::RunFileTests();
+        MarconiServerTest::RunClipboardTests();
+        MarconiServerTest::RunDisplayTests();
+        MarconiServerTest::RunLinuxScreenTests();
+        MarconiServerTest::RunLogTests();
+        MarconiServerTest::RunGamepadTests();
+        MarconiServerTest::RunVideoTests();
         printf("\nMarconiServerTest: %d passed, %d failed\n", MarconiServerTest::g_passed, MarconiServerTest::g_failed);
         return MarconiServerTest::g_failed;
     }

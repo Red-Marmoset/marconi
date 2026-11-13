@@ -400,7 +400,7 @@ namespace MarconiUI
         m_crumbs->Layout();
         m_crumbs->FitInside();
         m_crumbs->Scroll(m_crumbs->GetVirtualSize().x / FromDIP(8), 0);
-        m_crumbs->SetToolTip(wxString::FromUTF8(m_folder));
+        m_crumbs->SetToolTip(wxString::FromUTF8(Marconi::Files::ToDisplayPath(m_folder)));
         m_crumbs->Thaw();
     }
 

@@ -3,6 +3,7 @@
 
 #include "ServerController.h"
 
+#include <MarconiServerCore/AllowList.h>
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/SystemInput.h>
 #include <MarconiServerCore/SystemScreen.h>
@@ -28,16 +29,34 @@ namespace Marconi
             m_systemScreen = Server::CreateSystemScreen(screenError);
             if (m_systemScreen)
             {
-                m_systemInput = Server::CreateSystemInput();
+                std::string inputError;
+                m_systemInput = Server::CreateSystemInput(inputError);
+                if (!m_systemInput)
+                {
+                    m_problem = "Viewers can see this screen but can't control it. " + inputError;
+                    LOG_WARNING("Server", "No input control: %s", inputError.c_str());
+                }
                 m_screen = m_systemScreen.get();
                 m_input = m_systemInput.get();
                 m_servedDescription = "this computer's screen";
                 return;
             }
 
-            // No capture on this computer yet: serve a moving test pattern and log the input that comes in.
-            LOG_INFO("Server", "No screen capture on this computer yet (%s); serving a test pattern.",
-                     screenError.c_str());
+            // No capture here: serve a moving test pattern and log the input that comes in, and keep the reason to
+            // show in the tray menu.
+            m_problem = "Can't share this computer's screen. " + screenError;
+            {
+                // Ask for the control permission now too (on a Mac this shows its prompt), so both can be given
+                // in one go. The input made here is thrown away: a test pattern must not move the real mouse.
+                std::string inputError;
+                Server::CreateSystemInput(inputError);
+                if (!inputError.empty() && inputError != screenError)
+                {
+                    m_problem += " " + inputError;
+                }
+            }
+            LOG_WARNING("Server", "Can't share this computer's screen (%s); serving a test pattern.",
+                        screenError.c_str());
             m_pattern = std::make_unique<Server::TestPatternScreen>(1280, 720);
             m_loggingInput = std::make_unique<Server::LoggingInputSink>();
             m_screen = m_pattern.get();
@@ -49,6 +68,17 @@ namespace Marconi
         {
             ChooseScreenAndInput();
             m_listener = std::make_unique<Server::Listener>(*m_screen, *m_input, m_settings);
+            if (m_systemScreen && !m_clipboard)
+            {
+                m_clipboard = Server::CreateSystemClipboard(); // the test pattern stands in for a computer that isn't there
+            }
+            m_listener->SetClipboard(m_clipboard.get());
+            if (m_systemScreen && !m_gamepads)
+            {
+                m_gamepads = Server::CreateSystemGamepadBackend();
+            }
+            m_listener->SetGamepads(m_gamepads.get());
+            m_listener->SetNotifier(m_notifier);
             if (!m_listener->Start(error))
             {
                 m_listener.reset();
@@ -118,12 +148,73 @@ namespace Marconi
             return m_servedDescription;
         }
 
+        bool ServerController::CheckScreenAndInputAgain(std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            StopLocked();
+            m_listener.reset();
+            m_screen = nullptr;
+            m_input = nullptr;
+            m_systemScreen.reset();
+            m_systemInput.reset();
+            m_pattern.reset();
+            m_loggingInput.reset();
+            m_problem.clear();
+            return StartLocked(error);
+        }
+
+        std::string ServerController::GetProblem() const
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_problem;
+        }
+
         bool ServerController::ChangePort(uint16_t port, std::string& error)
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             StopLocked();
             m_settings.port = port;
             return StartLocked(error);
+        }
+
+        bool ServerController::ChangeFilesEnabled(bool enabled, std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            StopLocked();
+            m_settings.filesEnabled = enabled;
+            return StartLocked(error);
+        }
+
+        bool ServerController::ChangeAllowedAddresses(const std::vector<std::string>& entries, std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            Server::AllowList check;
+            if (!check.Set(entries, error))
+            {
+                return false;
+            }
+            m_settings.allowedAddresses = entries;
+            if (m_listener)
+            {
+                return m_listener->SetAllowedAddresses(entries, error);
+            }
+            return true;
+        }
+
+        void ServerController::ChangeIdleMinutes(int minutes)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_settings.idleMinutes = minutes < 0 ? 0 : minutes;
+            if (m_listener)
+            {
+                m_listener->SetIdleMinutes(m_settings.idleMinutes);
+            }
+        }
+
+        void ServerController::SetNotifier(Server::ConnectionNotifier* notifier)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_notifier = notifier;
         }
 
         bool ServerController::ChangePasswordHash(const std::string& passwordHash, std::string& error)

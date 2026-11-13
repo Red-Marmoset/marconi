@@ -49,8 +49,29 @@ namespace Marconi
             // the first time). Returns false if the screen can't be read right now (the session waits and retries).
             virtual bool Grab(Capture& out) = 0;
 
-            // The current pointer, if the source tracks it; the default is no cursor (the client shows its own).
+            // The pointer's image, only when it is new: true the first time and again whenever the shape changed
+            // since the last call that returned true; false means "same as before" (or the source has no cursor,
+            // and the client shows its own). An empty `argb` means the pointer is hidden. Called every frame
+            // iteration, so it must be cheap when nothing changed.
             virtual bool GetCursor(Cursor& /*out*/) { return false; }
+
+            // Where the pointer is, in desktop coordinates. False if the source doesn't know.
+            virtual bool GetCursorPosition(int32_t& /*x*/, int32_t& /*y*/) { return false; }
+
+            // Whether the source can change a display's size (Capability::ResizeDisplay is granted only if so).
+            virtual bool CanSetDisplayMode() { return false; }
+
+            // Changes the display's size to the listed mode closest to width x height, never to one the display
+            // doesn't list. The result says what happened; the new layout shows up in the next GetDisplays.
+            virtual Wire::DisplayModeResult::Status SetDisplayMode(uint32_t /*displayId*/, int32_t /*width*/,
+                                                                   int32_t /*height*/)
+            {
+                return Wire::DisplayModeResult::Status::NotAllowed;
+            }
+
+            // Puts every display the source changed back to how it was. Called when the viewer leaves; safe to call
+            // when nothing was changed.
+            virtual void RestoreDisplayModes() {}
         };
     } // namespace Server
 } // namespace Marconi

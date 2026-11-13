@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Marconi Server
+Comment=Share this computer's screen with Marconi
+Exec=marconi-server
+Icon=marconi-server
+Terminal=false
+Categories=Network;RemoteAccess;

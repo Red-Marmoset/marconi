@@ -28,6 +28,7 @@
 #include <MarconiCore/Files/FileView.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <functional>
 #include <random>
@@ -266,6 +267,29 @@ namespace MarconiUI
 
     void FilePanel::Activate()
     {
+        if (m_marconi != nullptr)
+        {
+            if (m_state != State::Connected && m_state != State::Connecting)
+            {
+                // Asking for the home folder is a round trip: do it off the interface thread.
+                m_state = State::Connecting;
+                JoinWorker();
+                Marconi::Files::MarconiFiles* files = m_marconi;
+                m_worker = std::thread([this, files]() {
+                    std::string home = files->GetHome();
+                    if (!m_closing)
+                    {
+                        CallAfter([this, files, home]() {
+                            if (m_marconi == files)
+                            {
+                                ShowRemote(files, home);
+                            }
+                        });
+                    }
+                });
+            }
+            return;
+        }
         if (m_tight != nullptr)
         {
             if (m_state != State::Connected)
@@ -307,11 +331,42 @@ namespace MarconiUI
         }
     }
 
+    void FilePanel::SetMarconiFiles(Marconi::Files::MarconiFiles* files, const wxString& displayName)
+    {
+        if (files == m_marconi && (files == nullptr || m_state == State::Connected))
+        {
+            return;
+        }
+        m_marconi = files;
+        m_remote.displayName = displayName;
+        m_remotePane->SetHeading(displayName);
+        if (files == nullptr)
+        {
+            if (!m_sftp || !m_sftp->IsLoggedIn())
+            {
+                m_state = State::Idle;
+                m_remotePane->SetSource(nullptr, "", {});
+                m_upload->Enable(false);
+                m_download->Enable(false);
+            }
+            return;
+        }
+        m_state = State::Idle;
+        if (IsShownOnScreen())
+        {
+            Activate();
+        }
+    }
+
     Marconi::Files::FileSource* FilePanel::GetRemote()
     {
         if (m_tight != nullptr)
         {
             return m_tight;
+        }
+        if (m_marconi != nullptr)
+        {
+            return m_marconi;
         }
         return m_sftp && m_sftp->IsLoggedIn() ? m_sftp.get() : nullptr;
     }
@@ -325,6 +380,11 @@ namespace MarconiUI
         if (source == m_tight)
         {
             roots.push_back({"Drives", "/"}); // TightVNC lists the drives at "/"
+        }
+        else if (source == m_marconi)
+        {
+            roots.push_back({"Home", folder});
+            roots.push_back({"Computer", "/"}); // the top: the drives on Windows, the root folder elsewhere
         }
         else
         {
@@ -549,31 +609,25 @@ namespace MarconiUI
             return;
         }
         std::string desktop;
-        if (m_tight != nullptr)
+        if (m_marconi != nullptr)
+        {
+            desktop = m_marconi->GetDesktop(); // a quick question to the server, which knows whose Desktop it is
+        }
+        else if (m_tight != nullptr)
         {
             // TightVNC doesn't say which Windows user is logged in: ask once, and remember.
             if (m_remote.dropFolder.empty())
             {
                 wxString folder = wxGetTextFromUser(
                     "Files dropped on " + m_remote.displayName + "'s screen are copied to this folder on it. "
-                    "The Public Desktop shows on everyone's desktop.",
-                    "Where should dropped files go?", "/C:/Users/Public/Desktop", this);
+                    "The Public Desktop shows on everyone's desktop, but only an administrator can copy into it; "
+                    "use a signed-in user's own Desktop (C:\\Users\\NAME\\Desktop) if that is refused.",
+                    "Where should dropped files go?", "C:\\Users\\Public\\Desktop", this);
                 if (folder.empty())
                 {
                     return;
                 }
-                folder.Replace("\\", "/");
-                m_remote.dropFolder = folder;
-                if (!m_remote.savedId.empty())
-                {
-                    ConnectionStore store;
-                    SavedConnection saved;
-                    if (store.Load(m_remote.savedId, saved))
-                    {
-                        saved.dropFolder = folder;
-                        store.Save(saved);
-                    }
-                }
+                RememberDropFolder(folder);
             }
             desktop = m_remote.dropFolder.utf8_string();
         }
@@ -587,23 +641,72 @@ namespace MarconiUI
                 desktop = m_sftp->GetHome();
             }
         }
-        StartCopy(m_local, localPaths, *remote, desktop, m_remotePane);
+        std::vector<int> ids = StartCopy(m_local, localPaths, *remote, desktop, m_remotePane);
+        if (m_tight != nullptr)
+        {
+            m_desktopCopy.ids = ids;
+            m_desktopCopy.paths = localPaths;
+            m_desktopCopy.folder = desktop;
+        }
         SetMessage(wxString::Format("Copying %zu item%s to ", localPaths.size(), localPaths.size() == 1 ? "" : "s") +
-                   wxString::FromUTF8(desktop));
+                   wxString::FromUTF8(Marconi::Files::ToDisplayPath(desktop)));
     }
 
-    void FilePanel::StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
-                              Marconi::Files::FileSource& to, const std::string& destination, FilePane* refreshAfter)
+    std::vector<int> FilePanel::StartCopy(Marconi::Files::FileSource& from, const std::vector<std::string>& paths,
+                                          Marconi::Files::FileSource& to, const std::string& destination,
+                                          FilePane* refreshAfter)
     {
         if (!m_queue)
         {
-            return; // shut down
+            return {}; // shut down
         }
         std::vector<int> ids = m_queue->Add(from, paths, to, destination);
         if (refreshAfter != nullptr && !ids.empty())
         {
             m_refreshWhenDone[ids.back()] = refreshAfter;
         }
+        return ids;
+    }
+
+    void FilePanel::RememberDropFolder(const wxString& chosen)
+    {
+        // Typed as C:\Users\Sam\Desktop (or with slashes, or a leading slash); kept as /C:/Users/Sam/Desktop, which is how
+        // the file transfer names it.
+        wxString folder = wxString::FromUTF8(Marconi::Files::FromTypedPath(chosen.utf8_string()));
+        m_remote.dropFolder = folder;
+        if (!m_remote.savedId.empty())
+        {
+            ConnectionStore store;
+            SavedConnection saved;
+            if (store.Load(m_remote.savedId, saved))
+            {
+                saved.dropFolder = folder;
+                store.Save(saved);
+            }
+        }
+    }
+
+    void FilePanel::OfferAnotherDropFolder()
+    {
+        const std::vector<std::string> paths = m_desktopCopy.paths;
+        const wxString refused = wxString::FromUTF8(Marconi::Files::ToDisplayPath(m_desktopCopy.folder));
+        m_desktopCopy = DesktopCopy();
+        if (paths.empty() || m_closing)
+        {
+            return;
+        }
+        wxString folder = wxGetTextFromUser(
+            m_remote.displayName + " would not let Marconi copy into\n\n" + refused + "\n\nThat usually means the "
+            "file transfer there runs as an ordinary user, which can't write to a folder only an administrator can "
+            "change (the Public Desktop is one). Type a folder that the signed-in user can write to, for example "
+            "their own Desktop: C:\\Users\\NAME\\Desktop",
+            "Where should dropped files go?", refused, this);
+        if (folder.empty())
+        {
+            return;
+        }
+        RememberDropFolder(folder);
+        UploadToDesktop(paths);
     }
 
     void FilePanel::ShowStatus(const Marconi::Files::TransferStatus& status)
@@ -628,6 +731,19 @@ namespace MarconiUI
         m_transfers->SetItem(index, 1, FormatState(status));
         m_transfers->EnsureVisible(index);
         using Marconi::Files::TransferState;
+        if (status.state == TransferState::Failed && !m_desktopCopy.ids.empty() &&
+            std::find(m_desktopCopy.ids.begin(), m_desktopCopy.ids.end(), status.id) != m_desktopCopy.ids.end())
+        {
+            std::string lowered = status.error;
+            std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (lowered.find("denied") != std::string::npos || lowered.find("refused") != std::string::npos ||
+                lowered.find("permission") != std::string::npos)
+            {
+                m_desktopCopy.ids.clear(); // ask once for this copy, however many of its items fail
+                CallAfter([this]() { OfferAnotherDropFolder(); });
+            }
+        }
         bool finished = status.state == TransferState::Done || status.state == TransferState::Skipped ||
                         status.state == TransferState::Failed || status.state == TransferState::Cancelled;
         if (finished)

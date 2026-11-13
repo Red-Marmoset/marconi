@@ -70,7 +70,8 @@ namespace Marconi
             : m_handle(other.m_handle),
               m_shutdown(other.m_shutdown.load()),
               m_receiveTimeoutMs(other.m_receiveTimeoutMs.load()),
-              m_timedOut(other.m_timedOut.load())
+              m_timedOut(other.m_timedOut.load()),
+              m_peerAddress(std::move(other.m_peerAddress))
         {
             other.m_handle = Platform::kInvalidSocket;
         }
@@ -84,6 +85,7 @@ namespace Marconi
                 m_shutdown = other.m_shutdown.load();
                 m_receiveTimeoutMs = other.m_receiveTimeoutMs.load();
                 m_timedOut = other.m_timedOut.load();
+                m_peerAddress = std::move(other.m_peerAddress);
                 other.m_handle = Platform::kInvalidSocket;
             }
             return *this;
@@ -330,7 +332,15 @@ namespace Marconi
                 return false;
             }
             int on = 1;
+#if defined(_WIN32)
+            // On Windows SO_REUSEADDR would let a second program bind the same port and take its connections; ask
+            // for the port to ourselves instead, so a second server fails to start.
+            setsockopt(Native(handle), SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&on),
+                       sizeof(on));
+#else
+            // Elsewhere it only lets a restarted server reuse the port straight away; a second bind still fails.
             setsockopt(Native(handle), SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&on), sizeof(on));
+#endif
             if (bind(Native(handle), reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
                 listen(Native(handle), 4) != 0)
             {
@@ -350,7 +360,10 @@ namespace Marconi
                 error = ready == 0 ? "Timed out waiting for a connection" : Platform::ErrorString(Platform::LastError());
                 return false;
             }
-            intptr_t handle = static_cast<intptr_t>(accept(Native(m_handle), nullptr, nullptr));
+            sockaddr_storage peer = {};
+            socklen_t peerLength = sizeof(peer);
+            intptr_t handle =
+                static_cast<intptr_t>(accept(Native(m_handle), reinterpret_cast<sockaddr*>(&peer), &peerLength));
             if (handle == Platform::kInvalidSocket)
             {
                 error = "accept() failed: " + Platform::ErrorString(Platform::LastError());
@@ -359,6 +372,19 @@ namespace Marconi
             ConfigureConnected(handle);
             outClient.Close();
             outClient.m_handle = handle;
+            outClient.m_peerAddress.clear();
+            char text[INET6_ADDRSTRLEN] = {};
+            if (peer.ss_family == AF_INET &&
+                inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in*>(&peer)->sin_addr, text, sizeof(text)) != nullptr)
+            {
+                outClient.m_peerAddress = text;
+            }
+            else if (peer.ss_family == AF_INET6 &&
+                     inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6*>(&peer)->sin6_addr, text, sizeof(text)) !=
+                         nullptr)
+            {
+                outClient.m_peerAddress = text;
+            }
             return true;
         }
 

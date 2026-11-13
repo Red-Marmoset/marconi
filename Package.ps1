@@ -1,7 +1,11 @@
-# Package.ps1 - Build the Windows installer: Build\Installer\Marconi-<version>-win64-setup.exe
+# Package.ps1 - Build the Windows installers: Build\Installer\MarconiServer-<version>-win64-setup.exe (the server) and
+# Build\Installer\Marconi-<version>-win64-setup.exe (the client, which carries the server installer inside)
 # and, when this computer has the Android tools, the Android app: Build\Installer\Marconi-<version>-android.apk
 #
-# Runs the una engine's Packaging\PackageProject.ps1, which every una project packages with. Project.json's "package"
+# The server installer comes first, from PackageServer.ps1 (see there), because the client's installer embeds it: Marconi
+# hands it out through F8 > Install Marconi Server on the Other Computer and Settings > Share this computer.
+#
+# The client is packaged by the una engine's Packaging\PackageProject.ps1, which every una project packages with. Project.json's "package"
 # section says what goes in: Marconi.exe (built Release by Build.ps1), Nebula Sans and its licence, and the MSVC
 # runtime DLLs it links against (/MD). The installer is Installer\Marconi.nsi, compiled with NSIS 3.08 or newer
 # (winget install NSIS.NSIS).
@@ -54,6 +58,8 @@ if (-not (Test-Path (Join-Path $engine "Packaging\Include\DetectApps.nsh"))) {
     Write-Host "ERROR: the una engine at $engine is too old: it has no Packaging\Include\DetectApps.nsh for the installer's AI tools page. Update it (git pull)." -ForegroundColor Red
     exit 1
 }
+& "$PSScriptRoot\PackageServer.ps1" -Clean:$Clean -SkipBuild:$SkipBuild -AllowDirty:$AllowDirty
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $script -ProjectDir $PSScriptRoot -NoZip -Clean:$Clean -SkipBuild:$SkipBuild -AllowDirty:$AllowDirty
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

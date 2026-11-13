@@ -145,7 +145,10 @@ namespace MarconiUI
                               SystemKeyCapture::IsSupported()
                                   ? wxString()
                                   : wxString::FromUTF8(SystemKeyCapture::GetUnsupportedReason()));
+        menu->AppendCheckItem(ID_SEND_GAMEPADS, "Send Game &Controllers to the Other Computer",
+                              "Needs a Marconi Server. Controllers are sent only while this window is in front.");
         menu->Append(ID_REFRESH, "&Refresh Screen");
+        menu->Append(ID_INSTALL_SERVER, "Install Marconi Server on the Other Computer...");
         menu->AppendSeparator();
         menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
         menu->AppendCheckItem(ID_FILES, "Transfer &Files\tF10");
@@ -169,6 +172,7 @@ namespace MarconiUI
         menu->Check(ID_FULL_SCREEN, IsFullScreen());
         menu->Check(ID_VIEW_ONLY, m_canvas->IsViewOnly());
         menu->Check(ID_CLIPBOARD, m_clipboard.IsEnabled());
+        menu->Check(ID_SEND_GAMEPADS, m_sendGamepads);
         menu->Check(ID_SYSTEM_KEYS, m_sendSystemKeys);
         menu->Enable(ID_SYSTEM_KEYS, SystemKeyCapture::IsSupported());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
@@ -177,6 +181,7 @@ namespace MarconiUI
         menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
         menu->Enable(ID_GET_CLIPBOARD, m_connected);
         menu->Enable(ID_PASTE_FILES, m_connected && ClipboardHasFiles());
+        menu->Enable(ID_INSTALL_SERVER, m_connected);
         return menu;
     }
 
@@ -334,6 +339,9 @@ namespace MarconiUI
         case ID_GET_CLIPBOARD:
             m_clipboard.GetNow();
             return;
+        case ID_INSTALL_SERVER:
+            InstallServerOnOtherComputer();
+            return;
         case ID_PASTE_FILES:
             PasteFilesFromClipboard();
             return;
@@ -359,6 +367,19 @@ namespace MarconiUI
             m_sendSystemKeys = !m_sendSystemKeys;
             UpdateSystemKeyCapture();
             break;
+        case ID_SEND_GAMEPADS:
+            m_sendGamepads = !m_sendGamepads;
+            StartGamepads(); // stops them when switched off; says why in the status bar if it can't start
+            if (m_sendGamepads && !m_connected)
+            {
+                SetStatusText("Game controllers will be sent once connected.");
+                return;
+            }
+            if (!m_sendGamepads || m_gamepadForwarder)
+            {
+                break;
+            }
+            return; // keep the message StartGamepads put in the status bar
         case ID_SCREENSHOT:
         {
             std::unique_ptr<wxMenu> screenshot(CreateScreenshotMenu());
@@ -558,6 +579,19 @@ namespace MarconiUI
         }
         wxSize desktop = m_canvas->GetDesktopSize();
         wxString status = wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), desktop.x, desktop.y);
+        // Which kind of connection this is, in plain words: the three look alike on the screen.
+        if (m_wire != nullptr)
+        {
+            status += " - Marconi Server";
+        }
+        else if (m_rdp != nullptr)
+        {
+            status += " - Remote Desktop";
+        }
+        else if (m_rfb != nullptr)
+        {
+            status += " - VNC";
+        }
         // Always say whether the connection is encrypted: without encryption, the picture and every key typed can
         // be read by anyone on the network between the two computers.
         bool encrypted = m_session && m_session->IsEncrypted();

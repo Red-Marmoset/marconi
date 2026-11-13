@@ -16,6 +16,10 @@ namespace Marconi
             namespace
             {
                 constexpr uint16_t kClassIn = 1;
+                // The "QU" bit on a question's class (RFC 6762 5.4): asks for the answer straight back to the asker's
+                // port. Android's mDNS service only answers our one-off query (from a temporary port) when it is set;
+                // otherwise it multicasts the answer to port 5353, where we don't listen.
+                constexpr uint16_t kUnicastResponse = 0x8000;
                 constexpr int kMaxJumps = 16;
                 constexpr size_t kMaxName = 255;
 
@@ -190,7 +194,7 @@ namespace Marconi
                 {
                     PutName(out, question.name);
                     PutU16(out, question.type);
-                    PutU16(out, kClassIn);
+                    PutU16(out, kClassIn | kUnicastResponse);
                 }
                 return out;
             }

@@ -196,6 +196,12 @@ namespace MarconiUI
              wxCMD_LINE_VAL_STRING, 0},
             {wxCMD_LINE_SWITCH, nullptr, "remove-my-data",
              "remove this user's saved connections, passwords, settings and logs, then exit", wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "video",
+             "ask a Marconi server for video (H.264) where this computer can decode it; still pictures otherwise",
+             wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "stats",
+             "log frames a second, bitrate and decode time every few seconds (Marconi servers, with --video)",
+             wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_SWITCH, nullptr, "headless",
              "no window or dialogs: log and save snapshots to the log folder (testing, automation)",
              wxCMD_LINE_VAL_NONE, 0},
@@ -365,6 +371,8 @@ namespace MarconiUI
                 options.showFiles = parser.Found("files");
                 options.clipboard = options.clipboard && !parser.Found("no-clipboard");
                 options.sshTunnel = options.sshTunnel || parser.Found("ssh");
+                options.video = parser.Found("video");
+                options.videoStats = parser.Found("stats");
                 if (headless)
                 {
                     long seconds = 0;

@@ -126,6 +126,7 @@ namespace MarconiUI
             m_rfb = client.get();
             m_wire = nullptr; // a fallback switches protocols: the previous client goes with m_session
             m_rdp = nullptr;
+            StopGamepads(); // the forwarder uses the connection that is about to be replaced
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -142,6 +143,7 @@ namespace MarconiUI
             m_wire = client.get();
             m_rfb = nullptr;
             m_rdp = nullptr;
+            StopGamepads(); // the forwarder uses the connection that is about to be replaced
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -158,6 +160,7 @@ namespace MarconiUI
             m_rdp = client.get();
             m_rfb = nullptr;
             m_wire = nullptr;
+            StopGamepads(); // the forwarder uses the connection that is about to be replaced
             m_session = std::move(client);
             m_canvas->SetSession(m_session.get());
             m_clipboard.SetSession(m_session.get());
@@ -219,7 +222,10 @@ namespace MarconiUI
         options.host = m_options.address.host;
         options.port = port;
         options.password = m_options.credentials.password;
+        options.askForPassword = !m_options.headless;
         options.clientName = "Marconi";
+        options.offerVideo = m_options.video;
+        options.videoStats = m_options.videoStats;
         options.trustedCertificateSha256 = m_options.trustedCertificateSha256;
         EnsureWireClient().Connect(options);
     }
@@ -518,6 +524,11 @@ namespace MarconiUI
         SetTitle(GetServerDisplayName() + " - Marconi");
         m_connected = true;
         m_fallbacks.clear(); // this protocol works: reconnects stay with it
+        if (m_wire != nullptr && m_wire->SupportsFiles())
+        {
+            // The Marconi protocol carries files on this connection, with no second login.
+            m_files->SetMarconiFiles(m_wire->GetFiles(), GetServerDisplayName());
+        }
         if (m_rfb != nullptr && m_rfb->HasFileTransfer())
         {
             // TightVNC: files travel on this connection, with no second login.
@@ -616,6 +627,7 @@ namespace MarconiUI
         m_healthTimer.Start(1000);
         m_clipboardChangeCount = GetClipboardChangeCount();
         m_clipboardTimer.Start(500);
+        StartGamepads(); // only does anything when the setting is on
     }
 
     void ViewerFrame::HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info)
@@ -637,6 +649,7 @@ namespace MarconiUI
             m_tightFiles->Close();
             m_files->SetTightFiles(nullptr, GetServerDisplayName());
         }
+        m_files->SetMarconiFiles(nullptr, GetServerDisplayName());
         if (info.encryptionUnusable && m_allowEncryption)
         {
             // Typically a server offering only anonymous TLS, which this computer's TLS library can't make: connect

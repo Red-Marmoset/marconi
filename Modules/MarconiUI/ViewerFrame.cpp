@@ -186,6 +186,8 @@ namespace MarconiUI
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnHealthTick(); }, m_healthTimer.GetId());
         m_clipboardTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { WatchClipboard(); }, m_clipboardTimer.GetId());
+        m_gamepadTimer.SetOwner(this);
+        Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnGamepadTick(); }, m_gamepadTimer.GetId());
         m_retryTimer.SetOwner(this);
         Bind(wxEVT_TIMER, [this](wxTimerEvent&) { OnRetryTick(); }, m_retryTimer.GetId());
         m_matchSizeTimer.SetOwner(this);
@@ -267,6 +269,7 @@ namespace MarconiUI
         m_pictureTimer.Stop();
         m_statsTimer.Stop();
         m_clipboardTimer.Stop();
+        StopGamepads();
         m_healthTimer.Stop();
         SetStatusText(wxEmptyString, 1); // no connection, no round trip
     }
@@ -325,6 +328,7 @@ namespace MarconiUI
             m_closing = true;
         }
         m_questionChanged.notify_all();
+        StopGamepads(); // lets go of the controllers while the connection is still there
         if (m_session)
         {
             m_session->Disconnect();
@@ -385,6 +389,11 @@ namespace MarconiUI
         if (viewport != m_canvas->GetViewport())
         {
             m_canvas->SetViewport(viewport);
+        }
+        if (m_session)
+        {
+            // A server that can stream one display at a time then sends only the one on show (others ignore this).
+            m_session->SelectDisplay(viewport.IsEmpty() ? 0 : static_cast<uint32_t>(m_displayId));
         }
         UpdateStatus();
     }
@@ -574,7 +583,11 @@ namespace MarconiUI
         {
             // Win+L on Windows and most Linux desktops; Ctrl+Cmd+Q on a Mac (Command is Super over VNC).
             LOG_INFO("Viewer", "Locking the other computer's screen before disconnecting");
-            if (m_rfb != nullptr && m_rfb->IsAppleServer())
+            if (m_session && m_session->SendLock())
+            {
+                // A Marconi server locks itself when asked; no key shortcut needed.
+            }
+            else if (m_rfb != nullptr && m_rfb->IsAppleServer())
             {
                 SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Super_L, 'q'});
             }

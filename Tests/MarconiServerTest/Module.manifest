@@ -4,5 +4,10 @@
     "type": "console",
     "description": "Tests for the Marconi server core: the protocol session against an in-memory viewer",
     "dependencies": ["Test", "MarconiServerCore", "MarconiCore"],
+    "platformLibraries": {
+        "Windows": [],
+        "Linux": ["X11"],
+        "macOS": []
+    },
     "platforms": ["Windows", "Linux", "macOS"]
 }

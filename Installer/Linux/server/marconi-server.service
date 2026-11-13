@@ -1,0 +1,14 @@
+[Unit]
+Description=Marconi Server (shares this computer's screen)
+Documentation=file:///usr/share/doc/marconi-server/README
+# It has to run inside a signed-in graphical session: that is where the screen it shares is.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/marconi-server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

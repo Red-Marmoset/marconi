@@ -1,0 +1,24 @@
+Marconi Server shares this computer's screen with the Marconi viewer on another computer.
+
+It has to run inside your signed-in desktop, because that is where the screen is. It shares an X11 desktop; a
+Wayland-only desktop has no screen the server can read.
+
+Start it from the applications menu ("Marconi Server"), or by typing marconi-server. A small icon appears in the
+system tray, and the first time it asks you to choose an access password. Nobody can connect until one is set.
+
+To start it every time you sign in, run once, as yourself (not with sudo):
+
+    systemctl --user enable --now marconi-server.service
+
+To stop starting it at sign-in:
+
+    systemctl --user disable --now marconi-server.service
+
+Then, on the other computer, connect to marconi:// followed by this computer's name or address. The server listens
+on port 1895 unless you change it from the tray icon.
+
+marconi-server-console is the same server without the tray icon, for trying it from a terminal
+(marconi-server-console --help lists its options).
+
+Settings, the server's certificate and its log files are in ~/.marconi-server (the logs in its "logs"
+folder: one file per run, the newest 20 are kept). Nothing secret is written to the logs.

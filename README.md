@@ -95,6 +95,8 @@ From the menu you can:
 - ask the other computer to change its screen size to fit this window, where its server allows it (this changes
   the screen for anyone sitting at it too);
 - save a screenshot of the other computer's screen as a PNG file, or copy it, with or without the mouse pointer;
+- send game controllers to the other computer (off until you tick it; Marconi Server only, and only while this
+  window is in front; see "Game controllers" under Sharing this computer);
 - refresh the picture, or disconnect.
 
 The right-hand end of the status bar shows how long a message takes to reach the other computer and come back,
@@ -213,22 +215,122 @@ Marconi can now also work the other way round. **Marconi Server** is a separate 
 computer, so someone using Marconi on another computer can see its screen and control it. You don't need any other
 VNC server.
 
-It's new and still being built, so for now you start it by hand (an installer, and a way to set it up from the
-Marconi window, are coming next):
+It's an early version. It has been tried on Linux and on Windows, but not yet on a Mac, and the Windows installer and
+the Windows service below have not been fully tried, so expect rough edges.
 
-1. Start the server program. It puts a small icon in the system tray (near the clock). The first time, it asks you
-   to choose an access password — anyone connecting has to type it. You can leave it empty for no password, though a
-   password is a good idea.
-2. On the other computer, open Marconi and connect to `marconi://` followed by this computer's name or network
-   address (for example `marconi://office-pc`). The first time, Marconi shows you the server's identity and asks if
-   you trust it; after that it connects without asking, and warns you if the identity ever changes.
-3. The connection is always private: the screen and everything you type are encrypted.
+### Installing it from Marconi
 
-From the tray icon you can set or change the password, change the port the server listens on, and quit. The server
-keeps its settings and a log in a "marconi-server" folder in your user account.
+You don't have to walk to the other computer. While you are connected to a Windows computer over VNC:
 
-Right now the server shows this computer's actual screen on Windows; on macOS and Linux it shows a moving test
-picture for the moment, while the screen-sharing part for those systems is finished.
+1. Press F8 and choose **Install Marconi Server on the Other Computer...**. Marconi explains what will happen. If the
+   connection can carry files (TightVNC does), it copies the Marconi Server installer to that computer's desktop.
+   Otherwise it can copy the download address to the clipboard for you to open in a web browser over there.
+2. On the other computer's screen, in Marconi, double-click the installer on its desktop and say yes when Windows asks
+   for permission.
+3. Setup lets Marconi Server through Windows Firewall (you can untick that) and starts it whenever someone signs in
+   (you can untick that too). When Setup finishes, Marconi Server starts and asks you to choose an **access
+   password**. Anyone who knows it can control that computer, so pick one you would not mind guarding. It doesn't
+   have to match the VNC password.
+4. Close the connection and connect again. Marconi finds Marconi Server by itself and uses it;
+   your saved connection stays as it is.
+
+To share the computer you are sitting at, open Marconi's **Settings** and choose **Share this computer...**, which
+starts the same installer here.
+
+The installer comes inside Marconi's own Windows setup (it is an option you can untick). To remove Marconi Server, use
+Windows' Settings > Apps, or run `Uninstall.exe` in `Program Files\Marconi Server`. That removes the program and the
+firewall rule, and keeps the settings and password unless you tick the option to remove them too. Running the
+installer with `/S` installs without any questions; Marconi Server then asks for a password the first time it starts.
+
+### What it does and doesn't do yet
+
+It does: show this computer's screen and take the other computer's keyboard and mouse, always encrypted, behind an
+access password. It also shares the clipboard (text and pictures), shows each of the computer's screens separately,
+changes the screen's size to fit your window, shows the other computer's mouse pointer shape, and can lock the computer
+when you disconnect. Copying files is available but off until you turn it on in the tray menu. From the tray menu you
+can also limit who can connect (by address), disconnect a viewer that has been idle, and choose whether you are told
+when someone connects.
+
+It doesn't yet: play sound, or let more than one person connect at once. Game controllers are written but only tried
+with stand-ins (see below). It runs as a program
+in the signed-in user's session; a Windows service that also works at the sign-in screen and through a restart is
+written but has not been tried on Windows. If you change its port, the Windows Firewall rule (made for port 1895) has
+to be changed to match. A server with no password refuses every viewer, so set one. Other VNC viewers can't connect to
+it; it only talks to Marconi.
+
+### Game controllers
+
+Tick **Send Game Controllers to the Other Computer** in the viewer's menu (it is off until you do) and the controllers
+plugged into your computer appear on the other one, while the viewer window is in front: up to four, with the
+shaking sent back to your controller. Let go of the window and they are released and removed, so nothing stays
+pressed down over there.
+
+What the other computer needs:
+
+- **Windows:** the free ViGEmBus driver, which Marconi Server does not install. Without it the viewer says "Game
+  controllers need the ViGEmBus driver, which isn't installed on this computer." ViGEmBus's author stopped
+  maintaining it in 2023, though it still works on Windows 11. Marconi Server also needs a `ViGEmClient.dll` next to
+  it; that is not supplied yet.
+- **Linux:** access to `/dev/uinput`, which most systems only give an administrator. If it is missing, the viewer is
+  told how to give Marconi Server access.
+- **Mac:** not available yet.
+
+Your computer can send controllers if it is Windows (Xbox-style controllers) or Linux; a Mac can't yet. PlayStation and
+other controllers are shown to the other computer as Xbox controllers. All of this is written, but it has only been
+tried with stand-ins: no real controller and no real driver has been used yet.
+
+### Starting it by hand
+
+Start the server program (`MarconiServerTray`, built from `ServerUI/Project.json`). It puts a small icon in the system
+tray (near the clock) and, the first time, asks you to choose an access password. On the other computer, connect to
+`marconi://` followed by this computer's name or network address (for example `marconi://office-pc`). The first time,
+Marconi shows you the server's identity and asks if you trust it; after that it connects without asking, and warns you
+if the identity ever changes. From the tray icon you can set or change the password, change the port the server
+listens on, and quit.
+
+### Who can connect, and when to hang up
+
+All of this is in the tray icon's menu, and it applies at once (you don't need to restart the server).
+
+- **Who can connect...** is a list of the computers allowed to connect, one per line. Write a single address such as
+  `192.168.1.20`, or a whole network such as `192.168.1.0/24` (everything from `192.168.1.0` to `192.168.1.255`).
+  Addresses in the newer style, such as `fd00::/8`, work too. If the list is empty, anyone who can reach this computer
+  can try to connect, as before; they still need the password. A computer that is not on the list is simply cut off,
+  and is told nothing about why; the server writes a line in its log with the address. If you list `127.0.0.1`, that
+  covers this computer talking to itself over the older address style only; `::1` is the newer-style one and has to be
+  listed separately. Someone already connected when you change the list stays connected.
+- **Disconnect idle viewers after** hangs up on a viewer that has not used the mouse or keyboard (or copied anything)
+  for the time you pick. The viewer is told why. "Never" (the default) turns it off.
+- **Tell me when someone connects** shows a small message on this computer when a viewer connects and when it goes
+  away. It is on by default and can be turned off.
+
+On the command line the same things are `--allow ADDRESS_OR_NETWORK` (repeat it for more), `--idle-minutes N` and
+`--notify` (prints a line instead of showing a message). The tray icon keeps its choices between runs; the Windows
+service does not read them yet.
+
+Where it keeps its settings and logs: on Windows, in `C:\ProgramData\Marconi Server` when the installer made that folder
+(the installer lets the account that was signed in during Setup change things there); otherwise, and on macOS and
+Linux, in a "marconi-server" folder in your own user account.
+
+On macOS and Linux the server shows a moving test picture for the moment, while the screen-sharing part for those
+systems is finished.
+
+### Log files
+
+Every Marconi Server program writes a log file each time it runs, in the "logs" folder inside its settings folder (on
+Linux that is `~/.marconi-server/logs`; on Windows `C:\ProgramData\Marconi Server\logs` for the service and its
+helper). The file is named with the date and time, each line is saved as it is written, and the newest 20 files of each
+program are kept. If you have to report a problem, send the newest file. Passwords and keys are never written to it.
+The console program (`MarconiServer`) writes one only when asked: `--log-file FOLDER`.
+
+### Installing the server on Linux
+
+`./PackageServerLinux.sh` builds `Build/Installer/MarconiServer-<version>-linux-<arch>.deb` for Ubuntu, Debian and
+computers like them. Install it with `sudo apt install ./MarconiServer-...deb`. It adds **Marconi Server** to the
+applications menu and the programs `marconi-server` (with the tray icon) and `marconi-server-console` (without). The
+server has to run inside your signed-in desktop, because that is where the screen is, so it is not a system service: to
+start it every time you sign in, run `systemctl --user enable --now marconi-server.service` as yourself. It shares an
+X11 desktop; a Wayland-only desktop can't be shared yet.
 
 ## Letting AI tools use another computer
 
@@ -425,6 +527,14 @@ uninstaller is running as a different account). `Uninstall.exe /S` uninstalls si
 installer accepts `/S`, `/D=<folder>`, and `/CURRENTUSER` or `/ALLUSERS` to choose without asking; a silent install
 with neither picks the kind already installed, or everyone when run as administrator, or otherwise just you.
 
+`Package.ps1` also builds the Marconi Server installer first (`PackageServer.ps1`, from `Installer/MarconiServer.nsi`),
+as `Build\Installer\MarconiServer-<version>-win64-setup.exe` with the same version and the same signing settings,
+prints its SHA-256, and puts it inside the Marconi installer as the "Marconi Server installer" option. The server
+installer needs the same NSIS and ShellExecAsUser plug-in as the client's. It installs for the whole computer (it asks
+for administrator permission straight away), asks for an access password, adds a Windows Firewall rule for port 1895,
+starts the tray program when someone signs in, and has an uninstaller. Neither the script nor the installer has been
+run on Windows yet (see `SERVER_PLAN.md`, Phase 2).
+
 `Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico` and
 `Marconi.icns` and the Linux package's PNGs in `Installer/Linux/icons`, are rendered by
 `python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from
@@ -527,6 +637,49 @@ authentication and logs every key, pointer and clipboard event it receives:
 
 `Tools/fake_vencrypt_server.py` is the same idea for encryption: it only accepts VeNCrypt over real TLS (a
 self-signed certificate, or anonymous TLS), then serves one frame and waits for a key press.
+
+## Testing the Windows service by hand
+
+`Tests/MarconiServerTest` covers the service's logic on any platform: which console session the helper should be in
+and when to restart it (fake session list and launcher), the messages between the tray icon and the helper and the
+administrator check for Set password (in-memory pipe), and the Lock message with lock on disconnect. What it cannot
+cover is Windows itself, so the Windows-only files (`ServiceHost_Windows.cpp`, `DesktopSwitch_Windows.cpp`,
+`ControlPipe_Windows.cpp`, `SystemLock_Windows.cpp` and the edits in `SystemScreen_Windows.cpp` and
+`SystemInput_Windows.cpp`) were written without a Windows machine and have never been built or run. On a Windows
+machine, build `Server\Project.json`, fix what the compiler says, then work through this list (an administrator
+prompt for each `MarconiServer.exe` command; the viewer is Marconi on another computer):
+
+1. **Helper by hand.** `psexec -s -i 1 MarconiServer.exe --session 1 --data-dir C:\Temp\ms` (session 1 is the console
+   session; use the number Task Manager's Users tab shows). Connect: the desktop shows, typing and clicking work.
+2. **Install.** `MarconiServer.exe --set-password` (type the password, then Enter) and `MarconiServer.exe
+   --install-service`. "Marconi Server" is running in Services; Task Manager shows `MarconiServer.exe` as SYSTEM in
+   the console session. Connect.
+3. **Control pipe.** `MarconiServer.exe --control-status` lists the connected viewer; `--control-disconnect 0` ends
+   it; `--control-set-password` from a normal prompt says it needs administrator permission, from an elevated one it
+   works and the new password is needed at the next connect.
+4. **Sign out.** With a viewer connected, sign out: the viewer reconnects (the helper restarts for the sign-in
+   screen) and the sign-in screen is visible and usable (type the password and sign in through Marconi).
+5. **Permission prompt (UAC).** Start something that asks for administrator permission: the dimmed prompt shows in
+   the viewer and Yes/No can be clicked. Also try it with the keyboard.
+6. **Lock screen.** Press Win+L at the computer, and from the viewer: the lock screen shows and the password can be
+   typed through Marconi.
+7. **Lock on disconnect.** With the Marconi viewer's "lock the other computer when I disconnect" on, disconnect: the
+   other computer locks. Then put `lock-on-disconnect=yes` in `C:\ProgramData\Marconi Server\server.conf`, restart
+   the service, connect from a viewer with the option off, close the window: it locks too. A viewer being ended from
+   the tray icon or `--control-disconnect` must not lock it.
+8. **Ctrl+Alt+Del.** From the viewer send Ctrl+Alt+Del (once at the sign-in screen, once signed in): the Windows
+   security screen appears. If it does not, check the registry value `SoftwareSASGeneration` under
+   `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System` (the installer sets 1) and report what the
+   Event Viewer says.
+9. **Switch user.** Use Start, then the user's picture, then another account: within a second or two the helper moves
+   to the new console session and the viewer reconnects to it. Switch back.
+10. **Remote Desktop.** Connect to the machine with Remote Desktop, then disconnect: whatever takes the console
+    session, Marconi follows it.
+11. **Restart.** Restart (not Shut down, which keeps part of the system with Fast Startup) with nobody signing in: from
+    the viewer, Marconi reconnects by itself to the sign-in screen. Note how long after the restart.
+12. **Crash and stop.** End the `MarconiServer.exe` helper in Task Manager: it is back in about a second; end it a
+    few times quickly: the waits grow to 30 seconds. Stop the service: the helper goes and the port closes.
+13. **Remove.** `MarconiServer.exe --remove-service` stops and removes it and the policy value.
 
 ## Encryption: how it works and what's left
 

@@ -58,6 +58,7 @@ namespace Marconi
             Ping = 5,        // either way: round-trip timing / keep-alive
             Pong = 6,        // the answer to a Ping, echoing its token
             Bye = 7,         // either way: closing cleanly, with a reason
+            Lock = 8,        // client -> server: lock the computer's screen now (sent before disconnecting)
 
             // Display and picture (control channel in Phase 1; video moves to datagrams in Phase 5)
             Displays = 16,       // server -> client: the layout of its displays
@@ -69,6 +70,8 @@ namespace Marconi
             FrameBegin = 22,     // server -> client: a picture update starts (frame id, display)
             FrameEnd = 23,       // server -> client: the update is complete
             CursorShape = 24,    // server -> client: the pointer image, or hidden
+            CursorPosition = 25, // server -> client: where the pointer is (desktop coordinates), or hidden
+            DisplayModeResult = 26, // server -> client: the answer to a SetDisplayMode
 
             // Input (control channel for keys; pointer moves to datagrams in Phase 5)
             Key = 32,     // client -> server: a key by scancode and keysym, down or up
@@ -79,6 +82,38 @@ namespace Marconi
             ClipboardOffer = 48,   // either way: what formats the clipboard now holds
             ClipboardRequest = 49, // either way: send me this format
             ClipboardData = 50,    // either way: the clipboard contents
+
+            // Files (control channel; the messages are in WireFileMessages.h)
+            FileRequest = 64,     // client -> server: home, list, stat, make folder, rename, remove
+            FileResult = 65,      // server -> client: the answer to a FileRequest or a FileClose
+            FileOpen = 66,        // client -> server: open a file to read or write
+            FileOpened = 67,      // server -> client: the handle, and the file's size
+            FileRead = 68,        // client -> server: send me this range of an open file
+            FileData = 69,        // server -> client: that range
+            FileWrite = 70,       // client -> server: write this range (no answer unless it fails)
+            FileClose = 71,       // client -> server: close the handle
+            FileWriteFailed = 72, // server -> client: an earlier FileWrite did not work
+
+            // Game controllers (the messages are in WireGamepadMessages.h); numbers 80 to 89 are theirs
+            GamepadConnect = 80,    // client -> server: a controller was plugged in (its slot, kind and name)
+            GamepadDisconnect = 81, // client -> server: that controller was unplugged
+            GamepadState = 82,      // client -> server: the controller's whole state, with a sequence number
+            GamepadRumble = 83,     // server -> client: shake the controller this hard
+            GamepadResult = 84,     // server -> client: the answer to a GamepadConnect
+
+            // Video (control channel; the messages are in WireVideoMessages.h). 100 to 105 are the video messages (80 to 89 are the controllers, 90 to 99 the datagram channel).
+            VideoOffer = 100,           // client -> server: the codecs and size the viewer can decode
+            VideoStart = 101,           // server -> client: a video stream starts (codec, size, frame rate, bitrate)
+            VideoFrame = 102,           // server -> client: one encoded picture
+            VideoRequestKeyframe = 103, // client -> server: send a whole picture, my decoder lost its place
+            VideoFeedback = 104,        // client -> server: what arrived and how it went; bitrate and quality hints
+            VideoStop = 105,            // either way: the stream ended (the pictures come as stills again)
+            // The datagram channel's setup and fallback (control channel; the messages are in DatagramMessages.h).
+            // Numbers 90 to 99 belong to that layer.
+            DatagramOffer = 90,  // server -> client: UDP port, session id and the secret the keys come from
+            DatagramAccept = 91, // client -> server: will use UDP, or won't
+            DatagramState = 92,  // either way: UDP is working, or is blocked so use the control channel
+            DatagramData = 93,   // either way: one datagram-channel message carried on the control channel
         };
 
         // One rectangle of the screen. Plain ints so the protocol layer needs nothing from the VNC code.
@@ -195,6 +230,15 @@ namespace Marconi
             static Bye Decode(Reader& reader);
         };
 
+        // Asks the server to lock the computer it runs on (the login screen on Windows). It has no fields; the
+        // viewer sends it just before it disconnects when "lock the other computer on disconnect" is on. Only a
+        // viewer that has logged in can send it.
+        struct Lock
+        {
+            Bytes Encode() const;
+            static Lock Decode(Reader& reader);
+        };
+
         struct Displays
         {
             std::vector<Display> displays;
@@ -291,6 +335,33 @@ namespace Marconi
             static CursorShape Decode(Reader& reader);
         };
 
+        struct CursorPosition
+        {
+            int32_t x = 0; // whole-desktop coordinates
+            int32_t y = 0;
+
+            Bytes Encode() const;
+            static CursorPosition Decode(Reader& reader);
+        };
+
+        // The server's answer to a SetDisplayMode. On success the new layout follows as a Displays message.
+        struct DisplayModeResult
+        {
+            enum class Status : uint8_t
+            {
+                Ok = 0,
+                NotAllowed = 1,    // this server doesn't change screen sizes
+                NoSuchDisplay = 2, // the display id isn't one of the server's
+                NotListed = 3,     // the size isn't one the display offers (nothing was changed)
+                Failed = 4         // the computer refused or couldn't do it
+            };
+            uint32_t displayId = 0;
+            Status status = Status::Ok;
+
+            Bytes Encode() const;
+            static DisplayModeResult Decode(Reader& reader);
+        };
+
         struct Key
         {
             uint32_t keysym = 0;   // an X11 keysym, as the VNC side uses (what the key means)
@@ -320,6 +391,11 @@ namespace Marconi
             Bytes Encode() const;
             static Pointer Decode(Reader& reader);
         };
+
+        // The most clipboard data either end will send or accept: text in UTF-8 bytes, and an image as PNG bytes.
+        // Anything larger is not offered, not delivered and not applied (a peer that ignores it is not an error).
+        constexpr size_t kMaxClipboardTextBytes = 4 * 1024 * 1024;
+        constexpr size_t kMaxClipboardImageBytes = 32 * 1024 * 1024;
 
         struct ClipboardOffer
         {

@@ -37,10 +37,28 @@ namespace MarconiServerTest
 
     void RunListenerTests()
     {
+        RunTest("A second server can't start on a port another server is already listening on", []() {
+            Server::TestPatternScreen screen(8, 8);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.port = 0; // a free port
+            Server::Listener first(screen, input, settings);
+            std::string error;
+            CHECK(first.Start(error, "127.0.0.1"));
+
+            Server::Settings same = settings;
+            same.port = first.GetPort();
+            Server::Listener second(screen, input, same);
+            CHECK(!second.Start(error, "127.0.0.1"));
+            CHECK(!error.empty());
+            first.Stop();
+        });
+
         RunTest("A viewer that pins the server's fingerprint connects without being asked about it", []() {
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0; // a free port
             settings.serverName = "Socket PC";
             settings.serverVersion = "0.6.0.0";
@@ -86,6 +104,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0;
             settings.serverName = "Socket PC";
             settings.serverVersion = "0.6.0.0";

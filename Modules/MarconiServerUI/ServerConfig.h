@@ -4,6 +4,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include <wx/string.h>
 
@@ -11,9 +13,11 @@ namespace Marconi
 {
     namespace ServerUI
     {
-        // The server's saved settings and the folder they live in. Everything is kept under one per-user data folder
-        // ("Marconi Server"): a small settings file, the TLS certificate and key, and the logs. (An all-users
-        // location and a Windows service come with a later phase; for now the server runs as the signed-in user.)
+        // The server's saved settings and the folder they live in. Everything is kept under one data folder: a small
+        // settings file, the TLS certificate and key, and the logs. On Windows that is ProgramData\Marconi Server when
+        // the installer made it and this account can write in it (every account shares it, and the Windows service of
+        // a later phase will use it); otherwise, and always on Linux and macOS, a per-user folder.
+        // (Not yet run on Windows: the ProgramData choice is compiled only there.)
         class ServerConfig
         {
         public:
@@ -25,13 +29,31 @@ namespace Marconi
             wxString GetKeyPath() const;
             wxString GetLogDirectory() const;
 
-            uint16_t GetPort() const;
-            void SetPort(uint16_t port);
+            // Not GetPort/SetPort: Windows' winspool.h defines SetPort as a macro, which renames the function in some
+            // files and not others.
+            uint16_t GetListenPort() const;
+            void SetListenPort(uint16_t port);
 
             // The access password as a stored hash (empty means no password is set). The plain password is never
             // kept; the caller hashes it first.
             wxString GetPasswordHash() const;
             void SetPasswordHash(const wxString& hash);
+
+            // Whether viewers may browse and copy this computer's files. Off until someone turns it on.
+            bool GetFilesEnabled() const;
+            void SetFilesEnabled(bool enabled);
+
+            // Who may connect: addresses and networks (Settings::allowedAddresses). Empty means anyone.
+            std::vector<std::string> GetAllowedAddresses() const;
+            void SetAllowedAddresses(const std::vector<std::string>& entries);
+
+            // Minutes without any input after which a viewer is disconnected; 0 (the default) means never.
+            int GetIdleMinutes() const;
+            void SetIdleMinutes(int minutes);
+
+            // Whether to show a notification here when a viewer connects or disconnects. On unless turned off.
+            bool GetNotifyEnabled() const;
+            void SetNotifyEnabled(bool enabled);
 
             // True until a password has been set (or deliberately left empty) once, so the tray app can prompt on
             // first run.

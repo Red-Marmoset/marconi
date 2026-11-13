@@ -12,6 +12,8 @@
 
 #include <MarconiCore/Address.h>
 #include <MarconiCore/Files/TightFiles.h>
+#include <MarconiCore/Gamepad/GamepadForwarder.h>
+#include <MarconiCore/Gamepad/GamepadSource.h>
 #include <MarconiCore/Net/Probe.h>
 #include <MarconiCore/Quality.h>
 #include <MarconiCore/Rfb/Client.h>
@@ -80,6 +82,8 @@ namespace MarconiUI
         // Headless (testing and automation): no window and no dialogs. Saves the picture the viewer would show
         // to the log folder every `snapshotEverySeconds`, and closes after `quitAfterSeconds`.
         bool headless = false;
+        bool video = false;      // ask a Marconi server for video (--video)
+        bool videoStats = false; // log the video's frames a second, bitrate and decode time (--stats)
         int snapshotEverySeconds = 5;
         int quitAfterSeconds = 60;
 
@@ -174,6 +178,11 @@ namespace MarconiUI
         bool GetKnownRemoteSystem(RemoteSystem& system) const;
         wxMenu* CreateSendKeysMenu() const;
         void UpdateSystemKeyCapture();
+        // Game controllers (ViewerFrameGamepads.cpp): forwarded to a Marconi Server while the setting is on and this
+        // window is in front.
+        void StartGamepads();
+        void StopGamepads();
+        void OnGamepadTick();
         void ToggleFullScreen();
         void ToggleToolbar();
         void ToggleFiles();
@@ -185,6 +194,7 @@ namespace MarconiUI
         void RequestMatchingSize();
         void UploadToRemoteDesktop(const std::vector<std::string>& paths);
         void PasteFilesFromClipboard();
+        void InstallServerOnOtherComputer();
         void SaveSettings();
         void WaitForPicture();
         void CheckForPicture();
@@ -253,6 +263,10 @@ namespace MarconiUI
         std::vector<std::thread> m_saveThreads; // PNG encoders, joined on destruction
         wxString m_screenshotFolder;            // where the last screenshot of this window went
         wxTimer m_clipboardTimer; // sends local clipboard changes while connected and in front
+        bool m_sendGamepads = false; // the user wants game controllers sent to the other computer (off until chosen)
+        wxTimer m_gamepadTimer;      // looks at the controllers about every 8 ms while they are being forwarded
+        std::unique_ptr<Marconi::Gamepad::GamepadSource> m_gamepadSource;       // the computer's controllers
+        std::unique_ptr<Marconi::Gamepad::GamepadForwarder> m_gamepadForwarder; // before the session goes, this goes
         long m_clipboardChangeCount = -1;
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in
         std::thread m_probeThread;       // finds which protocol the machine offers, before connecting

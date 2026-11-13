@@ -5,6 +5,8 @@
 
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Wire/WireCompress.h>
+#include <MarconiCore/Wire/WireImage.h>
+#include <MarconiCore/Wire/WireVideoMessages.h>
 
 #include <Log/Log.h>
 
@@ -59,7 +61,8 @@ namespace Marconi
             }
         } // namespace
 
-        Client::Client(SessionListener& listener) : m_listener(listener)
+        Client::Client(SessionListener& listener)
+            : m_listener(listener), m_files([this](const Bytes& framed) { return Send(framed); })
         {
         }
 
@@ -79,6 +82,7 @@ namespace Marconi
         {
             m_stopping = true;
             m_socket.Shutdown();
+            m_files.Close();
             if (m_thread.joinable())
             {
                 if (m_thread.get_id() == std::this_thread::get_id())
@@ -101,6 +105,27 @@ namespace Marconi
                 return false;
             }
             return WriteMessage(*m_transport, framed);
+        }
+
+        bool Client::SendGamepadConnect(const GamepadConnect& message)
+        {
+            return m_gamepadsGranted.load() && Send(message.Encode());
+        }
+
+        bool Client::SendGamepadDisconnect(const GamepadDisconnect& message)
+        {
+            return m_gamepadsGranted.load() && Send(message.Encode());
+        }
+
+        bool Client::SendGamepadState(const GamepadState& message)
+        {
+            return m_gamepadsGranted.load() && Send(message.Encode());
+        }
+
+        void Client::SetGamepadListener(Gamepad::GamepadListener* listener)
+        {
+            std::lock_guard<std::mutex> lock(m_gamepadMutex); // waits out a call that is running
+            m_gamepadListener = listener;
         }
 
         void Client::MarkInput()
@@ -183,6 +208,8 @@ namespace Marconi
                     m_tls.reset();
                     m_connected = false;
                     m_encrypted = false;
+                    m_supportsFiles = false;
+                    m_files.Close();
                     m_listener.OnDisconnected(info);
                     return;
                 }
@@ -208,6 +235,23 @@ namespace Marconi
                         ++m_statUpdates;
                         m_listener.OnFramebufferUpdated(m_frameRects);
                         break;
+                    case Type::VideoStart:
+                        if (std::shared_ptr<Video::VideoReceiver> video = GetVideo())
+                        {
+                            video->OnStart(VideoStart::Decode(body));
+                            m_videoStreaming = video->IsStreaming();
+                        }
+                        break;
+                    case Type::VideoFrame:
+                        HandleVideoFrame(VideoFrame::Decode(body));
+                        break;
+                    case Type::VideoStop:
+                        if (std::shared_ptr<Video::VideoReceiver> video = GetVideo())
+                        {
+                            video->OnStop(VideoStop::Decode(body));
+                            m_videoStreaming = false;
+                        }
+                        break;
                     case Type::CursorShape:
                     {
                         Wire::CursorShape shape = Wire::CursorShape::Decode(body);
@@ -226,9 +270,57 @@ namespace Marconi
                         m_listener.OnCursorShape(cursor);
                         break;
                     }
+                    case Type::CursorPosition:
+                    {
+                        CursorPosition position = CursorPosition::Decode(body);
+                        m_listener.OnCursorPosition(position.x, position.y);
+                        break;
+                    }
+                    case Type::DisplayModeResult:
+                    {
+                        DisplayModeResult result = DisplayModeResult::Decode(body);
+                        if (result.status != DisplayModeResult::Status::Ok)
+                        {
+                            // The same numbers VNC's resize refusals use: 1 not allowed, 2 couldn't, 3 bad size.
+                            int status = result.status == DisplayModeResult::Status::NotAllowed ? 1
+                                         : result.status == DisplayModeResult::Status::NotListed ? 3
+                                                                                                  : 2;
+                            m_listener.OnDesktopResizeRefused(status);
+                        }
+                        break;
+                    }
                     case Type::Displays:
                         ApplyDisplays(Displays::Decode(body).displays, false);
                         break;
+                    case Type::ClipboardOffer:
+                        HandleClipboardOffer(ClipboardOffer::Decode(body));
+                        break;
+                    case Type::ClipboardRequest:
+                        HandleClipboardRequest(ClipboardRequest::Decode(body));
+                        break;
+                    case Type::ClipboardData:
+                        HandleClipboardData(ClipboardData::Decode(body));
+                        break;
+                    case Type::GamepadRumble:
+                    {
+                        GamepadRumble rumble = GamepadRumble::Decode(body);
+                        std::lock_guard<std::mutex> lock(m_gamepadMutex);
+                        if (m_gamepadListener != nullptr)
+                        {
+                            m_gamepadListener->OnGamepadRumble(rumble);
+                        }
+                        break;
+                    }
+                    case Type::GamepadResult:
+                    {
+                        GamepadResult result = GamepadResult::Decode(body);
+                        std::lock_guard<std::mutex> lock(m_gamepadMutex);
+                        if (m_gamepadListener != nullptr)
+                        {
+                            m_gamepadListener->OnGamepadResult(result);
+                        }
+                        break;
+                    }
                     case Type::Pong:
                         Pong::Decode(body);
                         break;
@@ -241,7 +333,8 @@ namespace Marconi
                         break;
                     }
                     default:
-                        break; // a message this build doesn't handle yet; its length let us skip it
+                        m_files.OnMessage(type, body); // file answers; any other type is skipped by its length
+                        break;
                     }
                 }
             }
@@ -260,14 +353,40 @@ namespace Marconi
             }
             m_connected = false;
             m_encrypted = false;
+            m_supportsFiles = false;
+            m_gamepadsGranted = false;
+            m_videoGranted = false;
+            m_videoStreaming = false;
+            {
+                std::lock_guard<std::mutex> lock(m_videoMutex);
+                m_video.reset();
+            }
+            m_files.Close();
             m_listener.OnDisconnected(info);
         }
 
         bool Client::Handshake(MessageReader& reader, ClientOptions& options, DisconnectInfo& info)
         {
+            // Video is offered only with a decoder to show it with; otherwise the server sends still pictures.
+            std::shared_ptr<Video::VideoReceiver> video;
+            if (options.offerVideo)
+            {
+                video = std::make_shared<Video::VideoReceiver>(options.videoDecoderFactory,
+                                                               [this](const Bytes& framed) { return Send(framed); });
+                if (options.videoDecoderFactory)
+                {
+                    video->SetOfferedCodecs(options.videoCodecs);
+                }
+                video->SetStatsLogging(options.videoStats);
+                if (video->OfferedCodecs().empty())
+                {
+                    video.reset();
+                }
+            }
             Hello hello;
             hello.version = kProtocolVersion;
-            hello.capabilities = options.capabilities;
+            hello.capabilities = options.capabilities | (options.offerFiles ? Capability::Files : uint64_t(0)) |
+                                 (video ? Capability::Video : uint64_t(0));
             hello.clientName = options.clientName;
             if (!Send(hello.Encode()))
             {
@@ -283,6 +402,18 @@ namespace Marconi
                 return false;
             }
             Welcome welcome = Welcome::Decode(welcomeReader);
+
+            if (options.askForPassword && options.password.empty())
+            {
+                // Asked here, after the certificate was trusted, so the password only ever goes to a trusted server.
+                Rfb::Credentials credentials;
+                if (!m_listener.OnCredentialsRequired(Rfb::CredentialsKind::Password, credentials))
+                {
+                    info.error.clear(); // cancelled: close without an error
+                    return false;
+                }
+                options.password = credentials.password;
+            }
 
             Login login;
             login.password = options.password;
@@ -310,6 +441,27 @@ namespace Marconi
                 return false;
             }
 
+            m_supportsFiles = (welcome.capabilities & Capability::Files) != 0;
+            m_gamepadsGranted = (welcome.capabilities & options.capabilities & Capability::Gamepads) != 0;
+            m_files.Reopen(); // a server that doesn't share files still answers file requests, with a refusal
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                m_offeredText.clear();
+                m_offeredPng.clear();
+                m_awaitText = 0;
+                m_awaitImage = 0;
+                m_incoming = Rfb::ClipboardContent();
+            }
+            m_clipboardGranted = (welcome.capabilities & options.capabilities & Capability::Clipboard) != 0;
+
+            m_supportsResize = (welcome.capabilities & Capability::ResizeDisplay) != 0;
+            m_selectedDisplay = 0;
+            m_videoStreaming = false;
+            m_videoGranted = video && (welcome.capabilities & Capability::Video) != 0;
+            {
+                std::lock_guard<std::mutex> lock(m_videoMutex);
+                m_video = m_videoGranted.load() ? video : nullptr;
+            }
             int width = 0;
             int height = 0;
             DesktopSize(welcome.displays, width, height);
@@ -324,7 +476,63 @@ namespace Marconi
             m_listener.OnConnected(serverInit);
             LOG_INFO("Wire", "Connected to '%s' (%s), desktop %dx%d", welcome.serverName.c_str(),
                      welcome.serverVersion.c_str(), width, height);
+            if (m_videoGranted.load() && !video->SendOffer(options.video))
+            {
+                LOG_INFO("Wire", "Could not ask the server for video; it sends still pictures");
+            }
             return true;
+        }
+
+        std::shared_ptr<Video::VideoReceiver> Client::GetVideo() const
+        {
+            std::lock_guard<std::mutex> lock(m_videoMutex);
+            return m_video;
+        }
+
+        void Client::SetVideoPreferences(const Video::VideoPreferences& preferences)
+        {
+            if (std::shared_ptr<Video::VideoReceiver> video = GetVideo())
+            {
+                video->SetPreferences(preferences);
+            }
+        }
+
+        void Client::HandleVideoFrame(const VideoFrame& frame)
+        {
+            std::shared_ptr<Video::VideoReceiver> video = GetVideo();
+            if (!video)
+            {
+                return; // video was never agreed: a stray frame is ignored
+            }
+            Video::VideoUpdate update;
+            if (video->OnFrame(frame, update))
+            {
+                std::vector<Rfb::Rect> changed;
+                {
+                    std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                    const size_t stride = static_cast<size_t>(update.picture->width);
+                    for (const Wire::Rect& area : update.rects)
+                    {
+                        const Rfb::Rect rect{area.x, area.y, area.width, area.height};
+                        if (!m_framebuffer.Contains(rect))
+                        {
+                            continue; // outside the desktop we know (a resize not applied yet): drop it
+                        }
+                        const size_t offset = static_cast<size_t>(area.y - update.origin.y) * stride +
+                                              static_cast<size_t>(area.x - update.origin.x);
+                        m_framebuffer.PutPixels(rect, update.picture->pixels.data() + offset, stride);
+                        changed.push_back(rect);
+                    }
+                }
+                if (!changed.empty())
+                {
+                    m_statRectangles += static_cast<int>(changed.size());
+                    ++m_statUpdates;
+                    m_listener.OnFramebufferUpdated(changed);
+                }
+            }
+            m_videoStreaming = video->IsStreaming();
+            video->MaybeSendFeedback();
         }
 
         void Client::ApplyDisplays(const std::vector<Display>& displays, bool initial)
@@ -334,7 +542,12 @@ namespace Marconi
                 std::lock_guard<std::mutex> lock(m_infoMutex);
                 m_screens = screens;
             }
-            m_supportsResize = false; // set when the server says it can resize (ResizeDisplay capability), later
+            if (m_selectedDisplay.load() != 0 &&
+                std::none_of(displays.begin(), displays.end(),
+                             [this](const Display& d) { return d.id == m_selectedDisplay.load(); }))
+            {
+                m_selectedDisplay = 0; // the server went back to sending the whole desktop
+            }
             if (!initial)
             {
                 int width = 0;
@@ -443,9 +656,142 @@ namespace Marconi
             // Clipboard over the Marconi protocol is Phase 6; nothing to send yet.
         }
 
-        bool Client::OfferClipboard(const Rfb::ClipboardContent& /*content*/)
+        bool Client::OfferClipboard(const Rfb::ClipboardContent& content)
         {
-            return false; // not active yet
+            if (!m_clipboardGranted.load() || !m_connected.load())
+            {
+                return false;
+            }
+            Bytes text;
+            Bytes png;
+            if (!content.utf8Text.empty() && content.utf8Text.size() <= kMaxClipboardTextBytes)
+            {
+                text.assign(content.utf8Text.begin(), content.utf8Text.end());
+            }
+            if (!content.dib.empty() && DibToPng(content.dib, png) && png.size() > kMaxClipboardImageBytes)
+            {
+                png.clear();
+            }
+            if (text.empty() && png.empty())
+            {
+                return false; // nothing this protocol can carry (empty, too big, or an image form it can't read)
+            }
+            ClipboardOffer offer;
+            offer.hasText = !text.empty();
+            offer.hasImage = !png.empty();
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                m_offeredText = std::move(text);
+                m_offeredPng = std::move(png);
+            }
+            return Send(offer.Encode());
+        }
+
+        bool Client::RequestServerClipboard()
+        {
+            if (!m_clipboardGranted.load() || !m_connected.load())
+            {
+                return false;
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                if (m_awaitText == 0 && m_awaitImage == 0)
+                {
+                    m_incoming = Rfb::ClipboardContent();
+                }
+                ++m_awaitText;
+                ++m_awaitImage;
+            }
+            ClipboardRequest text;
+            text.format = ClipboardRequest::Format::Text;
+            ClipboardRequest image;
+            image.format = ClipboardRequest::Format::Image;
+            return Send(text.Encode()) && Send(image.Encode());
+        }
+
+        void Client::HandleClipboardOffer(const ClipboardOffer& offer)
+        {
+            if (!m_clipboardGranted.load())
+            {
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                if (m_awaitText == 0 && m_awaitImage == 0)
+                {
+                    m_incoming = Rfb::ClipboardContent();
+                }
+                m_awaitText += offer.hasText ? 1 : 0; // one answer per request, the last one wins
+                m_awaitImage += offer.hasImage ? 1 : 0;
+            }
+            if (offer.hasText)
+            {
+                ClipboardRequest request;
+                request.format = ClipboardRequest::Format::Text;
+                Send(request.Encode());
+            }
+            if (offer.hasImage)
+            {
+                ClipboardRequest request;
+                request.format = ClipboardRequest::Format::Image;
+                Send(request.Encode());
+            }
+        }
+
+        void Client::HandleClipboardRequest(const ClipboardRequest& request)
+        {
+            if (!m_clipboardGranted.load())
+            {
+                return;
+            }
+            ClipboardData data;
+            data.format = request.format;
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                data.data = request.format == ClipboardRequest::Format::Text ? m_offeredText : m_offeredPng;
+            }
+            Send(data.Encode()); // empty when we have nothing in that form, so the server isn't left waiting
+        }
+
+        void Client::HandleClipboardData(ClipboardData&& data)
+        {
+            Rfb::ClipboardContent delivered;
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                const bool isText = data.format == ClipboardRequest::Format::Text;
+                int& awaited = isText ? m_awaitText : m_awaitImage;
+                if (!m_clipboardGranted.load() || awaited <= 0)
+                {
+                    return; // nothing was asked for in that form
+                }
+                --awaited;
+                if (isText)
+                {
+                    if (data.data.size() <= kMaxClipboardTextBytes)
+                    {
+                        m_incoming.utf8Text.assign(data.data.begin(), data.data.end());
+                    }
+                }
+                else if (data.data.size() <= kMaxClipboardImageBytes)
+                {
+                    PngToDib(data.data, m_incoming.dib); // stays empty for a picture this build can't read
+                }
+                if (m_awaitText > 0 || m_awaitImage > 0)
+                {
+                    return;
+                }
+                delivered = std::move(m_incoming);
+                m_incoming = Rfb::ClipboardContent();
+            }
+            if (!delivered.IsEmpty())
+            {
+                m_listener.OnServerClipboard(delivered);
+            }
+        }
+
+        bool Client::SendLock()
+        {
+            return Send(Lock().Encode());
         }
 
         void Client::RequestFullUpdate()
@@ -467,10 +813,22 @@ namespace Marconi
                 return;
             }
             SetDisplayMode mode;
-            mode.displayId = 0;
+            mode.displayId = m_selectedDisplay.load(); // 0 lets the server pick the display being watched
             mode.width = width;
             mode.height = height;
             Send(mode.Encode());
+        }
+
+        void Client::SelectDisplay(uint32_t displayId)
+        {
+            if (!m_connected.load() || displayId == m_selectedDisplay.load())
+            {
+                return;
+            }
+            m_selectedDisplay = displayId;
+            Wire::SelectDisplay message;
+            message.displayId = displayId;
+            Send(message.Encode());
         }
 
         void Client::SetQuality(int /*compressLevel*/, int /*qualityLevel*/)

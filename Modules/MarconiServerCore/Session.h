@@ -5,16 +5,29 @@
 #pragma once
 
 #include "Auth.h"
+#include "FileService.h"
+#include "GamepadHost.h"
+#include "ClipboardAccess.h"
+#include "ConnectionNotifier.h"
+#include "IdleWatch.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Settings.h"
+#include "VirtualGamepad.h"
+#include "VideoSession.h"
 
 #include <MarconiCore/Wire/WireChannel.h>
 
 #include <atomic>
+#include <memory>
+#include <chrono>
+#include <climits>
 #include <cstdint>
+#include <functional>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <vector>
 
 namespace Marconi
 {
@@ -43,12 +56,61 @@ namespace Marconi
             // set their own. A grab with nothing changed sends no message.
             void SetFrameIntervalMs(int ms) { m_frameIntervalMs = ms; }
 
+            // Shares this computer's clipboard with the viewer (text and images, both ways). Null, the default,
+            // leaves clipboard sharing off: the Welcome then doesn't grant it. Call before Run().
+            void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
+            // Lets the viewer's game controllers appear on this computer, made by `backend` (null, the default,
+            // leaves controllers off: the Welcome then doesn't grant them). Call before Run().
+            void SetGamepads(VirtualGamepadBackend* backend) { m_gamepadBackend = backend; }
+            // Tells `notifier` (null = nobody) when this viewer connects (after the login) and when it goes away.
+            // `address` is where it connected from, for the notice. Call before Run().
+            void SetNotifier(ConnectionNotifier* notifier, const std::string& address)
+            {
+                m_notifier = notifier;
+                m_peerAddress = address;
+            }
+            // The video encoders this session may use (tests, or a build with its own): a factory and the codecs it can
+            // make, in order of preference. Without this the platform's encoders are used, and where there are none
+            // the server doesn't offer video. `clock` replaces the steady clock the video pacing uses (microseconds).
+            // Call before Run().
+            void SetVideoEncoderFactory(VideoEncoderFactory factory, std::vector<Wire::VideoCodec> codecs)
+            {
+                m_videoFactory = std::move(factory);
+                m_videoCodecs = std::move(codecs);
+                m_videoFactorySet = true;
+            }
+            void SetVideoClock(VideoSession::Clock clock) { m_videoClock = std::move(clock); }
+            // Ends the session when the viewer sends nothing for the settings' idleMinutes (0 = never). The limit can
+            // be changed while it runs; `clock` replaces the steady clock, for tests.
+            void SetIdleMinutes(int minutes) { m_idle.SetLimitMinutes(minutes); }
+            void SetIdleClock(IdleClock clock) { m_idle.SetClock(std::move(clock)); }
+            // Called when the server ends the session itself (for being idle) so the owner of the connection can
+            // shut it down and wake the thread waiting to read from the viewer. Call before Run().
+            void SetEndHandler(std::function<void()> handler) { m_endHandler = std::move(handler); }
+            // The viewer's name from its Hello (empty before that), for the tray icon's status. Thread-safe.
+            std::string GetViewerName() const;
+            // True once the viewer has passed the login.
+            bool IsLoggedIn() const { return m_loggedIn; }
+
         private:
             bool Handshake(Wire::MessageReader& reader); // Hello/Welcome/Login/LoginResult; false if refused or lost
             void RunFrameLoop();                         // this thread: capture and send the picture
             void RunInputLoop(Wire::MessageReader& reader); // the other thread: read and apply input
             bool Send(const Wire::Bytes& framed);        // one message, serialised against other senders
             void SendFrame(const Capture& capture, bool full);
+            Wire::Rect StreamArea(const Capture& capture) const; // the part of the capture the viewer is watching
+            void StopClipboardHandler();                 // stops listening for clipboard changes
+            void CheckClipboard();                       // frame loop: the computer's clipboard changed; offer it
+            void HandleClipboardOffer(const Wire::ClipboardOffer& offer);
+            void HandleClipboardRequest(const Wire::ClipboardRequest& request);
+            void HandleClipboardData(Wire::ClipboardData&& data);
+            // False if `contents` is what was last exchanged. `alsoKnown` adds another form of that content instead.
+            bool RememberClipboard(const ClipboardContents& contents, bool alsoKnown = false);
+            void ApplyPendingRequests();                 // frame thread: display choice and size change from the viewer
+            bool CheckLayout(bool force);                // frame thread: sends Displays if the layout changed
+            void SendCursor();                           // frame thread: cursor shape (when new) and position (when moved)
+            void EndIdleViewer();                        // frame thread: says why, then ends the session
+            void LockComputer(); // locks the screen through the input sink, once per viewer
 
             Wire::Transport& m_transport;
             ScreenSource& m_screen;
@@ -56,10 +118,59 @@ namespace Marconi
             Settings m_settings;
             Auth* m_auth = nullptr;
             uint64_t m_clientCapabilities = 0; // what the viewer offered in Hello
+            uint64_t m_grantedCapabilities = 0; // what this connection uses
             uint64_t m_frameId = 0;
             int m_frameIntervalMs = 16;
             std::mutex m_writeMutex;
+            std::unique_ptr<FileService> m_files; // answers the viewer's file messages
+            VirtualGamepadBackend* m_gamepadBackend = nullptr;
+            std::unique_ptr<GamepadHost> m_gamepads; // the viewer's controllers, once granted; input thread only
+
+            // Video (Phase 4): made once the viewer was granted Capability::Video; null otherwise.
+            VideoEncoderFactory m_videoFactory;
+            std::vector<Wire::VideoCodec> m_videoCodecs;
+            bool m_videoFactorySet = false;
+            VideoSession::Clock m_videoClock;
+            std::unique_ptr<VideoSession> m_video;
+
+            // Clipboard sharing. `m_clipboardActive` is set once the viewer was granted it. The change handler only
+            // raises `m_clipboardChanged`; the frame loop does the reading. `m_recentHashes` holds hashes of what
+            // was last offered to the viewer or written from it, so the change our own write causes isn't offered
+            // back (which would loop). The rest tracks the formats still awaited from the viewer's last offer.
+            ClipboardAccess* m_clipboard = nullptr;
+            bool m_clipboardActive = false;
+            std::atomic<bool> m_clipboardChanged{false};
+            std::mutex m_clipboardMutex;
+            std::vector<uint64_t> m_recentHashes;
+            ClipboardContents m_incoming;
+            int m_awaitText = 0;  // requests sent for the viewer's text that it hasn't answered yet
+            int m_awaitImage = 0; // the same for its image (rapid copies leave several outstanding)
+
+            // The viewer's display requests, set on the input thread and applied on the frame thread (the screen
+            // source is only called from the frame thread).
+            std::mutex m_requestMutex;
+            bool m_selectionPending = false;
+            uint32_t m_requestedDisplay = 0;
+            bool m_modePending = false;
+            Wire::SetDisplayMode m_requestedMode;
+            // Frame thread only.
+            std::vector<Wire::Display> m_displays; // the layout last sent
+            uint32_t m_selectedDisplay = 0;        // 0 = the whole desktop
+            bool m_needFull = false;               // the next frame must be a full picture of the selection
+            int32_t m_lastCursorX = INT32_MIN;
+            int32_t m_lastCursorY = INT32_MIN;
+            std::chrono::steady_clock::time_point m_lastLayoutCheck;
+            IdleWatch m_idle;
+            ConnectionNotifier* m_notifier = nullptr;
+            std::string m_peerAddress;
+            std::function<void()> m_endHandler;
+            std::atomic<bool> m_endedIdle{false};
             std::atomic<bool> m_stop{false};
+            std::atomic<bool> m_stoppedByServer{false}; // Stop() was called, as opposed to the viewer leaving
+            std::atomic<bool> m_loggedIn{false};
+            std::atomic<bool> m_locked{false};
+            mutable std::mutex m_nameMutex;
+            std::string m_viewerName; // guarded by m_nameMutex
         };
     } // namespace Server
 } // namespace Marconi

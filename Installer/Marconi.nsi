@@ -32,6 +32,16 @@
 ; Branding bitmaps from Tools/make_installer_art.py; rerun it after changing the icon, colours or fonts.
 !define WIZARD_BITMAP "Art\Wizard.bmp"
 !define HEADER_BITMAP "Art\Header.bmp"
+; The Marconi Server installer (Installer\MarconiServer.nsi, built first by Package.ps1) travels inside this one, so the
+; client can put it on another computer's desktop (F8 > Install Marconi Server on the Other Computer) or run it here
+; (Settings > Share this computer). It is installed beside Marconi.exe, where the client looks for it.
+!define SERVER_SETUP "MarconiServer-${VERSION}-win64-setup.exe"
+!define SERVER_SETUP_SOURCE "..\Build\Installer\${SERVER_SETUP}"
+!if /FileExists "${SERVER_SETUP_SOURCE}"
+    !define HAVE_SERVER_SETUP
+!else
+    !echo "No ${SERVER_SETUP_SOURCE}: this installer is built without the Marconi Server component. Package.ps1 builds it first."
+!endif
 
 Unicode true
 ManifestDPIAware true
@@ -116,14 +126,14 @@ Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started aga
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Open the source code on GitHub"
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
 
-; The MIT license. Its checkbox must be ticked before Next is enabled.
+; The MIT license, with its checkbox ticked to start with (LicenseShow); unticking it disables Next.
 !define MUI_LICENSEPAGE_CHECKBOX
 
 ; The copy started with administrator rights begins at the page after the choice.
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfRelaunched
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfRelaunched
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW ClearShield
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW LicenseShow
 !insertmacro MUI_PAGE_LICENSE "${STAGE_DIR}\LicensePage.txt"
 Page custom ModePageCreate ModePageLeave
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW ComponentsShow
@@ -299,6 +309,17 @@ FunctionEnd
 Function ClearShield
     GetDlgItem $0 $HWNDPARENT 1
     SendMessage $0 ${BCM_SETSHIELD} 0 0
+FunctionEnd
+
+; The license page starts with "I accept" ticked. Ticking it from here doesn't go through the click that enables
+; Next, so Next is enabled here too.
+Function LicenseShow
+    Call ClearShield
+    FindWindow $0 "#32770" "" $HWNDPARENT
+    GetDlgItem $0 $0 1034 ; the license page's checkbox
+    SendMessage $0 ${BM_SETCHECK} ${BST_CHECKED} 0
+    GetDlgItem $0 $HWNDPARENT 1
+    EnableWindow $0 1
 FunctionEnd
 
 Function UpdateShield
@@ -541,10 +562,22 @@ Section /o "Desktop shortcut" SecDesktop
     CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
 SectionEnd
 
+!ifdef HAVE_SERVER_SETUP
+Section "Marconi Server installer" SecServerSetup
+    ; Only the installer, to set up other computers (or this one); it installs nothing until it is run.
+    Delete "$INSTDIR\MarconiServer-*-setup.exe"
+    SetOutPath "$INSTDIR"
+    File "${SERVER_SETUP_SOURCE}"
+SectionEnd
+!endif
+
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} VNC client."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME}, and a link to its source code on GitHub, to the Start menu."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Add a ${APP_NAME} shortcut to the desktop."
+!ifdef HAVE_SERVER_SETUP
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecServerSetup} "The Marconi Server installer, for setting up other computers so you can control them with ${APP_NAME}. It installs nothing until you use it."
+!endif
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; The uninstaller works out which kind of install it belongs to from the registry entry naming its folder, and asks
@@ -627,6 +660,7 @@ Section "un.${APP_NAME}" SecUnApp
     ; Only the files the installer put there, in case the folder was shared with something else.
     !include "${STAGE_DIR}\UninstallFiles.nsh"
     Delete "$INSTDIR\LICENSE.txt"
+    Delete "$INSTDIR\MarconiServer-*-setup.exe"
     Delete "$INSTDIR\Uninstall.exe"
     RMDir "$INSTDIR"
 

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Copyright (c) 2026 Red Marmoset Studios Ltd. -->
+<!-- Start Marconi Server when its person logs in: a per-user launch agent, to go in ~/Library/LaunchAgents/. It is
+     a plan, not wired in yet (see SERVER_PLAN.md, Phase 8, "Start at login"): nothing installs it. It has to be an
+     agent in the person's login session and not a system-wide daemon, because macOS only lets a program in that
+     session read the screen and post mouse and keyboard events. Not yet tried on a Mac. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.redmarmoset.MarconiServer</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/Marconi Server.app/Contents/MacOS/MarconiServer</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- Not restarted when it quits: Quit in the menu means quit. -->
+    <key>KeepAlive</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>

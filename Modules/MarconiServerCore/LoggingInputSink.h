@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
-// An InputSink that only logs what it receives: for the test-pattern server, which has nothing to control. The
+// An InputSink that ignores what it receives: for the test-pattern server, which has nothing to control. The
 // real one (SendInput on Windows, and so on) arrives with screen capture.
 
 #pragma once
@@ -8,28 +8,34 @@
 
 #include <Log/Log.h>
 
+#include <atomic>
+
 namespace Marconi
 {
     namespace Server
     {
+        // It never logs what was typed or where the pointer went: a viewer may be typing a password, and a log file
+        // must not become a record of it. It says once that input is arriving and being ignored.
         class LoggingInputSink : public InputSink
         {
         public:
-            void MovePointer(int32_t x, int32_t y, uint8_t buttons, int16_t wheel, int16_t wheelX) override
+            void MovePointer(int32_t, int32_t, uint8_t, int16_t, int16_t) override { NoteOnce(); }
+
+            void SendKey(uint32_t, uint32_t, bool) override { NoteOnce(); }
+
+            void TypeText(const std::string&) override { NoteOnce(); }
+
+        private:
+            void NoteOnce()
             {
-                LOG_INFO("Server", "Pointer %d,%d buttons %u wheel %d/%d", x, y, static_cast<unsigned>(buttons),
-                         static_cast<int>(wheel), static_cast<int>(wheelX));
+                if (!m_noted.exchange(true))
+                {
+                    LOG_INFO("Server", "A viewer is sending mouse and keyboard input; it is ignored here (nothing to "
+                                       "control)");
+                }
             }
 
-            void SendKey(uint32_t keysym, uint32_t scancode, bool down) override
-            {
-                LOG_INFO("Server", "Key keysym 0x%X scancode 0x%X %s", keysym, scancode, down ? "down" : "up");
-            }
-
-            void TypeText(const std::string& utf8) override
-            {
-                LOG_INFO("Server", "Text '%s'", utf8.c_str());
-            }
+            std::atomic<bool> m_noted{false};
         };
     } // namespace Server
 } // namespace Marconi

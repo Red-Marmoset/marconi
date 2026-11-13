@@ -64,6 +64,8 @@ namespace Marconi
         virtual void OnDesktopResizeRefused(int /*status*/) {}
         // The server sent its cursor shape: draw it locally (the framebuffer no longer contains it).
         virtual void OnCursorShape(const CursorShape& /*cursor*/) {}
+        // The server says where its pointer is (desktop coordinates). Only servers that track it call this.
+        virtual void OnCursorPosition(int /*x*/, int /*y*/) {}
         // Text from a server that only carries Western European characters (plain VNC).
         virtual void OnServerCutText(const std::string& /*latin1Text*/) {}
         // The server's clipboard: UTF-8 text and/or an image.
@@ -126,6 +128,11 @@ namespace Marconi
         virtual bool SupportsDesktopResize() const = 0;
         virtual void RequestDesktopSize(int width, int height) = 0;
 
+        // Asks a server that can stream one display at a time to send just that display (0 = the whole desktop).
+        // Coordinates stay desktop coordinates, so the viewer still shows the display through its viewport. Servers
+        // that always send everything ignore it.
+        virtual void SelectDisplay(uint32_t /*displayId*/) {}
+
         // Picture quality on a live connection (see QualitySettings). Ignored until connected.
         virtual void SetQuality(int compressLevel, int qualityLevel) = 0;
 
@@ -134,6 +141,17 @@ namespace Marconi
 
         // Returns the counts so far and starts again from zero.
         virtual TrafficStats TakeTrafficStats() = 0;
+
+        // Asks the other computer to lock its screen, in the connection's own words (the Marconi protocol's Lock
+        // message). False when this kind of connection has no such message, so the caller sends the lock keys
+        // instead (Win+L). True means the request was sent, not that the lock happened.
+        virtual bool SendLock() { return false; }
+
+        // How the connection's datagram channel is doing, for the status bar: "UDP", "UDP, 3% loss", "over TCP"
+        // (Wire::DatagramStatusText). Empty when the connection has no datagram channel (everything but a Marconi
+        // server that offered one). GetRoundTripMs is the channel's measured round trip, -1 when unknown.
+        virtual std::string GetTransportStatus() const { return std::string(); }
+        virtual int GetRoundTripMs() const { return -1; }
     };
 
     namespace Rfb

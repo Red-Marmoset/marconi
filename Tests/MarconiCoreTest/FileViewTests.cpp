@@ -34,6 +34,32 @@ namespace MarconiTest
 
     void RunFileViewTests()
     {
+        RunTest("Windows paths show as C:\\Users\\Sam with no leading slash, and typed paths come back in any style", []() {
+            CHECK(Files::ToDisplayPath("/C:/Users/Public/Desktop") == "C:\\Users\\Public\\Desktop");
+            CHECK(Files::ToDisplayPath("/C:") == "C:\\");
+            CHECK(Files::ToDisplayPath("/C:/") == "C:\\");
+            CHECK(Files::ToDisplayPath("/d:/Games") == "d:\\Games");
+            // Other paths are shown as they are.
+            CHECK(Files::ToDisplayPath("/home/sam/Desktop") == "/home/sam/Desktop");
+            CHECK(Files::ToDisplayPath("/") == "/");
+            CHECK(Files::ToDisplayPath("") == "");
+            CHECK(Files::ToDisplayPath("/Users/sam") == "/Users/sam");
+            CHECK(Files::ToDisplayPath("/Cx:/not a drive") == "/Cx:/not a drive");
+
+            CHECK(Files::FromTypedPath("C:\\Users\\Sam\\Desktop") == "/C:/Users/Sam/Desktop");
+            CHECK(Files::FromTypedPath("C:/Users/Sam/Desktop") == "/C:/Users/Sam/Desktop");
+            CHECK(Files::FromTypedPath("/C:/Users/Sam/Desktop") == "/C:/Users/Sam/Desktop");
+            CHECK(Files::FromTypedPath("\\C:\\Users") == "/C:/Users");
+            CHECK(Files::FromTypedPath("  C:\\Users\\Sam  ") == "/C:/Users/Sam");
+            CHECK(Files::FromTypedPath("C:") == "/C:/");
+            CHECK(Files::FromTypedPath("C:\\") == "/C:/");
+            CHECK(Files::FromTypedPath("/home/sam") == "/home/sam");
+            CHECK(Files::FromTypedPath("   ") == "");
+            CHECK(Files::FromTypedPath("") == "");
+            // What is shown and what is typed from it are the same folder.
+            CHECK(Files::FromTypedPath(Files::ToDisplayPath("/C:/Users/Sam")) == "/C:/Users/Sam");
+        });
+
         RunTest("SplitPath gives each part of a path with where it leads", []() {
             std::vector<Files::PathPart> parts = Files::SplitPath("C:/Users/Sem");
             CHECK(parts.size() == 3);
