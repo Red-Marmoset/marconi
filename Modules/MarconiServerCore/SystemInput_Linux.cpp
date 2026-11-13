@@ -5,6 +5,7 @@
 #include "SystemInput.h"
 #include "SystemLock.h"
 
+#include "WaylandSupport.h"
 #include "X11Support.h"
 
 #include <MarconiCore/Keysyms.h>
@@ -179,6 +180,10 @@ namespace Marconi
 
         std::unique_ptr<InputSink> CreateSystemInput(std::string& error)
         {
+            if (ShouldUseWaylandPortal())
+            {
+                return CreateWaylandSystemInput(error); // a Wayland desktop: the desktop portal's RemoteDesktop
+            }
             auto input = std::make_unique<LinuxInput>();
             if (!input->Open(error))
             {

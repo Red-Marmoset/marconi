@@ -103,6 +103,10 @@ Phase 1 is written but not finished:
   sandbox's network. See each phase below for what is done and untested.
 - **Still to do:** the tray app is not connected to the service's control pipe (Phase 3); video and gamepads
   (Phases 4 and 7) are not started, and UDP (Phase 5) has its transport layer built but not connected; Wayland capture; the measurements table in section 8 is empty.
+- **Still to do:** the tray app is not connected to the service's control pipe (Phase 3); video, UDP and gamepads
+  (Phases 4, 5 and 7) are not started; the measurements table in section 8 is empty. Wayland capture and input are built
+  and tested against fakes and a real compositor's stream (Phase 8, `claude/server-wayland`); the real approval window
+  has not been clicked.
 - **Next step:** build and run the server and tray on a Windows machine and fix what it shows.
 
 ## 1. Decisions needed from the owner
@@ -1051,8 +1055,8 @@ Outline only; planned in detail when reached.
 - macOS: ScreenCaptureKit for capture, VideoToolbox for encoding, CGEvent for input, the Screen Recording and
   Accessibility permissions asked for in plain words, a login item or launch daemon, packaged in the existing DMG
   as "Marconi Server.app" or a mode of Marconi.app (owner's choice).
-- Linux: PipeWire and the portal on Wayland, X11 with XDamage and XTest otherwise, a systemd user service, a
-  package or tarball.
+- Linux: the desktop portal and PipeWire on Wayland (done, see "Phase 8: Linux on Wayland"), X11 with XGetImage and
+  XTest otherwise (done; XDamage still to do), a systemd user service, a package or tarball (done, `PackageServerLinux.sh`).
 - Mac gamepads, tried on the owner's Mac in this order: first a virtual HID controller made from the server process
   itself with IOKit's user-device call (`IOHIDUserDeviceCreate`, present in the framework but not public), which
   needs nothing installed and no Apple approval if the owner's macOS allows it; only if macOS refuses, a
@@ -1069,12 +1073,10 @@ the tests print SKIP). The tests draw a known pattern with Xlib and check the gr
 pointer, buttons, wheel, keys, Shift and typed text (including a character with no key) reach an X client. Fixed along
 the way: an X error from a shrinking screen no longer ends the program; keys with no keycode are typed by borrowing a
 spare key; cursor colours are no longer premultiplied. The dirty-tile code is shared (`DirtyTracker.h`).
-Wayland: `XDG_SESSION_TYPE=wayland`, or no `DISPLAY`, gives a plain-words message (console prints it, the tray shows it
-in a dialog and a menu item, `ServerController::GetProblem`) and the server serves the test pattern. The tray program
-with no `DISPLAY` and no `WAYLAND_DISPLAY` prints the same message and exits. Not done: Wayland capture (PipeWire and the
-portal), XDamage, several monitors (one display covering the whole root window), a systemd user service, a Linux server
-package, releasing held keys and buttons when a viewer vanishes, and X's own I/O error handler (an X server that dies
-ends the program).
+Wayland: see "Phase 8: Linux on Wayland" below (the desktop portal and PipeWire). The tray program with no `DISPLAY`
+and no `WAYLAND_DISPLAY` still prints a plain message and exits. Not done on X11: XDamage, several monitors (one display
+covering the whole root window), releasing held keys and buttons when a viewer vanishes, and X's own I/O error handler (an
+X server that dies ends the program).
 
 **macOS** (`SystemScreen_Mac.cpp`, `SystemInput_Mac.cpp`, `MacDisplays.h`; frameworks in `Module.manifest`): written
 without a Mac. Only syntax-checked against hand-written stub headers, so no claim is made that it compiles against the
@@ -1132,6 +1134,126 @@ What has to be checked on a Mac (nothing below has been done):
 10. `PackageServer.sh`: the `.app` runs from `/Applications`, the signature verifies, notarization passes, and
     permissions survive a rebuild signed with the same identity.
 11. The viewer's behaviour against it (probe, TLS, password) is unchanged by the platform, but run it once.
+
+#### Phase 8: Linux on Wayland (branch `claude/server-wayland`; built, tested against fakes and one real compositor)
+
+**Why X11 tools can't do it.** A Wayland compositor gives programs no way to read the screen or press keys in other
+programs: XGetImage and XTest on XWayland only reach the old-style windows (a mostly black picture), and keys sent that
+way don't reach native Wayland programs. What is left is asking the desktop itself.
+
+**Options looked at** (sources at the end):
+
+| Mechanism | Capture | Input | Verdict |
+|---|---|---|---|
+| XDG desktop portal: `ScreenCast` + `RemoteDesktop` | PipeWire stream | `NotifyPointer*`, `NotifyKeyboard*` | **Chosen.** One mechanism for GNOME, KDE and (capture only) wlroots; the compositor shows its own permission window, once; a restore token (`persist_mode` 2) means later runs don't ask. |
+| libei / EIS (`RemoteDesktop.ConnectToEIS`) | none | an EIS socket from the portal | Better input in the long run (absolute devices per stream, keycodes, touch); needs the libei client library. **Next step for input**, not needed to start: the portal's own `Notify*` calls are enough for pointer, keys and wheel. After `ConnectToEIS` the `Notify*` calls stop working, so the two can't be mixed in one session. |
+| wlroots protocols (`wlr-screencopy`, `wlr-virtual-pointer`, `virtual-keyboard`) | Sway, Hyprland, river... only | same compositors only | Not done. Covers the one case the portal can't: Sway and friends have no RemoteDesktop portal (`xdg-desktop-portal-wlr` implements only ScreenCast and Screenshot), so on Sway viewers can see but not control. Worth doing if Sway users matter; it would be a third source behind the same two interfaces. |
+| Compositor-private APIs (mutter's `org.gnome.Mutter.ScreenCast` and `RemoteDesktop`, KWin's) | yes | yes | No: they are each compositor's own interface for its shell and the portal backend, and differ per compositor; the portal is the interface meant for programs like this one. Used here only to test the stream reader against a real compositor. |
+
+**Design.**
+
+- One *portal session* (`WaylandPortalSession`) per program run, shared by the screen and the input (`AcquireWaylandPortal`,
+  released when both let go, so "Check again" asks afresh). It runs the conversation on its own thread so the server never
+  waits on the person: `RemoteDesktop.CreateSession`, `SelectDevices` (keyboard and pointer, `persist_mode` 2, the saved
+  `restore_token`), `ScreenCast.SelectSources` (monitor, pointer as separate data when offered, else painted in), then
+  `Start` (here the desktop asks the person), `OpenPipeWireRemote`, and the PipeWire stream. The combined session gives one
+  question for both. When the desktop has no RemoteDesktop portal (Sway), the same is done with ScreenCast alone and the
+  status says control is missing. The token is kept in `<data folder>/wayland-portal.token` (mode 600), replaced after each
+  answer because each token works once.
+- **Selection:** `XDG_SESSION_TYPE=wayland`, or `WAYLAND_DISPLAY` with no `DISPLAY`, picks this path in the factory
+  functions (`CreateSystemScreen`, `CreateSystemInput`). `MARCONI_WAYLAND_PORTAL=1` forces it, `=0` turns it off. XWayland
+  is never used for capture (it would show black), so there is no "try X11 first".
+- **D-Bus:** `DBusLite` loads libdbus-1 with `dlopen` and has its own copy of the few declarations it uses, so the server
+  builds with no D-Bus headers, starts on a computer without the library, and says so in words. Chosen over GDBus (GIO is
+  linked only through wxWidgets' GTK, which the console server doesn't use) and sd-bus (needs systemd's library, absent on
+  some distributions, and the session bus is just a unix socket). libdbus is on every desktop that has a portal.
+- **PipeWire:** `PipeWireLite` loads libpipewire-0.3 the same way, with copies of the stream, SPA buffer and pod
+  declarations and a small pod builder and reader. `Tools/wayland/CheckWaylandAbi.cpp` compares every constant, struct size
+  and field position, and the pods it builds, with the real headers (it reports IDENTICAL for the pods; run it when
+  PipeWire or libdbus releases a new version). Unavoidable: there is no way to read the portal's stream without libpipewire,
+  so when it is missing the status says so.
+- **Frames:** `PipeWireCapture` offers 10 raw video layouts (BGRx, BGRA, RGBx, RGBA, xRGB, ARGB, xBGR, ABGR, BGR, RGB)
+  at any size and rate, takes the newest buffer and returns older ones at once, converts to `0x00RRGGBB`, and
+  `SystemScreen_LinuxWayland.cpp` runs the same 64x64 tile comparison as X11 (`DirtyTracker`). A new size arrives as a new
+  format and becomes a new `Capture` size, which the session already handles as a layout change. **Memory path:** formats are
+  offered without a modifier, which tells the compositor to use shared memory (memfd or a plain memory block), and the
+  Buffers parameter allows only those two memory types. **Pointer:** when the portal offers metadata, the pointer's image and
+  position come as `GetCursor`/`GetCursorPosition` (so the viewer draws it); otherwise it is painted into the picture.
+  **Pause and resume:** a paused stream keeps the last picture and the stream state is tracked (compositors send nothing
+  while the screen is unchanged: that is normal, not a stall); the desktop ending the session (`Session.Closed`) or an error
+  ends the share with a status that says how to start again.
+- **Input:** `SystemInput_LinuxWayland.cpp` maps the existing `InputSink` calls: pointer position to
+  `NotifyPointerMotionAbsolute` (scaled from picture pixels to the stream's size when the desktop reports a different one,
+  as on a scaled display), buttons to Linux button codes 272/273/274, the wheel to `NotifyPointerAxisDiscrete` (the wire's
+  up is the portal's negative), keys and typed text to `NotifyKeyboardKeysym` (keys follow the layout; the physical-key
+  scancode is ignored for now, so games that read raw keys are not served: `NotifyKeyboardKeycode` with a HID-to-evdev table
+  is the fix). The calls are sent without waiting for an answer; the receiving loop never blocks, because libdbus makes a
+  sender wait for a reader in the same connection.
+- **Status and the tray:** `CaptureStatus.h` carries the plain-words state (waiting for the person to allow it, they said
+  no and what to do, the desktop has no sharing service and which package to install, the desktop's own service failed,
+  control missing, sharing ended). The tray's `ServerController::GetProblem` returns it (so the start-up dialog, the
+  "Problem" menu line and "Check again" work as on a Mac), and the console program prints it. If the desktop has already
+  said no or can't do it when the screen is made, no screen is made, so the server serves its test pattern and the tray
+  says why; the input then doesn't ask a second time. While the person is still being asked, a screen exists and shows
+  nothing until they allow it.
+
+**Tested** (`Tests/MarconiServerTest/WaylandTests.cpp`, `WaylandFakePortal.cpp`, `WaylandFakeScreen.cpp`; in the full suite,
+1403 checks pass with Xvfb and a private PipeWire; without PipeWire the stream tests print SKIP and 1311 pass):
+
+- A private `dbus-daemon` carries a **fake portal** that answers as xdg-desktop-portal does (request paths from the sender
+  and handle token, `Response` signals, properties, restore tokens, the pointer-mode option, a refusal, a failure, no
+  RemoteDesktop, the desktop closing the session) and records every key, button, wheel and pointer call. A **fake screen**
+  publishes a real PipeWire video stream through a real PipeWire daemon and WirePlumber, in each of four layouts, with
+  rectangles, a size change and a pointer image. The server's real code reads it: pixels, dirty tiles (exactly the tile
+  that changed), resize, the pointer's image, position and hotspot, input lines (scaling 640x400 over 320x200, button
+  edges, wheel direction, key down and up, an accented letter), and the status text of each state. `Tools/wayland/
+  RunPipeWireTests.sh` starts the daemons for you.
+- D-Bus values of every shape (dictionaries, structs, arrays of structs, 64-bit numbers, empty arrays, error replies,
+  signals) make the round trip through a bus.
+- **A real compositor's stream:** `Tools/wayland/RunMutterCaptureCheck.sh` runs headless mutter (GNOME's compositor) with
+  a fullscreen red terminal and reads mutter's own ScreenCast stream with the server's capture: 800x600, the middle, a
+  corner and the last pixel red, shared-memory buffers. (Mutter's private API, not the portal.)
+- **The real portal front end:** the same flow run against the real `xdg-desktop-portal` with the real GNOME backend on
+  mutter reached "waiting for you to allow screen sharing" (the real RemoteDesktop and ScreenCast calls were accepted), and
+  against the real wlroots backend on headless Sway the backend received our options exactly (monitor, not multiple, painted
+  pointer as it only offers that, persist 2), then failed inside itself ("unable to receive a valid format from
+  wlr_screencopy" on the software renderer), which the server reports as the desktop's own failure, not the person's no.
+- X11 behaviour is unchanged: `X11Tests` and `LinuxScreenTests` pass.
+- Found by these tests: libdbus hands over a new descriptor for a received file descriptor, which the first version
+  duplicated again and leaked, leaving the old stream's consumer alive in PipeWire so the next share got no pictures.
+
+**Not verified (no way to do it here):**
+
+- **The real approval window and restore token.** Nobody could click the GNOME window in the headless session (one Return
+  key sent through mutter's RemoteDesktop did not do it), so the full "person allows, stream arrives, restore token saves,
+  next run is silent" has been run only against the fake portal, and the real GNOME portal only as far as the question.
+  Check on a real GNOME and a real KDE desktop: first run shows the window, allowing starts the picture, the second run
+  (restart the server) doesn't ask, and "Check again" after refusing asks again.
+- **Real keyboard and mouse injection** through a real RemoteDesktop portal (only the fake portal recorded the calls),
+  including absolute pointer mapping on a scaled and on a multi-monitor desktop, and whether GNOME and KDE accept keysyms for
+  every key the viewer sends.
+- **KDE (KWin).** Nothing was run against it.
+- **GPU-memory frames.** The server never asks for them, and mutter gave shared memory when none were offered. If a compositor
+  insists on dmabuf only, the stream would fail with the status "sharing the screen as GPU memory, which Marconi Server can't
+  read yet". Supporting it means offering `VideoModifier` choices with the formats from the EGL/GBM driver
+  (`EGL_EXT_image_dma_buf_import_modifiers`), receiving dmabuf fds, mapping them (`mmap` works only for linear buffers; others
+  need EGL import and a GPU read-back, or, better, hand the GPU buffer straight to a hardware encoder in Phase 4), and
+  honouring the buffers' `SPA_META_Header` and sync points.
+- Several monitors (the portal is asked for one stream; `multiple` is false), HiDPI fractional scaling, and a screen lock or
+  suspend while sharing.
+- Clipboard on Wayland (the portal has a Clipboard interface; not used yet) and files are unaffected (they don't use the
+  screen).
+- Running as the systemd user service on a Wayland session (the portal needs the session's D-Bus and `XDG_RUNTIME_DIR` in
+  the service's environment).
+
+**Sources.** XDG desktop portal documentation, `org.freedesktop.portal.ScreenCast` (methods, `cursor_mode`, `persist_mode`,
+`restore_token`, `OpenPipeWireRemote`, the stream properties) and `org.freedesktop.portal.RemoteDesktop` (the `Notify*`
+methods, device types, `ConnectToEIS`, using it with ScreenCast), both at https://flatpak.github.io/xdg-desktop-portal/docs/
+(read 2026-11-13). `xdg-desktop-portal-wlr` README, https://github.com/emersion/xdg-desktop-portal-wlr (it lists only
+Screenshot and ScreenCast). PipeWire tutorial 5, video capture, https://docs.pipewire.org/page_tutorial5.html (the format
+negotiation and buffer handling this follows). The libei project page and the wlr-protocols repository on gitlab.freedesktop.org
+refused automated access (bot protection), so what this section says about libei and the wlroots virtual input protocols is
+from memory and the portal's own documentation, not checked.
 
 ## 5. Testing throughout
 

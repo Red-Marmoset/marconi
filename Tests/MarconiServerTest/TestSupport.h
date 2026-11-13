@@ -155,6 +155,7 @@ namespace MarconiServerTest
     void RunX11Tests();
     void RunDisplayTests();
     void RunLinuxScreenTests();
+    void RunWaylandTests();
     void RunLogTests();
     void RunGamepadTests();
     void RunServiceTests();

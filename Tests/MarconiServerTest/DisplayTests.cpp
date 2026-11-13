@@ -328,8 +328,12 @@ namespace MarconiServerTest
             CHECK(rig.Connected());
             CHECK(rig.clientListener.WaitFor([&]() { return rig.clientListener.updates >= 1; }));
 
+            // The server applies the choice on its own frame thread and then sends the chosen display again whole: wait
+            // for that picture before changing the screen, or a frame taken in between would still carry both.
+            const int before = rig.clientListener.updates;
             rig.client.SelectDisplay(20);
-            // The chosen display is sent again whole: a marker on it arrives, one on the other display does not.
+            CHECK(rig.clientListener.WaitFor([&]() { return rig.clientListener.updates > before; }));
+            // A marker on the chosen display arrives, one on the other display does not.
             screen.SetMarker(0, true);
             screen.SetMarker(1, true);
             CHECK(WaitUntil([&]() { return rig.Pixel(64, 0) == kMarker; }));

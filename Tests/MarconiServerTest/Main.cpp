@@ -24,6 +24,7 @@ namespace Test
         MarconiServerTest::RunClipboardTests();
         MarconiServerTest::RunDisplayTests();
         MarconiServerTest::RunLinuxScreenTests();
+        MarconiServerTest::RunWaylandTests();
         MarconiServerTest::RunLogTests();
         MarconiServerTest::RunGamepadTests();
         MarconiServerTest::RunVideoTests();
