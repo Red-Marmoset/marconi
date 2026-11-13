@@ -7,7 +7,9 @@
 #include <MarconiMcp/SavedComputers.h>
 #include <MarconiMcp/Tools.h>
 
+#include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Rfb/Auth.h>
+#include <MarconiCore/Rfb/Handshake.h>
 #include <MarconiCore/Rfb/Messages.h>
 
 #include <stdexcept>
@@ -211,6 +213,51 @@ namespace MarconiTest
             const bool loggedIn = accepted && ServeVncPasswordLogin(server, "hunter2");
             connecting.join();
             CHECK(loggedIn && !result.isError);
+        });
+
+        RunTest("MCP: a server offering only encryption this computer can't make is reached without it", []() {
+            if (!Net::IsTlsAvailable() || Net::IsAnonymousTlsAvailable())
+            {
+                return; // the first try only fails this way where encryption exists but not without a certificate
+            }
+            FakeServer server;
+            FakeSaved saved;
+            saved.computers = {Computer("3", "Snorkels", "127.0.0.1::" + std::to_string(server.GetPort()))};
+            saved.computers[0].hasPassword = true;
+            saved.passwords = {{"3", "hunter2"}};
+            Mcp::ToolOptions options;
+            options.saved = &saved;
+            Mcp::MarconiTools tools(options);
+
+            Mcp::ToolResult result;
+            std::thread connecting([&]() { tools.CallTool("connect", {{"connection", "snorkels"}}, result); });
+            bool askedForEncryption = false;
+            if (server.AcceptClient())
+            {
+                server.SendString("RFB 003.008\n");
+                server.In().ReadString(12);
+                Rfb::OutBuffer types;
+                types.U8(2).U8(Rfb::SecurityType::VeNCrypt).U8(Rfb::SecurityType::VncAuth);
+                server.Send(types);
+                askedForEncryption = server.In().U8() == Rfb::SecurityType::VeNCrypt;
+                if (askedForEncryption)
+                {
+                    Rfb::OutBuffer version;
+                    version.U8(0).U8(2);
+                    server.Send(version);
+                    server.In().ReadBytes(2); // the client's version
+                    Rfb::OutBuffer subtypes;
+                    subtypes.U8(0).U8(1).U32(Rfb::VeNCrypt::TlsVnc); // only without a certificate
+                    server.Send(subtypes);
+                }
+                server.Close();
+            }
+            const bool loggedIn = server.AcceptClient() && ServeVncPasswordLogin(server, "hunter2");
+            connecting.join();
+            CHECK(askedForEncryption);
+            CHECK(loggedIn);
+            CHECK(!result.isError);
+            CHECK(AllText(result).find("Not encrypted") != std::string::npos);
         });
 
         RunTest("MCP saved connections: unknown names and no saved list say so", []() {

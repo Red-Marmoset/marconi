@@ -107,6 +107,9 @@ namespace Marconi
             void NoteInput();
 
         private:
+            // One try with these options: starts the session and waits for it to connect or fail.
+            ConnectOutcome Attempt(const QuickConnectOptions& options, std::chrono::milliseconds timeout);
+
             void OnConnected(const Rfb::ServerInit& serverInit) override;
             void OnFramebufferUpdated(const std::vector<Rfb::Rect>& rects) override;
             void OnDesktopResized(int width, int height) override;
@@ -130,6 +133,7 @@ namespace Marconi
             std::string m_lastError;
             std::vector<Rfb::Screen> m_screens;
             int m_credentialsAsked = 0;
+            bool m_encryptionUnusable = false; // the attempt failed only because of the encryption on offer
             uint64_t m_updates = 0;
             bool m_needPicture = true; // no pixels since connecting or the last resize
             // The areas the most recent updates changed, each with its update's number (m_updates after it).

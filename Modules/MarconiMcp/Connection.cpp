@@ -94,6 +94,35 @@ namespace Marconi
                 m_pointerKnown = false;
             }
 
+            ConnectOutcome outcome = Attempt(options, request.timeout);
+            bool retry = false;
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                retry = !outcome.connected && m_encryptionUnusable;
+            }
+            if (retry)
+            {
+                // The server only offers encryption this computer can't make (typically without a certificate):
+                // connect again without asking for it, as the viewer does. The result then says "Not encrypted".
+                LOG_INFO("Mcp", "%s; connecting again without encryption", outcome.error.c_str());
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    m_outcome = ConnectOutcome();
+                    m_finished = false;
+                    m_credentialsAsked = 0;
+                }
+                options.allowEncryption = false;
+                outcome = Attempt(options, request.timeout);
+            }
+            return outcome;
+        }
+
+        ConnectOutcome Connection::Attempt(const QuickConnectOptions& options, std::chrono::milliseconds timeout)
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_encryptionUnusable = false;
+            }
             std::string error;
             std::unique_ptr<RemoteSession> session = QuickConnect(options, *this, error);
             if (!session)
@@ -105,7 +134,7 @@ namespace Marconi
 
             std::unique_lock<std::mutex> lock(m_mutex);
             m_session = std::move(session);
-            const bool finished = m_changed.wait_for(lock, request.timeout, [this]() { return m_finished; });
+            const bool finished = m_changed.wait_for(lock, timeout, [this]() { return m_finished; });
             ConnectOutcome outcome = m_outcome;
             if (!finished)
             {
@@ -400,6 +429,10 @@ namespace Marconi
             if (info.authenticationFailed)
             {
                 m_outcome.needsPassword = true;
+            }
+            if (info.encryptionUnusable)
+            {
+                m_encryptionUnusable = true;
             }
             if (m_connected)
             {

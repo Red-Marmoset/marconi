@@ -27,6 +27,9 @@ namespace Marconi
         std::string clientName = "Marconi";             // what a Marconi server shows in its log
         // VNC through the computer's SSH server, as an "ssh://" address does, whatever the address says.
         bool sshTunnel = false;
+        // VNC: ask for encryption when the server offers it. Cleared for a second try after
+        // DisconnectInfo::encryptionUnusable, as the desktop viewer does.
+        bool allowEncryption = true;
         PictureQuality quality = PictureQuality::Balanced;
     };
 

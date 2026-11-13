@@ -29,6 +29,7 @@ namespace Marconi
         connection.credentials.username = address.username;
         connection.credentials.password = options.password;
         connection.trustedCertificateSha256 = options.trustedCertificateSha256;
+        connection.allowEncryption = options.allowEncryption;
         const QualitySettings quality = SettingsFor(options.quality);
         connection.compressLevel = quality.compressLevel;
         connection.qualityLevel = quality.qualityLevel;
