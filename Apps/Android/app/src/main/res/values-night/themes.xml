@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Marconi" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/marconi_accent</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">@color/marconi_selection</item>
+        <item name="colorOnPrimaryContainer">@color/marconi_text</item>
+        <item name="colorSecondary">@color/marconi_muted</item>
+        <item name="colorOnSecondary">#000000</item>
+        <item name="colorSecondaryContainer">@color/marconi_selection</item>
+        <item name="colorOnSecondaryContainer">@color/marconi_text</item>
+        <item name="android:colorBackground">@color/marconi_background</item>
+        <item name="colorOnBackground">@color/marconi_text</item>
+        <item name="colorSurface">@color/marconi_surface</item>
+        <item name="colorOnSurface">@color/marconi_text</item>
+        <item name="colorSurfaceVariant">@color/marconi_background</item>
+        <item name="colorOnSurfaceVariant">@color/marconi_muted</item>
+        <item name="colorOutline">@color/marconi_border</item>
+        <item name="colorOutlineVariant">@color/marconi_border</item>
+        <item name="android:statusBarColor">@color/marconi_background</item>
+        <item name="android:navigationBarColor">@color/marconi_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.Marconi.Title</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.Marconi.Heading</item>
+    </style>
+</resources>

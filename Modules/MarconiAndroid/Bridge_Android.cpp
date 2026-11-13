@@ -4,8 +4,12 @@
 // connection thread and are handed straight to the Kotlin object, which moves them to the main thread itself.
 
 #include <MarconiCore/Keysyms.h>
+#include <MarconiCore/Net/Discovery.h>
+#include <MarconiCore/Net/WakeOnLan.h>
+#include <MarconiCore/Quality.h>
 #include <MarconiCore/QuickConnect.h>
 #include <MarconiCore/RemoteSession.h>
+#include <MarconiCore/Rfb/Client.h>
 
 #include <Log/Log.h>
 
@@ -91,6 +95,33 @@ namespace
         env->DeleteLocalRef(bytes);
         env->DeleteLocalRef(stringClass);
         return result;
+    }
+
+    // UTF-8 to Latin-1 for plain VNC servers, whose clipboard carries nothing else: other characters become '?'.
+    std::string Utf8ToLatin1(const std::string& utf8)
+    {
+        std::string latin1;
+        for (size_t i = 0; i < utf8.size();)
+        {
+            const unsigned char c = static_cast<unsigned char>(utf8[i]);
+            if (c < 0x80)
+            {
+                latin1 += static_cast<char>(c);
+                i += 1;
+            }
+            else if ((c & 0xe0) == 0xc0 && i + 1 < utf8.size())
+            {
+                const unsigned codepoint = ((c & 0x1fu) << 6) | (static_cast<unsigned char>(utf8[i + 1]) & 0x3fu);
+                latin1 += codepoint <= 0xff ? static_cast<char>(codepoint) : '?';
+                i += 2;
+            }
+            else
+            {
+                latin1 += '?';
+                i += (c & 0xf0) == 0xf0 ? 4 : (c & 0xe0) == 0xe0 ? 3 : 1;
+            }
+        }
+        return latin1;
     }
 
     std::string Latin1ToUtf8(const std::string& latin1)
@@ -203,7 +234,8 @@ namespace
         // Starts connecting. Returns a message when the address can't be used at all; otherwise the outcome
         // arrives through onConnected or onDisconnected.
         std::string Connect(const std::string& addressText, const std::string& username,
-                            const std::string& password, const std::string& trustedCertificateHex)
+                            const std::string& password, const std::string& trustedCertificateHex, bool sshTunnel,
+                            int quality, const std::string& clientName)
         {
             Disconnect();
             Marconi::QuickConnectOptions options;
@@ -211,7 +243,9 @@ namespace
             options.username = username;
             options.password = password;
             options.trustedCertificateSha256 = BytesOf(trustedCertificateHex);
-            options.clientName = "Marconi for Android";
+            options.clientName = clientName;
+            options.sshTunnel = sshTunnel;
+            options.quality = QualityOf(quality);
             std::string error;
             std::unique_ptr<Marconi::RemoteSession> session = Marconi::QuickConnect(options, *this, error);
             if (session)
@@ -230,6 +264,16 @@ namespace
         }
 
         Marconi::RemoteSession* Current() { return m_session.get(); }
+        // The VNC client behind the session, for what only it offers (round trips, the Apple keyboard); null for
+        // other protocols.
+        Marconi::Rfb::Client* Vnc() { return dynamic_cast<Marconi::Rfb::Client*>(m_session.get()); }
+
+        // 0 = Best, 1 = Balanced, 2 = Low bandwidth, as the app numbers them.
+        static Marconi::PictureQuality QualityOf(int quality)
+        {
+            return quality == 0 ? Marconi::PictureQuality::Best :
+                   quality == 2 ? Marconi::PictureQuality::LowBandwidth : Marconi::PictureQuality::Balanced;
+        }
 
         // Copies a rectangle of the picture into an RGBA_8888 bitmap of the same size as the picture, turning
         // 0x00RRGGBB pixels into the R,G,B,A bytes Android wants. False when the bitmap doesn't match the picture.
@@ -472,11 +516,136 @@ extern "C"
 
     JNIEXPORT jstring JNICALL Java_com_redmarmoset_marconi_NativeSession_connect(
         JNIEnv* env, jobject, jlong handle, jstring address, jstring username, jstring password,
-        jstring trustedCertificateHex)
+        jstring trustedCertificateHex, jboolean sshTunnel, jint quality, jstring clientName)
     {
         std::string error = SessionOf(handle)->Connect(FromJava(env, address), FromJava(env, username),
-                                                       FromJava(env, password), FromJava(env, trustedCertificateHex));
+                                                       FromJava(env, password), FromJava(env, trustedCertificateHex),
+                                                       sshTunnel == JNI_TRUE, quality, FromJava(env, clientName));
         return error.empty() ? nullptr : ToJava(env, error);
+    }
+
+    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_setQuality(JNIEnv*, jobject, jlong handle, jint quality)
+    {
+        if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
+        {
+            const Marconi::QualitySettings settings = Marconi::SettingsFor(Session::QualityOf(quality));
+            session->SetQuality(settings.compressLevel, settings.qualityLevel);
+        }
+    }
+
+    // Text for the other computer's clipboard: offered through the extended clipboard where the server has it,
+    // else sent the plain VNC way. False when not connected.
+    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_sendClipboardText(
+        JNIEnv* env, jobject, jlong handle, jstring text)
+    {
+        Marconi::RemoteSession* session = SessionOf(handle)->Current();
+        if (session == nullptr || !session->IsConnected())
+        {
+            return JNI_FALSE;
+        }
+        Marconi::Rfb::ClipboardContent content;
+        content.utf8Text = FromJava(env, text);
+        if (!session->OfferClipboard(content))
+        {
+            session->SendClientCutText(Utf8ToLatin1(content.utf8Text));
+        }
+        return JNI_TRUE;
+    }
+
+    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_requestServerClipboard(JNIEnv*, jobject, jlong handle)
+    {
+        Marconi::RemoteSession* session = SessionOf(handle)->Current();
+        return session != nullptr && session->RequestServerClipboard() ? JNI_TRUE : JNI_FALSE;
+    }
+
+    // The server's displays as five numbers each: id, x, y, width, height. Empty until the server describes them.
+    JNIEXPORT jintArray JNICALL Java_com_redmarmoset_marconi_NativeSession_screens(JNIEnv* env, jobject, jlong handle)
+    {
+        std::vector<jint> values;
+        if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
+        {
+            for (const Marconi::Rfb::Screen& screen : session->GetScreens())
+            {
+                values.push_back(static_cast<jint>(screen.id));
+                values.push_back(screen.x);
+                values.push_back(screen.y);
+                values.push_back(screen.width);
+                values.push_back(screen.height);
+            }
+        }
+        jintArray result = env->NewIntArray(static_cast<jsize>(values.size()));
+        if (!values.empty())
+        {
+            env->SetIntArrayRegion(result, 0, static_cast<jsize>(values.size()), values.data());
+        }
+        return result;
+    }
+
+    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_supportsDesktopResize(JNIEnv*, jobject, jlong handle)
+    {
+        Marconi::RemoteSession* session = SessionOf(handle)->Current();
+        return session != nullptr && session->SupportsDesktopResize() ? JNI_TRUE : JNI_FALSE;
+    }
+
+    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_requestDesktopSize(
+        JNIEnv*, jobject, jlong handle, jint width, jint height)
+    {
+        if (Marconi::RemoteSession* session = SessionOf(handle)->Current())
+        {
+            session->RequestDesktopSize(width, height);
+        }
+    }
+
+    // The last measured round trip to a VNC server in milliseconds; -1 before the first or for other protocols.
+    JNIEXPORT jint JNICALL Java_com_redmarmoset_marconi_NativeSession_roundTripMs(JNIEnv*, jobject, jlong handle)
+    {
+        Marconi::Rfb::Client* vnc = SessionOf(handle)->Vnc();
+        return vnc != nullptr ? vnc->GetHealth().roundTripMs : -1;
+    }
+
+    JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_sendPing(JNIEnv*, jobject, jlong handle)
+    {
+        if (Marconi::Rfb::Client* vnc = SessionOf(handle)->Vnc())
+        {
+            vnc->SendPing();
+        }
+    }
+
+    JNIEXPORT jboolean JNICALL Java_com_redmarmoset_marconi_NativeSession_isAppleServer(JNIEnv*, jobject, jlong handle)
+    {
+        Marconi::Rfb::Client* vnc = SessionOf(handle)->Vnc();
+        return vnc != nullptr && vnc->IsAppleServer() ? JNI_TRUE : JNI_FALSE;
+    }
+
+    // Wakes a computer by its hardware address. Returns a message when it couldn't be sent.
+    JNIEXPORT jstring JNICALL Java_com_redmarmoset_marconi_NativeSession_wake(JNIEnv* env, jclass, jstring macAddress)
+    {
+        std::string error;
+        if (Marconi::Net::SendWakeOnLan(FromJava(env, macAddress), error))
+        {
+            return nullptr;
+        }
+        return ToJava(env, error);
+    }
+
+    // Computers advertising screen sharing, Remote Desktop or SSH on this network, one string each:
+    // "name\thost\taddress\tport\tprotocol". Listens for listenMs; this blocks, so call it off the main thread.
+    JNIEXPORT jobjectArray JNICALL Java_com_redmarmoset_marconi_NativeSession_discover(JNIEnv* env, jclass, jint listenMs)
+    {
+        const std::vector<Marconi::Net::DiscoveredService> services = Marconi::Net::Discover(listenMs);
+        jclass stringClass = env->FindClass("java/lang/String");
+        jobjectArray result = env->NewObjectArray(static_cast<jsize>(services.size()), stringClass, nullptr);
+        for (size_t i = 0; i < services.size(); ++i)
+        {
+            const Marconi::Net::DiscoveredService& service = services[i];
+            const std::string line = service.instance + "\t" + service.hostName + "\t" + service.ipv4 + "\t" +
+                                     std::to_string(service.port) + "\t" + Marconi::ProtocolName(service.protocol);
+            jstring text = ToJava(env, line);
+            env->SetObjectArrayElement(result, static_cast<jsize>(i), text);
+            env->DeleteLocalRef(text);
+        }
+        env->DeleteLocalRef(stringClass);
+        return result;
     }
 
     JNIEXPORT void JNICALL Java_com_redmarmoset_marconi_NativeSession_disconnect(JNIEnv*, jobject, jlong handle)

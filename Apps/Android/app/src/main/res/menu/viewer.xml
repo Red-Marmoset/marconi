@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/menu_keyboard" android:title="@string/keyboard" android:icon="@drawable/ic_keyboard" app:showAsAction="always" />
+    <item android:title="@string/menu_zoom">
+        <menu>
+            <group android:checkableBehavior="single">
+                <item android:id="@+id/zoom_fit" android:title="@string/menu_scale_fit" />
+                <item android:id="@+id/zoom_50" android:title="50%" />
+                <item android:id="@+id/zoom_75" android:title="75%" />
+                <item android:id="@+id/zoom_100" android:title="@string/scale_actual" />
+                <item android:id="@+id/zoom_125" android:title="125%" />
+                <item android:id="@+id/zoom_150" android:title="150%" />
+                <item android:id="@+id/zoom_200" android:title="200%" />
+            </group>
+        </menu>
+    </item>
+    <item android:id="@+id/menu_display" android:title="@string/menu_display">
+        <menu>
+            <group android:id="@+id/display_group" android:checkableBehavior="single">
+                <item android:id="@+id/display_all" android:title="@string/menu_all_displays" />
+            </group>
+        </menu>
+    </item>
+    <item android:title="@string/menu_quality">
+        <menu>
+            <group android:checkableBehavior="single">
+                <item android:id="@+id/quality_best" android:title="@string/menu_quality_best" />
+                <item android:id="@+id/quality_balanced" android:title="@string/menu_quality_balanced" />
+                <item android:id="@+id/quality_low" android:title="@string/menu_quality_low" />
+            </group>
+        </menu>
+    </item>
+    <item android:id="@+id/menu_match_size" android:title="@string/menu_match_size" android:checkable="true" />
+    <item android:id="@+id/menu_full_screen" android:title="@string/menu_full_screen" android:checkable="true" />
+    <item android:id="@+id/menu_view_only" android:title="@string/menu_view_only" android:checkable="true" />
+    <item android:id="@+id/menu_share_clipboard" android:title="@string/menu_share_clipboard" android:checkable="true" />
+    <item android:id="@+id/menu_send_clipboard" android:title="@string/menu_send_clipboard" />
+    <item android:id="@+id/menu_get_clipboard" android:title="@string/menu_get_clipboard" />
+    <item android:title="@string/menu_send_keys">
+        <menu>
+            <item android:id="@+id/keys_ctrl_alt_del" android:title="Ctrl+Alt+Del" />
+            <item android:id="@+id/keys_alt_tab" android:title="Alt+Tab" />
+            <item android:id="@+id/keys_alt_f4" android:title="Alt+F4" />
+            <item android:id="@+id/keys_windows" android:title="Windows key" />
+            <item android:id="@+id/keys_ctrl_esc" android:title="Ctrl+Esc" />
+            <item android:id="@+id/keys_ctrl_shift_esc" android:title="Ctrl+Shift+Esc" />
+            <item android:id="@+id/keys_print_screen" android:title="Print Screen" />
+            <item android:id="@+id/keys_cmd_tab" android:title="Cmd+Tab (Mac)" />
+            <item android:id="@+id/keys_f8" android:title="F8" />
+            <item android:id="@+id/keys_f9" android:title="F9" />
+            <item android:id="@+id/keys_f10" android:title="F10" />
+        </menu>
+    </item>
+    <item android:title="@string/menu_screenshot">
+        <menu>
+            <item android:id="@+id/screenshot_save" android:title="@string/menu_screenshot_save" />
+            <item android:id="@+id/screenshot_share" android:title="@string/menu_screenshot_share" />
+        </menu>
+    </item>
+    <item android:id="@+id/menu_show_keys" android:title="@string/menu_show_keys" android:checkable="true" />
+    <item android:id="@+id/menu_refresh" android:title="@string/menu_refresh" />
+    <item android:id="@+id/menu_disconnect" android:title="@string/menu_disconnect" />
+</menu>
