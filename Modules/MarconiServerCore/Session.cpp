@@ -7,6 +7,7 @@
 
 #include <Log/Log.h>
 
+#include <algorithm>
 #include <chrono>
 
 namespace Marconi
@@ -15,9 +16,39 @@ namespace Marconi
     {
         namespace
         {
-            // What this build's server can do, for the capability handshake. It grows as phases land (video,
-            // clipboard, files, gamepads); for now it can describe several displays and nothing more.
+            // What this build's server can always do, for the capability handshake. It grows as phases land (video,
+            // clipboard, files, gamepads). Resizing a display is added when the screen source can do it.
             constexpr uint64_t kServerCapabilities = Wire::Capability::MultipleDisplays;
+
+            Wire::Rect Intersect(const Wire::Rect& a, const Wire::Rect& b)
+            {
+                int32_t left = std::max(a.x, b.x);
+                int32_t top = std::max(a.y, b.y);
+                int32_t right = std::min(a.x + a.width, b.x + b.width);
+                int32_t bottom = std::min(a.y + a.height, b.y + b.height);
+                if (right <= left || bottom <= top)
+                {
+                    return {0, 0, 0, 0};
+                }
+                return {left, top, right - left, bottom - top};
+            }
+
+            bool SameLayout(const std::vector<Wire::Display>& a, const std::vector<Wire::Display>& b)
+            {
+                if (a.size() != b.size())
+                {
+                    return false;
+                }
+                for (size_t i = 0; i < a.size(); ++i)
+                {
+                    if (a[i].id != b[i].id || a[i].x != b[i].x || a[i].y != b[i].y || a[i].width != b[i].width ||
+                        a[i].height != b[i].height)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
 
             // Packs the pixels of one rectangle of a capture into a Still's little-endian 0x00RRGGBB bytes
             // (byte order B, G, R, 0), row by row.
@@ -80,10 +111,17 @@ namespace Marconi
 
             Wire::Welcome welcome;
             welcome.version = Wire::kProtocolVersion;
-            welcome.capabilities = hello.capabilities & kServerCapabilities;
+            uint64_t offered = kServerCapabilities;
+            if (m_screen.CanSetDisplayMode())
+            {
+                offered |= Wire::Capability::ResizeDisplay;
+            }
+            m_grantedCapabilities = hello.capabilities & offered;
+            welcome.capabilities = m_grantedCapabilities;
             welcome.serverName = m_settings.serverName;
             welcome.serverVersion = m_settings.serverVersion;
             welcome.displays = m_screen.GetDisplays();
+            m_displays = welcome.displays;
             if (!Send(welcome.Encode()))
             {
                 return false;
@@ -158,6 +196,30 @@ namespace Marconi
                     case Wire::Type::Text:
                         m_input.TypeText(Wire::Text::Decode(body).utf8);
                         break;
+                    case Wire::Type::SelectDisplay:
+                    {
+                        Wire::SelectDisplay select = Wire::SelectDisplay::Decode(body);
+                        std::lock_guard<std::mutex> lock(m_requestMutex);
+                        m_requestedDisplay = select.displayId;
+                        m_selectionPending = true;
+                        break;
+                    }
+                    case Wire::Type::SetDisplayMode:
+                    {
+                        Wire::SetDisplayMode mode = Wire::SetDisplayMode::Decode(body);
+                        if ((m_grantedCapabilities & Wire::Capability::ResizeDisplay) == 0)
+                        {
+                            Wire::DisplayModeResult refused;
+                            refused.displayId = mode.displayId;
+                            refused.status = Wire::DisplayModeResult::Status::NotAllowed;
+                            Send(refused.Encode());
+                            break;
+                        }
+                        std::lock_guard<std::mutex> lock(m_requestMutex);
+                        m_requestedMode = mode;
+                        m_modePending = true;
+                        break;
+                    }
                     case Wire::Type::Ping:
                     {
                         Wire::Pong pong;
@@ -182,18 +244,49 @@ namespace Marconi
 
         void Session::SendFrame(const Capture& capture, bool full)
         {
+            // Only the chosen display is streamed (the whole desktop when none is chosen): everything is clipped to
+            // it, so a viewer looking at one display isn't sent the others. Coordinates stay desktop coordinates.
+            Wire::Rect area{0, 0, capture.width, capture.height};
+            if (m_selectedDisplay != 0)
+            {
+                for (const Wire::Display& display : m_displays)
+                {
+                    if (display.id == m_selectedDisplay)
+                    {
+                        area = Intersect(area, {display.x, display.y, display.width, display.height});
+                    }
+                }
+            }
+            std::vector<Wire::Rect> rects;
+            if (full)
+            {
+                rects.push_back(area);
+            }
+            else
+            {
+                for (const Wire::Rect& rect : capture.dirty)
+                {
+                    Wire::Rect clipped = Intersect(rect, area);
+                    if (clipped.width > 0 && clipped.height > 0)
+                    {
+                        rects.push_back(clipped);
+                    }
+                }
+            }
+            if (rects.empty())
+            {
+                return; // everything that changed is on a display the viewer isn't watching
+            }
+
             Wire::FrameBegin begin;
             begin.frameId = ++m_frameId;
-            begin.displayId = 0;
+            begin.displayId = m_selectedDisplay;
             if (!Send(begin.Encode()))
             {
                 m_stop = true;
                 return;
             }
-            const std::vector<Wire::Rect>& rects = capture.dirty;
-            Wire::Rect whole{0, 0, capture.width, capture.height};
-            const std::vector<Wire::Rect> wholeOnly{whole};
-            for (const Wire::Rect& rect : (full ? wholeOnly : rects))
+            for (const Wire::Rect& rect : rects)
             {
                 if (!RectInside(rect, capture.width, capture.height))
                 {
@@ -229,20 +322,173 @@ namespace Marconi
             }
         }
 
+        bool Session::CheckLayout(bool force)
+        {
+            auto now = std::chrono::steady_clock::now();
+            if (!force && now - m_lastLayoutCheck < std::chrono::milliseconds(500))
+            {
+                return false;
+            }
+            m_lastLayoutCheck = now;
+            std::vector<Wire::Display> displays = m_screen.GetDisplays();
+            if (displays.empty() || SameLayout(displays, m_displays))
+            {
+                return false;
+            }
+            m_displays = displays;
+            Wire::Displays message;
+            message.displays = displays;
+            if (!Send(message.Encode()))
+            {
+                m_stop = true;
+                return false;
+            }
+            if (m_selectedDisplay != 0 &&
+                std::none_of(displays.begin(), displays.end(),
+                             [this](const Wire::Display& d) { return d.id == m_selectedDisplay; }))
+            {
+                m_selectedDisplay = 0; // the chosen display went away: back to the whole desktop
+            }
+            m_needFull = true; // the picture's size or place changed: send it again whole
+            return true;
+        }
+
+        void Session::ApplyPendingRequests()
+        {
+            bool selectionPending;
+            uint32_t requestedDisplay;
+            bool modePending;
+            Wire::SetDisplayMode mode;
+            {
+                std::lock_guard<std::mutex> lock(m_requestMutex);
+                selectionPending = m_selectionPending;
+                requestedDisplay = m_requestedDisplay;
+                modePending = m_modePending;
+                mode = m_requestedMode;
+                m_selectionPending = false;
+                m_modePending = false;
+            }
+            if (selectionPending)
+            {
+                bool known = requestedDisplay == 0;
+                for (const Wire::Display& display : m_displays)
+                {
+                    known = known || display.id == requestedDisplay;
+                }
+                if (known)
+                {
+                    m_selectedDisplay = requestedDisplay;
+                    m_needFull = true; // show the chosen display whole straight away
+                }
+            }
+            if (modePending)
+            {
+                // Id 0 means "the display being watched", or the first one when the whole desktop is.
+                uint32_t id = mode.displayId;
+                if (id == 0)
+                {
+                    id = m_selectedDisplay != 0 ? m_selectedDisplay : (m_displays.empty() ? 0 : m_displays[0].id);
+                }
+                bool known = false;
+                for (const Wire::Display& display : m_displays)
+                {
+                    known = known || display.id == id;
+                }
+                Wire::DisplayModeResult result;
+                result.displayId = id;
+                result.status = known ? m_screen.SetDisplayMode(id, mode.width, mode.height)
+                                      : Wire::DisplayModeResult::Status::NoSuchDisplay;
+                if (!Send(result.Encode()))
+                {
+                    m_stop = true;
+                    return;
+                }
+                if (result.status == Wire::DisplayModeResult::Status::Ok)
+                {
+                    CheckLayout(true);
+                }
+            }
+        }
+
+        void Session::SendCursor()
+        {
+            Cursor cursor;
+            if (m_screen.GetCursor(cursor))
+            {
+                Wire::CursorShape shape;
+                shape.width = cursor.width;
+                shape.height = cursor.height;
+                shape.hotspotX = cursor.hotspotX;
+                shape.hotspotY = cursor.hotspotY;
+                shape.argb.reserve(cursor.argb.size() * 4);
+                for (uint32_t pixel : cursor.argb)
+                {
+                    shape.argb.push_back(static_cast<uint8_t>(pixel));
+                    shape.argb.push_back(static_cast<uint8_t>(pixel >> 8));
+                    shape.argb.push_back(static_cast<uint8_t>(pixel >> 16));
+                    shape.argb.push_back(static_cast<uint8_t>(pixel >> 24));
+                }
+                if (cursor.argb.empty())
+                {
+                    shape.width = 0;
+                    shape.height = 0;
+                }
+                if (!Send(shape.Encode()))
+                {
+                    m_stop = true;
+                    return;
+                }
+            }
+            int32_t x = 0;
+            int32_t y = 0;
+            if (m_screen.GetCursorPosition(x, y) && (x != m_lastCursorX || y != m_lastCursorY))
+            {
+                m_lastCursorX = x;
+                m_lastCursorY = y;
+                Wire::CursorPosition position;
+                position.x = x;
+                position.y = y;
+                if (!Send(position.Encode()))
+                {
+                    m_stop = true;
+                }
+            }
+        }
+
         void Session::RunFrameLoop()
         {
             bool first = true;
+            int32_t lastWidth = 0;
+            int32_t lastHeight = 0;
+            m_lastLayoutCheck = std::chrono::steady_clock::now();
             while (!m_stop)
             {
+                ApplyPendingRequests();
+                CheckLayout(false);
                 Capture capture;
                 if (m_screen.Grab(capture))
                 {
-                    if (first || !capture.dirty.empty())
+                    if (capture.width != lastWidth || capture.height != lastHeight)
                     {
-                        SendFrame(capture, first);
+                        // The desktop changed size under us (a resize, a monitor plugged in): tell the viewer the
+                        // layout before the first picture of the new size.
+                        if (!first)
+                        {
+                            CheckLayout(true);
+                        }
+                        lastWidth = capture.width;
+                        lastHeight = capture.height;
+                        m_needFull = true;
+                    }
+                    if (first || m_needFull || !capture.dirty.empty())
+                    {
+                        bool full = first || m_needFull;
+                        m_needFull = false;
+                        SendFrame(capture, full);
                         first = false;
                     }
                 }
+                SendCursor();
                 if (m_frameIntervalMs > 0)
                 {
                     std::this_thread::sleep_for(std::chrono::milliseconds(m_frameIntervalMs));
@@ -273,6 +519,7 @@ namespace Marconi
             RunFrameLoop();
             m_stop = true;
             input.join();
+            m_screen.RestoreDisplayModes(); // a changed screen size doesn't outlive the viewer
         }
     } // namespace Server
 } // namespace Marconi

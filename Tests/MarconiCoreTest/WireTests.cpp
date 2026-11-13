@@ -183,6 +183,64 @@ namespace MarconiTest
             CHECK(pback.x == 1920 && pback.y == -5 && pback.buttons == 0x05 && pback.wheelHigh == -120);
         });
 
+        RunTest("display and cursor messages round-trip", []() {
+            Wire::Displays displays;
+            displays.displays = {{7, 0, 0, 1920, 1080}, {9, 1920, -200, 1280, 1024}};
+            Wire::Displays displaysBack = RoundTrip(displays, Wire::Type::Displays);
+            CHECK(displaysBack.displays.size() == 2);
+            CHECK(displaysBack.displays[1].id == 9 && displaysBack.displays[1].x == 1920 &&
+                  displaysBack.displays[1].y == -200 && displaysBack.displays[1].height == 1024);
+
+            Wire::SelectDisplay select;
+            select.displayId = 9;
+            CHECK(RoundTrip(select, Wire::Type::SelectDisplay).displayId == 9);
+
+            Wire::SetDisplayMode mode;
+            mode.displayId = 7;
+            mode.width = 1280;
+            mode.height = 720;
+            Wire::SetDisplayMode modeBack = RoundTrip(mode, Wire::Type::SetDisplayMode);
+            CHECK(modeBack.displayId == 7 && modeBack.width == 1280 && modeBack.height == 720);
+
+            Wire::DisplayModeResult result;
+            result.displayId = 7;
+            result.status = Wire::DisplayModeResult::Status::NotListed;
+            Wire::DisplayModeResult resultBack = RoundTrip(result, Wire::Type::DisplayModeResult);
+            CHECK(resultBack.displayId == 7 && resultBack.status == Wire::DisplayModeResult::Status::NotListed);
+
+            Wire::CursorShape shape;
+            shape.width = 2;
+            shape.height = 1;
+            shape.hotspotX = 1;
+            shape.hotspotY = 0;
+            shape.argb = {1, 2, 3, 0xFF, 4, 5, 6, 0};
+            Wire::CursorShape shapeBack = RoundTrip(shape, Wire::Type::CursorShape);
+            CHECK(shapeBack.width == 2 && shapeBack.hotspotX == 1 && shapeBack.argb == shape.argb);
+            Wire::CursorShape hidden;
+            CHECK(RoundTrip(hidden, Wire::Type::CursorShape).argb.empty());
+
+            Wire::CursorPosition position;
+            position.x = -15;
+            position.y = 4000;
+            Wire::CursorPosition positionBack = RoundTrip(position, Wire::Type::CursorPosition);
+            CHECK(positionBack.x == -15 && positionBack.y == 4000);
+
+            // A result status this build doesn't know is refused.
+            Wire::Bytes bad = HexBytes("0700000000");
+            Wire::Reader badReader(bad);
+            bad.back() = 99;
+            bool refused = false;
+            try
+            {
+                Wire::DisplayModeResult::Decode(badReader);
+            }
+            catch (const Wire::WireError&)
+            {
+                refused = true;
+            }
+            CHECK(refused);
+        });
+
         RunTest("clipboard messages round-trip", []() {
             Wire::ClipboardOffer offer{true, false};
             Wire::ClipboardOffer oback = RoundTrip(offer, Wire::Type::ClipboardOffer);
@@ -242,6 +300,8 @@ namespace MarconiTest
                     case Wire::Type::Still: Wire::Still::Decode(reader); break;
                     case Wire::Type::Move: Wire::Move::Decode(reader); break;
                     case Wire::Type::CursorShape: Wire::CursorShape::Decode(reader); break;
+                    case Wire::Type::CursorPosition: Wire::CursorPosition::Decode(reader); break;
+                    case Wire::Type::DisplayModeResult: Wire::DisplayModeResult::Decode(reader); break;
                     case Wire::Type::Key: Wire::Key::Decode(reader); break;
                     case Wire::Type::Text: Wire::Text::Decode(reader); break;
                     case Wire::Type::Pointer: Wire::Pointer::Decode(reader); break;
@@ -260,7 +320,8 @@ namespace MarconiTest
                 Wire::Type::LoginResult, Wire::Type::Bye,           Wire::Type::Displays,
                 Wire::Type::StreamConfig, Wire::Type::Still,        Wire::Type::Move,
                 Wire::Type::CursorShape, Wire::Type::Key,           Wire::Type::Text,
-                Wire::Type::Pointer,     Wire::Type::ClipboardData};
+                Wire::Type::Pointer,     Wire::Type::ClipboardData, Wire::Type::CursorPosition,
+                Wire::Type::DisplayModeResult, Wire::Type::SelectDisplay, Wire::Type::SetDisplayMode};
             for (Wire::Type type : types)
             {
                 for (int i = 0; i < 2000; ++i)
