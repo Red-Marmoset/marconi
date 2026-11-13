@@ -92,6 +92,7 @@ Var UserVersion
 Var RadioUser
 Var RadioAll
 Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started again at the end)
+Var InstallServer ; the finish page's "Install Marconi Server now" checkbox, or "" when it isn't shown
 
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
@@ -107,7 +108,7 @@ Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started aga
 !define MUI_HEADERIMAGE_UNBITMAP "${HEADER_BITMAP}"
 
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${APP_NAME} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME}, the remote desktop client from ${PUBLISHER}, on your computer.$\r$\n$\r$\nIf ${APP_NAME} is running, Setup closes it and starts it again afterwards. Your saved connections are kept when upgrading.$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME}, the remote desktop client from ${PUBLISHER}, on your computer.$\r$\n$\r$\nIf ${APP_NAME} is running, Setup closes it and starts it again afterwards. AI tools using ${APP_NAME} lose it while Setup runs; Claude Code reconnects by itself, and other AI tools may need restarting. Your saved connections are kept when upgrading.$\r$\n$\r$\nClick Next to continue."
 !define MUI_FINISHPAGE_TITLE "${APP_NAME} is ready"
 !define MUI_FINISHPAGE_TEXT "${APP_NAME} ${VERSION} has been installed on your computer.$\r$\n$\r$\nClick Finish to close Setup."
 ; When installing for everyone, Setup runs as administrator, and MUI's own run would start Marconi that way too: its
@@ -122,6 +123,12 @@ Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started aga
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION OpenSourceAsUser
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Open the source code on GitHub"
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+; A third checkbox, "Install Marconi Server now", which MUI doesn't offer: FinishShow adds it below the other two and
+; FinishLeave runs the server's installer. Only when that installer was chosen on the components page.
+!ifdef HAVE_SERVER_SETUP
+    !define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishShow
+    !define MUI_PAGE_CUSTOMFUNCTION_LEAVE FinishLeave
+!endif
 
 ; The MIT license, with its checkbox ticked to start with (LicenseShow); unticking it disables Next.
 !define MUI_LICENSEPAGE_CHECKBOX
@@ -469,6 +476,25 @@ FunctionEnd
 !insertmacro CloseRunningAppFunction ""
 !insertmacro CloseRunningAppFunction "un."
 
+; Ends any MarconiMcp.exe running from $INSTDIR, which AI tools such as Claude Code start in the background and keep
+; running; it holds the folder's DLLs open, so they couldn't be replaced or removed. Only copies from this folder are
+; ended, and the AI tools themselves stay open (Claude Code was seen starting a new copy by itself; others not checked).
+; MarconiMcp has no window to close politely, so it is ended outright;
+; it keeps nothing that would be lost. PowerShell comes with Windows; tasklist and taskkill can't filter by folder.
+!macro CloseRunningMcpFunction PREFIX
+Function ${PREFIX}CloseRunningMcp
+    nsExec::ExecToStack `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "@(Get-Process MarconiMcp -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith('$INSTDIR\', 'OrdinalIgnoreCase') } | Stop-Process -Force -PassThru | ForEach-Object { $$_.WaitForExit(10000) | Out-Null; 1 }).Count"`
+    Pop $0
+    Pop $1
+    ${If} $0 == 0
+    ${AndIf} $1 > 0
+        DetailPrint "Closed the AI tools helper (MarconiMcp); Claude Code reconnects by itself, other AI tools may need restarting"
+    ${EndIf}
+FunctionEnd
+!macroend
+!insertmacro CloseRunningMcpFunction ""
+!insertmacro CloseRunningMcpFunction "un."
+
 ; Explorer launches Marconi on Setup's behalf, so it runs as the signed-in user. If Explorer isn't running, or is
 ; itself elevated, the plug-in falls back to a plain ShellExecute. The empty action means the default ("open").
 Function LaunchAsUser
@@ -491,10 +517,30 @@ Function OpenSourceAsUser
     ShellExecAsUser::ShellExecAsUser "" "${SOURCE_URL}" ""
 FunctionEnd
 
+!ifdef HAVE_SERVER_SETUP
+; Starts the Marconi Server installer. It asks for administrator permission itself (it installs for the whole
+; computer), so it is started directly rather than as the signed-in user. MUI starts Marconi straight after.
+Function FinishLeave
+    ${If} $InstallServer == ""
+        Return
+    ${EndIf}
+    ${NSD_GetState} $InstallServer $0
+    ${If} $0 == ${BST_CHECKED}
+    ${AndIf} ${FileExists} "$INSTDIR\${SERVER_SETUP}"
+        ClearErrors
+        ExecShell "open" "$INSTDIR\${SERVER_SETUP}"
+        ${If} ${Errors}
+            MessageBox MB_OK|MB_ICONEXCLAMATION "The Marconi Server installer didn't start. You can run it later from $INSTDIR."
+        ${EndIf}
+    ${EndIf}
+FunctionEnd
+!endif
+
 Section "${APP_NAME}" SecApp
     SectionIn RO
     Call ApplyMode
     Call CloseRunningApp
+    Call CloseRunningMcp
 
     ; Upgrading: remove the previous version of the same kind first (keeping its user data), so files it had and
     ; this one doesn't aren't left behind. _?= runs its uninstaller in place and waits for it.
@@ -592,6 +638,24 @@ SectionEnd
 ; SecAiTools was chosen.
 !include "AiTools.nsh"
 
+!ifdef HAVE_SERVER_SETUP
+; Adds "Install Marconi Server now", unticked, under MUI's two checkboxes (at 90u and 110u; see MUI2's Finish.nsh),
+; when the Marconi Server installer was chosen. After the sections, whose numbers it uses.
+Function FinishShow
+    StrCpy $InstallServer ""
+    ${IfNot} ${SectionIsSelected} ${SecServerSetup}
+        Return
+    ${EndIf}
+    ${NSD_CreateCheckbox} 120u 130u 195u 10u "Install Marconi Server now"
+    Pop $InstallServer
+    SetCtlColors $InstallServer "${MUI_TEXTCOLOR}" "${MUI_BGCOLOR}"
+    ; As MUI does for its own checkboxes: in high contrast, SetCtlColors doesn't change a themed checkbox's text.
+    ${If} ${IsHighContrastModeActive}
+        System::Call 'UXTHEME::SetWindowTheme(p$InstallServer,w" ",w" ")'
+    ${EndIf}
+FunctionEnd
+!endif
+
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} VNC client."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME}, and a link to its source code on GitHub, to the Start menu."
@@ -673,6 +737,7 @@ SectionEnd
 Section "un.${APP_NAME}" SecUnApp
     SectionIn RO
     Call un.CloseRunningApp
+    Call un.CloseRunningMcp
     ; Out of the AI tools first: it needs MarconiMcp.exe, which the files below include.
     Call un.AiToolsRemove
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
