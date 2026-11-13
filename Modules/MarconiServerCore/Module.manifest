@@ -6,7 +6,7 @@
     "dependencies": ["MarconiCore", "Platform", "Log", "Crypto"],
     "platformLibraries": {
         "Windows": ["gdi32.lib", "user32.lib", "advapi32.lib", "wtsapi32.lib", "userenv.lib"],
-        "Linux": ["X11", "Xtst", "Xfixes", "Xrandr"],
+        "Linux": ["X11", "Xtst", "Xfixes", "Xrandr", "dl"],
         "macOS": ["-framework ApplicationServices", "-framework CoreFoundation"]
     },
     "platforms": ["Windows", "Linux", "macOS"]
