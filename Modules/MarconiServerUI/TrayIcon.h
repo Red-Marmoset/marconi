@@ -12,11 +12,12 @@ namespace Marconi
     {
         class ServerConfig;
         class ServerController;
+        class TrayNotifier;
 
         class TrayIcon : public wxTaskBarIcon
         {
         public:
-            TrayIcon(ServerController& controller, ServerConfig& config);
+            TrayIcon(ServerController& controller, ServerConfig& config, TrayNotifier& notifier);
 
             // wxTaskBarIcon asks for the menu each time it's clicked; we build a fresh one so the status lines are
             // current.
@@ -27,6 +28,9 @@ namespace Marconi
             void OnSetPassword(wxCommandEvent& event);
             void OnAllowFiles(wxCommandEvent& event);
             void OnChangePort(wxCommandEvent& event);
+            void OnNotify(wxCommandEvent& event);
+            void OnWhoCanConnect(wxCommandEvent& event);
+            void OnIdleChoice(wxCommandEvent& event);
             void OnCopyFingerprint(wxCommandEvent& event);
             void OnShowProblem(wxCommandEvent& event);
             void OnCheckAgain(wxCommandEvent& event);
@@ -36,6 +40,7 @@ namespace Marconi
 
             ServerController& m_controller;
             ServerConfig& m_config;
+            TrayNotifier& m_notifier;
 
             wxDECLARE_EVENT_TABLE();
         };

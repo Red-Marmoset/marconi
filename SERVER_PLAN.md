@@ -707,8 +707,30 @@ tester needs them.
    (type 25, control channel until Phase 5) carries the position when it moves. The client forwards the shape through
    the existing `OnCursorShape` and the position through the new `SessionListener::OnCursorPosition`; the viewer does
    not draw a remote pointer from the position yet (its own pointer, with the server's shape, never lags).
-6. The server's tray settings: who may connect (allow list of addresses), idle disconnect, a notice to the person at
+6. **Done on Linux (branch `claude/server-rules`); tray not clicked through.** The server's tray settings: who may connect (allow list of addresses), idle disconnect, a notice to the person at
    the computer when someone connects.
+   - Allow list (`AllowList.*`): IPv4 and IPv6 addresses and CIDR ranges, held as 16 bytes so an IPv4-mapped IPv6 peer
+     matches an IPv4 entry; `127.0.0.1` and `::1` are separate entries. Empty list = anyone (unchanged). Checked in
+     `Listener::ServeOne` straight after accept (the peer address comes from the new `Net::Socket::GetPeerAddress`),
+     before the magic bytes, TLS or any message; the refused peer just sees the connection close, the log says so.
+     A list with an unreadable entry stops `Start` (never quietly allows everyone). Changes apply to the next
+     connection; a connected viewer is not dropped. The listener is IPv4-only today, so IPv6 entries only matter once
+     it is dual-stack.
+   - Idle disconnect: `Settings::idleMinutes` (0 = never), `IdleWatch` with an injectable clock. Any message except
+     Ping and Bye counts as the viewer being there. At the limit `Session` sends `Bye{reason}` ("Disconnected because
+     nothing was done for N minutes.", which the viewer already shows as its disconnect reason) and ends; the
+     listener's end handler shuts the socket. With lock-on-disconnect on, an idle viewer's end locks the screen too.
+   - `ConnectionNotifier` (core, no wx): `Connected` (after login), `Disconnected`, `IdleDisconnected`, with viewer
+     name and address; `DescribeNotice` is the shared plain-words text; `RecordingNotifier` for tests. The tray's
+     `TrayNotifier` shows a `wxNotificationMessage` via `CallAfter`; the console prints the line with `--notify`.
+   - Settings: `allowedAddresses`, `idleMinutes`; flags `--allow` (repeatable), `--idle-minutes`, `--notify`; tray
+     keys `AllowedAddresses`, `IdleMinutes`, `NotifyOnConnect` (notices default ON in the tray); menu "Who can
+     connect...", "Disconnect idle viewers after" and "Tell me when someone connects".
+   - Tests: `Tests/MarconiServerTest/RuleTests.cpp` (parser, matcher, idle clock, session, and over a real loopback
+     socket: excluded 127.0.0.1 is refused with no bytes sent, included connects, live list change).
+   - **Untested:** the tray dialogs and the notification (never shown, needs a desktop; `UseTaskBarIcon` is compiled
+     on Windows only); Windows; the Windows service/session helper does not read these settings yet
+     (`SessionHost`, `ServiceConfig`); an IPv6 peer over a real socket.
 7. Several viewers at once (shared), as VNC allows, or one at a time with "take over": owner's choice, asked then.
 
 ### Phase 7: gamepads and game input

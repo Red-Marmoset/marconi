@@ -259,6 +259,26 @@ Marconi shows you the server's identity and asks if you trust it; after that it 
 if the identity ever changes. From the tray icon you can set or change the password, change the port the server
 listens on, and quit.
 
+### Who can connect, and when to hang up
+
+All of this is in the tray icon's menu, and it applies at once (you don't need to restart the server).
+
+- **Who can connect...** is a list of the computers allowed to connect, one per line. Write a single address such as
+  `192.168.1.20`, or a whole network such as `192.168.1.0/24` (everything from `192.168.1.0` to `192.168.1.255`).
+  Addresses in the newer style, such as `fd00::/8`, work too. If the list is empty, anyone who can reach this computer
+  can try to connect, as before; they still need the password. A computer that is not on the list is simply cut off,
+  and is told nothing about why; the server writes a line in its log with the address. If you list `127.0.0.1`, that
+  covers this computer talking to itself over the older address style only; `::1` is the newer-style one and has to be
+  listed separately. Someone already connected when you change the list stays connected.
+- **Disconnect idle viewers after** hangs up on a viewer that has not used the mouse or keyboard (or copied anything)
+  for the time you pick. The viewer is told why. "Never" (the default) turns it off.
+- **Tell me when someone connects** shows a small message on this computer when a viewer connects and when it goes
+  away. It is on by default and can be turned off.
+
+On the command line the same things are `--allow ADDRESS_OR_NETWORK` (repeat it for more), `--idle-minutes N` and
+`--notify` (prints a line instead of showing a message). The tray icon keeps its choices between runs; the Windows
+service does not read them yet.
+
 Where it keeps its settings and logs: on Windows, in `C:\ProgramData\Marconi Server` when the installer made that folder
 (the installer lets the account that was signed in during Setup change things there); otherwise, and on macOS and
 Linux, in a "marconi-server" folder in your own user account.

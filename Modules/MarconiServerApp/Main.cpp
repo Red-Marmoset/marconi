@@ -3,7 +3,9 @@
 // can connect to a real server; capturing the actual screen (and injecting input) comes with the platform work.
 
 #include <MarconiCore/Version.h>
+#include <MarconiServerCore/AllowList.h>
 #include <MarconiServerCore/ClipboardAccess.h>
+#include <MarconiServerCore/ConnectionNotifier.h>
 #include <MarconiServerCore/IdentityStore.h>
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/Listener.h>
@@ -25,6 +27,17 @@
 
 namespace
 {
+    // --notify: one line on the console for each notice, the same words the tray icon shows.
+    class ConsoleNotifier : public Marconi::Server::ConnectionNotifier
+    {
+    public:
+        void Notify(const Marconi::Server::ConnectionNotice& notice) override
+        {
+            printf("%s\n", Marconi::Server::DescribeNotice(notice).c_str());
+            fflush(stdout);
+        }
+    };
+
     void PrintUsage()
     {
         printf("Marconi Server %s\n\n", Marconi::GetVersionString());
@@ -42,6 +55,10 @@ namespace
         printf("  --key-file PATH       load the server's private key from PATH (made on first run with --cert-file)\n");
         printf("  --files               let viewers browse and copy this computer's files (off by default)\n");
         printf("  --file-root PATH      with --files, let viewers reach only this folder (default: the whole computer)\n");
+        printf("  --allow ADDR_OR_CIDR  let in only this address or network, e.g. 192.168.1.20 or 192.168.1.0/24\n");
+        printf("                        (repeat for more; with none, anyone who reaches the port may try)\n");
+        printf("  --idle-minutes N      disconnect a viewer that has done nothing for N minutes (default 0: never)\n");
+        printf("  --notify              print a line when a viewer connects or disconnects\n");
         printf("  --lock-on-disconnect  lock this computer's screen when a viewer disconnects\n");
         printf("  --service             run as the Windows service (started by Windows, not by hand)\n");
         printf("  --session ID          the helper the service starts for console session ID\n");
@@ -95,6 +112,7 @@ int main(int argc, char** argv)
     unsigned controlViewerId = 0;
     int portOverride = -1;
     bool startServiceNow = true;
+    bool notify = false; // print a line when a viewer connects or disconnects
 
     for (int i = 1; i < argc; ++i)
     {
@@ -195,6 +213,42 @@ int main(int argc, char** argv)
                 return 2;
             }
             settings.passwordHash = Marconi::Server::HashPassword(text);
+        }
+        else if (arg == "--allow")
+        {
+            std::string value;
+            if (!TakeValue(argc, argv, i, "--allow", value))
+            {
+                return 2;
+            }
+            Marconi::Server::AddressRule rule;
+            std::string ruleError;
+            if (!Marconi::Server::ParseAddressRule(value, rule, ruleError))
+            {
+                printf("--allow: %s\n", ruleError.c_str());
+                return 2;
+            }
+            settings.allowedAddresses.push_back(value);
+        }
+        else if (arg == "--idle-minutes")
+        {
+            std::string value;
+            if (!TakeValue(argc, argv, i, "--idle-minutes", value))
+            {
+                return 2;
+            }
+            char* end = nullptr;
+            long minutes = std::strtol(value.c_str(), &end, 10);
+            if (value.empty() || *end != '\0' || minutes < 0 || minutes > 100000)
+            {
+                printf("--idle-minutes needs a whole number of minutes, 0 or more (0 means never)\n");
+                return 2;
+            }
+            settings.idleMinutes = static_cast<int>(minutes);
+        }
+        else if (arg == "--notify")
+        {
+            notify = true;
         }
         else if (arg == "--files")
         {
@@ -354,6 +408,11 @@ int main(int argc, char** argv)
 
     Marconi::Server::Listener listener(*screen, *input, settings);
     listener.SetClipboard(systemClipboard.get());
+    ConsoleNotifier consoleNotifier;
+    if (notify)
+    {
+        listener.SetNotifier(&consoleNotifier);
+    }
     std::string error;
     if (!listener.Start(error))
     {
@@ -363,6 +422,23 @@ int main(int argc, char** argv)
     printf("Marconi Server %s serving %s on port %u. Connect with marconi://this-computer\n",
            Marconi::GetVersionString(), what, static_cast<unsigned>(listener.GetPort()));
     printf("Clipboard sharing: %s\n", systemClipboard ? "on" : "off");
+    if (settings.allowedAddresses.empty())
+    {
+        printf("Who may connect: anyone who can reach this port (use --allow to limit it).\n");
+    }
+    else
+    {
+        printf("Who may connect:");
+        for (const std::string& entry : settings.allowedAddresses)
+        {
+            printf(" %s", entry.c_str());
+        }
+        printf("\n");
+    }
+    if (settings.idleMinutes > 0)
+    {
+        printf("A viewer that does nothing for %d minutes is disconnected.\n", settings.idleMinutes);
+    }
     printf("Certificate fingerprint: %s\n", listener.GetCertificateFingerprint().c_str());
     if (settings.passwordHash.empty())
     {
