@@ -46,6 +46,10 @@ namespace Marconi
                 ID_OpenControlSettings,
                 ID_DisconnectFirst,
                 ID_DisconnectLast = ID_DisconnectFirst + 15, // one per connected viewer (there is one at a time for now)
+                ID_UpdatesAsk,
+                ID_UpdatesAllow,
+                ID_UpdatesOff,
+                ID_UpdatesUnsigned,
             };
 
             // The choices in "Disconnect idle viewers after": minutes, 0 meaning never.
@@ -72,6 +76,8 @@ namespace Marconi
             EVT_MENU(ID_OpenScreenSettings, TrayIcon::OnOpenScreenSettings)
             EVT_MENU(ID_OpenControlSettings, TrayIcon::OnOpenControlSettings)
             EVT_MENU_RANGE(ID_DisconnectFirst, ID_DisconnectLast, TrayIcon::OnDisconnectViewer)
+            EVT_MENU_RANGE(ID_UpdatesAsk, ID_UpdatesOff, TrayIcon::OnUpdateChoice)
+            EVT_MENU(ID_UpdatesUnsigned, TrayIcon::OnUnsignedUpdates)
             EVT_MENU(wxID_EXIT, TrayIcon::OnQuit)
         wxEND_EVENT_TABLE()
 
@@ -195,6 +201,22 @@ namespace Marconi
             menu->Append(ID_SetPassword, wxString::FromUTF8(hasPassword ? "Change password…" : "Set password…"));
             menu->Append(ID_ChangePort, wxString::FromUTF8("Change port…"));
             menu->AppendCheckItem(ID_AllowFiles, "Let viewers copy files")->Check(m_config.GetFilesEnabled());
+            {
+                wxMenu* updates = new wxMenu();
+                const Server::UpdatePermission now = m_config.GetUpdatePermission();
+                updates->AppendRadioItem(ID_UpdatesAsk, "Ask me each time")->Check(now == Server::UpdatePermission::Ask);
+                updates->AppendRadioItem(ID_UpdatesAllow, "Yes, without asking")
+                    ->Check(now == Server::UpdatePermission::Allow);
+                updates->AppendRadioItem(ID_UpdatesOff, "No")->Check(now == Server::UpdatePermission::Off);
+                updates->AppendSeparator();
+                updates->AppendCheckItem(ID_UpdatesUnsigned, "Also take updates that aren't signed (not recommended)")
+                    ->Check(m_config.GetAllowUnsignedUpdates());
+#ifndef __WXMSW__
+                updates->AppendSeparator();
+                updates->Append(wxID_ANY, "Updating from a viewer works on Windows only for now")->Enable(false);
+#endif
+                menu->AppendSubMenu(updates, "Let a newer Marconi update this server");
+            }
             menu->AppendSeparator();
             menu->Append(ID_WhoCanConnect,
                          wxString::FromUTF8(m_config.GetAllowedAddresses().empty()
@@ -285,6 +307,63 @@ namespace Marconi
                              "Marconi Server", wxOK | wxICON_ERROR);
             }
             m_config.SetFilesEnabled(enable);
+        }
+
+        void TrayIcon::OnUpdateChoice(wxCommandEvent& event)
+        {
+            const Server::UpdatePermission choice = event.GetId() == ID_UpdatesAllow ? Server::UpdatePermission::Allow
+                                                    : event.GetId() == ID_UpdatesOff ? Server::UpdatePermission::Off
+                                                                                     : Server::UpdatePermission::Ask;
+            if (choice == m_config.GetUpdatePermission())
+            {
+                return;
+            }
+            if (choice == Server::UpdatePermission::Allow)
+            {
+                const int answer = wxMessageBox(
+                    "Anyone who connects with the access password will be able to update Marconi Server on this "
+                    "computer without anyone here agreeing first.\n\nThe update must still be a genuine, newer Marconi "
+                    "Server, and Windows still asks for permission on this screen before it is installed.\n\nAllow it?",
+                    "Marconi Server", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+                if (answer != wxYES)
+                {
+                    return;
+                }
+            }
+            std::string error;
+            if (!Controller().ChangeUpdateSettings(choice, m_config.GetAllowUnsignedUpdates(), error))
+            {
+                wxMessageBox(wxString::Format("The setting was saved, but the server could not restart: %s",
+                                              wxString::FromUTF8(error.c_str())),
+                             "Marconi Server", wxOK | wxICON_ERROR);
+            }
+            m_config.SetUpdatePermission(choice);
+        }
+
+        void TrayIcon::OnUnsignedUpdates(wxCommandEvent&)
+        {
+            const bool enable = !m_config.GetAllowUnsignedUpdates();
+            if (enable)
+            {
+                const int answer = wxMessageBox(
+                    "An update that isn't signed can't be told apart from any other program, so a viewer could use "
+                    "it to run anything on this computer.\n\nThis only matters while this copy of Marconi Server isn't "
+                    "signed itself (a test version). A signed Marconi Server never takes an unsigned update.\n\n"
+                    "Allow unsigned updates?",
+                    "Marconi Server", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+                if (answer != wxYES)
+                {
+                    return;
+                }
+            }
+            std::string error;
+            if (!Controller().ChangeUpdateSettings(m_config.GetUpdatePermission(), enable, error))
+            {
+                wxMessageBox(wxString::Format("The setting was saved, but the server could not restart: %s",
+                                              wxString::FromUTF8(error.c_str())),
+                             "Marconi Server", wxOK | wxICON_ERROR);
+            }
+            m_config.SetAllowUnsignedUpdates(enable);
         }
 
         void TrayIcon::OnChangePort(wxCommandEvent&)

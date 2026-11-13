@@ -79,6 +79,7 @@ namespace Marconi
             }
             m_listener->SetGamepads(m_gamepads.get());
             m_listener->SetNotifier(m_notifier);
+            m_listener->SetUpdateEnvironment(&m_updateEnvironment);
             if (!m_listener->Start(error))
             {
                 m_listener.reset();
@@ -215,6 +216,29 @@ namespace Marconi
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_notifier = notifier;
+        }
+
+        void ServerController::SetUpdateHost(const std::string& stagingFolder, Server::UpdateApprover* approver,
+                                             std::function<void()> onInstallerStarted)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_updateInspector = Server::CreatePlatformInstallerInspector();
+            m_updateLauncher = Server::CreatePlatformInstallerLauncher();
+            m_updateEnvironment.stagingFolder = stagingFolder;
+            m_updateEnvironment.inspector = m_updateInspector.get();
+            m_updateEnvironment.launcher = m_updateLauncher.get();
+            m_updateEnvironment.approver = approver;
+            m_updateEnvironment.onInstallerStarted = std::move(onInstallerStarted);
+        }
+
+        bool ServerController::ChangeUpdateSettings(Server::UpdatePermission permission, bool allowUnsigned,
+                                                    std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            StopLocked();
+            m_settings.updatePermission = permission;
+            m_settings.allowUnsignedUpdates = allowUnsigned;
+            return StartLocked(error);
         }
 
         bool ServerController::ChangePasswordHash(const std::string& passwordHash, std::string& error)

@@ -11,9 +11,11 @@
 #include <MarconiServerCore/ScreenSource.h>
 #include <MarconiServerCore/Settings.h>
 #include <MarconiServerCore/TestPatternScreen.h>
+#include <MarconiServerCore/UpdateHost.h>
 #include <MarconiServerCore/VirtualGamepad.h>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -83,6 +85,15 @@ namespace Marconi
             // Where connection notices go (null = nowhere). It must outlive the controller. Call before Start.
             void SetNotifier(Server::ConnectionNotifier* notifier);
 
+            // Lets a newer Marconi update this server (SERVER_PLAN.md, "Self-update"): the installer is kept in
+            // `stagingFolder`, `approver` asks the person at this computer (it must outlive the controller), and
+            // `onInstallerStarted` runs on a server thread once the installer was started, so the program can quit.
+            // Where this system can't update itself (everywhere but Windows), viewers are told so. Call before Start.
+            void SetUpdateHost(const std::string& stagingFolder, Server::UpdateApprover* approver,
+                               std::function<void()> onInstallerStarted);
+            // Changes "Let a newer Marconi update this server" and "allow unsigned updates" (restarts the listener).
+            bool ChangeUpdateSettings(Server::UpdatePermission permission, bool allowUnsigned, std::string& error);
+
             const Server::Settings& GetSettings() const { return m_settings; }
 
         private:
@@ -105,6 +116,10 @@ namespace Marconi
             std::string m_servedDescription;
             std::string m_problem;
             Server::ConnectionNotifier* m_notifier = nullptr;
+
+            std::unique_ptr<Server::InstallerInspector> m_updateInspector;
+            std::unique_ptr<Server::InstallerLauncher> m_updateLauncher;
+            Server::UpdateEnvironment m_updateEnvironment; // given to every listener; launcher null = not supported
 
             std::unique_ptr<Server::Listener> m_listener;
             std::thread m_thread;

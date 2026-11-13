@@ -7,6 +7,7 @@
 #include "ConnectionLostBar.h"
 #include "FullScreenBar.h"
 #include "SendKeys.h"
+#include "ServerUpdateBar.h"
 #include "SystemKeys.h"
 #include "VncCanvas.h"
 
@@ -17,6 +18,8 @@
 #include <MarconiCore/Net/Probe.h>
 #include <MarconiCore/Quality.h>
 #include <MarconiCore/Rfb/Client.h>
+#include <MarconiCore/ServerUpdate.h>
+#include <MarconiCore/Wire/WireUpdateClient.h>
 
 #include <wx/aui/framemanager.h>
 #include <wx/frame.h>
@@ -67,6 +70,7 @@ namespace MarconiUI
         Marconi::PictureQuality quality = Marconi::PictureQuality::Balanced;
         bool lockOnDisconnect = false; // send the lock shortcut to the other computer when the window closes
         bool sshTunnel = false;        // connect through the computer's SSH server; no probe, VNC port from the address
+        bool skipServerUpdate = false; // from the saved connection: don't offer to update its Marconi Server
         wxString macAddress;    // for waking the computer up when it doesn't answer
         wxRect windowRect;      // where the window was last time; empty = fit it to the desktop
         wxString savedId;       // the saved connection this window was opened from, if any
@@ -195,6 +199,19 @@ namespace MarconiUI
         void UploadToRemoteDesktop(const std::vector<std::string>& paths);
         void PasteFilesFromClipboard();
         void InstallServerOnOtherComputer();
+        // Updating an older Marconi Server (ViewerFrameServerUpdate.cpp, SERVER_PLAN.md "Self-update").
+        void OfferServerUpdateOnConnect();  // on connecting: asks the server, then shows the bar if it can be done
+        void UpdateServerOnOtherComputer(); // the F8 menu item
+        void StartServerUpdate();           // "Update Now"
+        void DontAskServerUpdateAgain();
+        void WatchServerUpdate();
+        bool DecideServerUpdate(bool fromMenu, std::string& installer, std::string& installerVersion,
+                                Marconi::ServerUpdate::OfferDecision& decision);
+        void OnServerUpdateProgress(const Marconi::Wire::UpdateUploader::Progress& progress);
+        void ShowServerUpdateBar(const wxString& message, const std::vector<ServerUpdateBar::Button>& buttons);
+        void HideServerUpdateBar();
+        void EnterUpdatingState();     // the server said it is updating and went: reconnect, saying so
+        void CheckServerAfterUpdate(); // reconnected after an update: did it take?
         void SaveSettings();
         void WaitForPicture();
         void CheckForPicture();
@@ -231,6 +248,12 @@ namespace MarconiUI
         wxSize m_connectedSize;
         bool m_connected = false;
         ConnectionLostBar* m_lostBar = nullptr;
+        ServerUpdateBar* m_updateBar = nullptr; // made the first time it is needed
+        std::string m_updateInstaller;          // the server installer being offered
+        std::string m_updateVersion;            // its version
+        std::string m_updateSentVersion;        // set once the server said it is installing; checked on reconnect
+        bool m_updateFromMenu = false;          // the person chose the menu item (refusals are then shown)
+        bool m_updateNotNow = false;            // "Not Now": don't offer again while this window is open
         FullScreenBar* m_fullScreenBar = nullptr; // appears at the top edge in full screen
         std::vector<Marconi::Rfb::Screen> m_screens; // the server's displays, when it describes them
         long m_displayId = 0;         // the display shown, 0 for all

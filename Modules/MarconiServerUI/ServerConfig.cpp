@@ -24,6 +24,8 @@ namespace Marconi
             const char* kAllowedKey = "/Server/AllowedAddresses";
             const char* kIdleMinutesKey = "/Server/IdleMinutes";
             const char* kNotifyKey = "/Server/NotifyOnConnect";
+            const char* kUpdatesKey = "/Server/ViewerUpdates";
+            const char* kUnsignedUpdatesKey = "/Server/AllowUnsignedUpdates";
             const char* kConfiguredKey = "/Server/Configured";
             const uint16_t kDefaultPort = 1895;
 
@@ -198,6 +200,38 @@ namespace Marconi
             wxFileConfig config = MakeConfig(m_dataDir);
             config.Write(kNotifyKey, enabled);
             config.Flush();
+        }
+
+        Server::UpdatePermission ServerConfig::GetUpdatePermission() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return Server::ParseUpdatePermission(config.Read(kUpdatesKey, "ask").utf8_string());
+        }
+
+        void ServerConfig::SetUpdatePermission(Server::UpdatePermission permission)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kUpdatesKey, wxString(Server::UpdatePermissionName(permission)));
+            config.Flush();
+        }
+
+        bool ServerConfig::GetAllowUnsignedUpdates() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return config.ReadBool(kUnsignedUpdatesKey, false);
+        }
+
+        void ServerConfig::SetAllowUnsignedUpdates(bool allow)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kUnsignedUpdatesKey, allow);
+            config.Flush();
+        }
+
+        wxString ServerConfig::GetUpdateDirectory() const
+        {
+            return m_dataDir.empty() ? wxString() : wxFileName(m_dataDir, wxEmptyString).GetPath() +
+                                                        wxFileName::GetPathSeparator() + "updates";
         }
 
         bool ServerConfig::IsFirstRun() const

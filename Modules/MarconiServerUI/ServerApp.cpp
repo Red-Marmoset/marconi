@@ -7,6 +7,7 @@
 #include "ServerController.h"
 #include "TrayNotifier.h"
 #include "TrayIcon.h"
+#include "UpdateApproval.h"
 
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/DpiAwareness.h>
@@ -43,6 +44,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <thread>
 
 namespace Marconi
 {
@@ -313,6 +315,8 @@ namespace Marconi
             settings.filesEnabled = m_config->GetFilesEnabled();
             settings.allowedAddresses = m_config->GetAllowedAddresses();
             settings.idleMinutes = m_config->GetIdleMinutes();
+            settings.updatePermission = m_config->GetUpdatePermission();
+            settings.allowUnsignedUpdates = m_config->GetAllowUnsignedUpdates();
 
             std::string identityError;
             if (!Server::LoadOrCreateIdentity(m_config->GetCertificatePath().utf8_string(),
@@ -345,6 +349,17 @@ namespace Marconi
 
             m_controller = std::make_unique<ServerController>(settings);
             m_controller->SetNotifier(m_notifier.get());
+            if (!m_updateApprover)
+            {
+                m_updateApprover = std::make_unique<TrayUpdateApprover>();
+            }
+            m_controller->SetUpdateHost(m_config->GetUpdateDirectory().utf8_string(), m_updateApprover.get(), []() {
+                // A server thread, just after the viewer was told: give the goodbye a moment to leave, then quit so
+                // the installer can replace this program (it starts Marconi Server again when it is done).
+                LOG_INFO("Server", "Quitting so the update can be installed");
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                wxTheApp->CallAfter([]() { wxTheApp->ExitMainLoop(); });
+            });
             std::string startError;
             if (!m_controller->Start(startError))
             {
@@ -434,6 +449,10 @@ namespace Marconi
         {
             m_timer.Stop();
             StopOwnServer();
+            if (m_updateApprover)
+            {
+                m_updateApprover->CloseNow();
+            }
             if (m_tray)
             {
                 m_tray->RemoveIcon();

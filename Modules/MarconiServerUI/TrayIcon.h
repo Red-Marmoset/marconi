@@ -49,6 +49,8 @@ namespace Marconi
             ServerController& Controller() { return *m_getController(); }
             void OnSetPassword(wxCommandEvent& event);
             void OnAllowFiles(wxCommandEvent& event);
+            void OnUpdateChoice(wxCommandEvent& event);
+            void OnUnsignedUpdates(wxCommandEvent& event);
             void OnChangePort(wxCommandEvent& event);
             void OnNotify(wxCommandEvent& event);
             void OnWhoCanConnect(wxCommandEvent& event);

@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <MarconiServerCore/UpdatePolicy.h>
+
 #include <wx/string.h>
 
 namespace Marconi
@@ -54,6 +56,15 @@ namespace Marconi
             // Whether to show a notification here when a viewer connects or disconnects. On unless turned off.
             bool GetNotifyEnabled() const;
             void SetNotifyEnabled(bool enabled);
+
+            // "Let a newer Marconi update this server": ask each time (the default), allow without asking, or never.
+            Server::UpdatePermission GetUpdatePermission() const;
+            void SetUpdatePermission(Server::UpdatePermission permission);
+            // Take unsigned updates when this server isn't signed either. Off unless turned on.
+            bool GetAllowUnsignedUpdates() const;
+            void SetAllowUnsignedUpdates(bool allow);
+            // Where an update's installer is saved before it runs (inside the data folder).
+            wxString GetUpdateDirectory() const;
 
             // True until a password has been set (or deliberately left empty) once, so the tray app can prompt on
             // first run.

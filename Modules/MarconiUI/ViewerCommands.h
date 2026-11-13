@@ -25,6 +25,7 @@ namespace MarconiUI
         ID_GET_CLIPBOARD,
         ID_PASTE_FILES,
         ID_INSTALL_SERVER,
+        ID_UPDATE_SERVER, // update an older Marconi Server on the other computer
         ID_SEND_CTRL_ALT_DEL, // the toolbar button
         ID_SEND_SHORTCUT_FIRST, // one id per GetSendKeysShortcuts() entry
         ID_SEND_SHORTCUT_LAST = ID_SEND_SHORTCUT_FIRST + static_cast<int>(kMaxSendKeysShortcuts) - 1,

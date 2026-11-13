@@ -628,6 +628,14 @@ namespace MarconiUI
         m_clipboardChangeCount = GetClipboardChangeCount();
         m_clipboardTimer.Start(500);
         StartGamepads(); // only does anything when the setting is on
+        if (!m_updateSentVersion.empty())
+        {
+            CheckServerAfterUpdate(); // back after an update: say whether it took
+        }
+        else
+        {
+            OfferServerUpdateOnConnect(); // a Marconi Server older than the one that came with this Marconi
+        }
     }
 
     void ViewerFrame::HandleDisconnected(const Marconi::Rfb::DisconnectInfo& info)
@@ -738,6 +746,11 @@ namespace MarconiUI
             return;
         }
 
+        if (info.serverUpdating)
+        {
+            EnterUpdatingState(); // the server said it is installing an update: reconnect, saying so
+            return;
+        }
         if (info.wasConnected)
         {
             // Lost after it was up (a network blip, a server restart): keep the window and retry on a schedule.

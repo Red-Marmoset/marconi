@@ -19,6 +19,7 @@ namespace Marconi
         class ServerController;
         class TrayIcon;
         class TrayNotifier;
+        class TrayUpdateApprover;
     } // namespace ServerUI
     namespace Server
     {
@@ -58,6 +59,7 @@ namespace Marconi
             std::unique_ptr<ServerConfig> m_config;
             Server::ServerLogFile m_logFile; // one file per run in <data folder>/logs
             std::unique_ptr<TrayNotifier> m_notifier; // declared before the controller so it outlives it
+            std::unique_ptr<TrayUpdateApprover> m_updateApprover; // the same: asks before a viewer updates the server
             std::unique_ptr<ServerController> m_controller;
             std::unique_ptr<Server::Tray::TransportConnector> m_connector;
             std::unique_ptr<Server::Tray::TrayMode> m_trayMode;

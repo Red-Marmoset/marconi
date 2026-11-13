@@ -33,6 +33,7 @@ namespace MarconiUI
         wxString quality = "balanced"; // picture quality: "best", "balanced" or "low" (Marconi::QualityName)
         bool lockOnDisconnect = false;  // lock the other computer's screen when the window closes
         bool sshTunnel = false;         // connect through the computer's SSH server (Remote Login): all encrypted
+        bool skipServerUpdate = false;  // "Don't ask again": no offer to update its Marconi Server on connecting
         bool favourite = false;         // listed first
         wxString notes;                 // anything worth remembering about the computer
         wxString group;                 // optional, e.g. "Studio": the list keeps a group's connections together

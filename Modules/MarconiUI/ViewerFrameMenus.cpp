@@ -149,6 +149,7 @@ namespace MarconiUI
                               "Needs a Marconi Server. Controllers are sent only while this window is in front.");
         menu->Append(ID_REFRESH, "&Refresh Screen");
         menu->Append(ID_INSTALL_SERVER, "Install Marconi Server on the Other Computer...");
+        menu->Append(ID_UPDATE_SERVER, "Update Marconi Server on the Other Computer...");
         menu->AppendSeparator();
         menu->AppendCheckItem(ID_SHOW_TOOLBAR, "Show &Toolbar\tF9");
         menu->AppendCheckItem(ID_FILES, "Transfer &Files\tF10");
@@ -182,6 +183,7 @@ namespace MarconiUI
         menu->Enable(ID_GET_CLIPBOARD, m_connected);
         menu->Enable(ID_PASTE_FILES, m_connected && ClipboardHasFiles());
         menu->Enable(ID_INSTALL_SERVER, m_connected);
+        menu->Enable(ID_UPDATE_SERVER, m_connected && m_wire != nullptr);
         return menu;
     }
 
@@ -341,6 +343,9 @@ namespace MarconiUI
             return;
         case ID_INSTALL_SERVER:
             InstallServerOnOtherComputer();
+            return;
+        case ID_UPDATE_SERVER:
+            UpdateServerOnOtherComputer();
             return;
         case ID_PASTE_FILES:
             PasteFilesFromClipboard();
