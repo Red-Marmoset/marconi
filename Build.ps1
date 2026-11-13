@@ -211,5 +211,23 @@ if ([IO.Path]::GetFullPath($projectFile) -eq [IO.Path]::GetFullPath((Join-Path $
     Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-Black.ttf") -Destination $appOutput
     Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-Semibold.ttf") -Destination $appOutput
     Copy-Item -LiteralPath (Join-Path $scriptDir "Assets\Fonts\NebulaSans-LICENSE.txt") -Destination $appOutput
+
+    # MarconiMcp, the program AI tools start, ships beside Marconi with the engine's list of apps it looks for, so
+    # the AI tools window and the installer find both there. --clean cleans only the project it's given.
+    $mcpArgs = @((Join-Path $scriptDir "Mcp\Project.json"), "-config", $Config, "-j", "$cores")
+    if ($Clean) { $mcpArgs += "--clean" }
+    Push-Location $scriptDir
+    try {
+        & $buildTool @mcpArgs
+        $rc = $LASTEXITCODE
+    } finally {
+        Pop-Location
+    }
+    if ($rc -ne 0) {
+        Write-Host "MarconiMcp build failed with exit code $rc." -ForegroundColor Red
+        exit $rc
+    }
+    Copy-Item -LiteralPath (Join-Path $scriptDir "Build\MarconiMcp\$Config\MarconiMcp.exe") -Destination $appOutput
+    Copy-Item -LiteralPath (Join-Path $enginePath "Packaging\Apps.json") -Destination $appOutput
 }
 Write-Host "Marconi build complete." -ForegroundColor Green

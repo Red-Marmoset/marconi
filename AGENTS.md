@@ -58,6 +58,9 @@ it before working on that, follow its phases in order, and keep it current.
   follow (the owner's rule). No jargon-metaphors such as load-bearing, seam, cadence, substrate, spine, blast radius,
   anchored, byte-identical, "that's not nothing", surface (as a verb), land (for merge), plumbing, footgun or happy
   path, and no technical names a reader may not know (say what it does instead).
+- **AI tools (MarconiMcp):** `MCP_PLAN.md`. The app's build also builds `Mcp/Project.json` and puts `MarconiMcp` and
+  the engine's `Packaging/Apps.json` beside Marconi; the installer's AI tools page is `Installer/AiTools.nsh`, which
+  includes the engine's `Packaging/Include/DetectApps.nsh`.
 - **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
   `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local. Its branding bitmaps (`Installer/Art/`) come from
   `python Tools/make_installer_art.py`; rerun it after changing the icon, accent colour or fonts.

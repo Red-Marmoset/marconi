@@ -50,6 +50,16 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   refuses a name that's taken, so the old entry is removed first; Codex replaces it. Marconi now needs the engine
   branch above until it's merged.
 
+- **Phase 5 done in code** 2026-11-13 (0.11.0): the app's build (`Build.ps1`, `Build.sh`) also builds MarconiMcp and
+  puts it and the engine's `Apps.json` beside Marconi; `Project.json` ships both (`buildFiles`); the page is
+  `Installer/AiTools.nsh`, included by `Marconi.nsi` (silent installs: `/AITOOLS=`); the uninstaller removes what it
+  added, recorded as `AiTools` in the uninstall entry. Tested under Wine with a 64-bit build of the real
+  `Marconi.nsi`, a stand-in ShellExecAsUser plug-in and a stand-in MarconiMcp.exe that record what they're asked:
+  a silent install for one user registered with the one tool installed (waiting for it), uninstalling unregistered
+  it first, an install for everyone went through ShellExecAsUser with `--show-errors`, and the page showed and
+  worked. Not yet run: `Package.ps1`, `Build.ps1` and `PackageProject.ps1` (PowerShell isn't available here), the
+  real plug-in, and a real Windows PC.
+
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
 1. **MCP is the way in.** Claude's "connectors" are MCP servers, and Claude Code, Codex and Claude Desktop all take

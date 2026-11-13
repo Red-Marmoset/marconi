@@ -235,7 +235,10 @@ picture for the moment, while the screen-sharing part for those systems is finis
 and use its mouse, keyboard and clipboard. You can watch what it does by connecting to the same computer with
 Marconi as usual.
 
-It isn't in the installers yet, so for now you build it and tell your AI tool about it by hand:
+The Windows installer includes it and offers to connect it to the AI tools it finds (a silent install does it with
+`/AITOOLS=all`, or a list such as `/AITOOLS=claude-code,codex`); uninstalling takes it out again. To do it yourself,
+`MarconiMcp --register claude-code` (or `codex`) adds it, `--unregister` removes it, and `--status` shows where it
+is. Elsewhere, or from a build of your own, tell your AI tool about it by hand:
 
     ./Build.sh Mcp/Project.json                     # macOS and Linux -> Build/MarconiMcp/Release/MarconiMcp
     .\Build.ps1 -Project Mcp\Project.json           # Windows        -> Build\MarconiMcp\Release\MarconiMcp.exe

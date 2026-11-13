@@ -17,7 +17,8 @@
 # timestamp variable's name follows from it):
 #   MARCONI_SIGN_THUMBPRINT=<the certificate's SHA-1 thumbprint>
 #   MARCONI_SIGN_TIMESTAMP_URL=<RFC 3161 timestamp server>   optional; http://timestamp.digicert.com by default
-# signtool (Windows SDK) then signs Marconi.exe, the uninstaller and the setup executable, with a timestamp so the
+# signtool (Windows SDK) then signs Marconi.exe, MarconiMcp.exe, the uninstaller and the setup executable,
+# with a timestamp so the
 # signatures outlive the certificate.
 #
 # The version is MAJOR.MINOR.PATCH from Project.json plus the revision, the number of commits in the history (see
@@ -45,6 +46,12 @@ if (-not (Test-Path $script)) {
 # make an unsigned installer without saying why.
 if (-not (Select-String -LiteralPath $script -Pattern 'thumbprintEnv' -SimpleMatch -Quiet)) {
     Write-Host "ERROR: the una engine at $engine is too old to read Project.json's signing section. Update it (git pull)." -ForegroundColor Red
+    exit 1
+}
+# The installer's AI tools page includes the engine's Packaging\Include\DetectApps.nsh, and the app ships its
+# Packaging\Apps.json; an older engine has neither.
+if (-not (Test-Path (Join-Path $engine "Packaging\Include\DetectApps.nsh"))) {
+    Write-Host "ERROR: the una engine at $engine is too old: it has no Packaging\Include\DetectApps.nsh for the installer's AI tools page. Update it (git pull)." -ForegroundColor Red
     exit 1
 }
 & $script -ProjectDir $PSScriptRoot -NoZip -Clean:$Clean -SkipBuild:$SkipBuild -AllowDirty:$AllowDirty

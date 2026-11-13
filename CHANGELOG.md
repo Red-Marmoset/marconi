@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.0
+
+- AI tools such as Claude Code and Codex can use other computers through Marconi: connect, see the screen, and use the mouse, keyboard and clipboard.
+- The Windows installer offers to connect Marconi to the AI tools it finds on the computer.
+
 ## 0.10.1
 
 - Fixed the picture freezing or staying black on some VNC servers, such as x11vnc on Linux.
