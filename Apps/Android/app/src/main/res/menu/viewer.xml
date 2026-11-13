@@ -22,6 +22,16 @@
             </group>
         </menu>
     </item>
+    <item android:title="@string/menu_orientation">
+        <menu>
+            <group android:checkableBehavior="single">
+                <item android:id="@+id/orientation_match" android:title="@string/menu_orientation_match" />
+                <item android:id="@+id/orientation_landscape" android:title="@string/menu_orientation_landscape" />
+                <item android:id="@+id/orientation_portrait" android:title="@string/menu_orientation_portrait" />
+                <item android:id="@+id/orientation_device" android:title="@string/menu_orientation_device" />
+            </group>
+        </menu>
+    </item>
     <item android:title="@string/menu_quality">
         <menu>
             <group android:checkableBehavior="single">

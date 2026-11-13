@@ -113,6 +113,11 @@
     <string name="menu_display">Display</string>
     <string name="menu_all_displays">All displays</string>
     <string name="menu_display_n">Display %1$d</string>
+    <string name="menu_orientation">Turn the screen</string>
+    <string name="menu_orientation_match">To match the other computer</string>
+    <string name="menu_orientation_landscape">Landscape</string>
+    <string name="menu_orientation_portrait">Portrait</string>
+    <string name="menu_orientation_device">With the phone (auto-rotate)</string>
     <string name="menu_quality">Picture quality</string>
     <string name="menu_quality_best">Best (no loss of detail)</string>
     <string name="menu_quality_balanced">Balanced</string>

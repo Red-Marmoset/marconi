@@ -45,6 +45,22 @@ class RemoteView(context: Context, attrs: AttributeSet? = null) : View(context, 
     var stickyModifiers: MutableSet<Int> = mutableSetOf()
     var onStickyModifiersUsed: (() -> Unit)? = null
 
+    /**
+     * How much of the bottom of this view the on-screen keyboard covers, in pixels (0 when it's closed). The picture
+     * keeps its size: it slides up to keep the pointer above the keyboard, two fingers pan it to show what's
+     * underneath, and the panning limits treat the covered part as off screen.
+     */
+    var coveredBottom = 0
+        set(value) {
+            if (field == value) return
+            field = value
+            if (fitted) {
+                clampTranslation()
+                keepPointerInSight()
+                invalidate()
+            }
+        }
+
     private var bitmap: Bitmap? = null
     private var visible = Rect()       // the part of the picture shown: one display, or all of it
     private val matrix = Matrix()
@@ -113,7 +129,8 @@ class RemoteView(context: Context, attrs: AttributeSet? = null) : View(context, 
 
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             if (e2.pointerCount >= 2) {
-                if (isFitted && !viewOnly) {
+                // With the keyboard open two fingers pan instead of scrolling, to reach what it covers
+                if (isFitted && !viewOnly && coveredBottom == 0) {
                     scrollWheel(distanceY)
                 } else {
                     matrix.postTranslate(-distanceX, -distanceY)
@@ -199,6 +216,22 @@ class RemoteView(context: Context, attrs: AttributeSet? = null) : View(context, 
         matrix.postTranslate((width - visible.width() * fitScale) / 2f, (height - visible.height() * fitScale) / 2f)
         fitted = true
         if (wantedZoomPercent != 0) applyScale(wantedZoomPercent / 100f, width / 2f, height / 2f)
+        if (coveredBottom > 0) {
+            clampTranslation()
+            keepPointerInSight()
+        }
+    }
+
+    /** Slides the picture up, as far as it goes, until the pointer is clear of the keyboard. */
+    private fun keepPointerInSight() {
+        if (coveredBottom <= 0 || bitmap == null) return
+        val point = floatArrayOf(pointerX.toFloat(), pointerY.toFloat())
+        matrix.mapPoints(point)
+        val lowest = height - coveredBottom - 48f * resources.displayMetrics.density
+        if (point[1] > lowest) {
+            matrix.postTranslate(0f, lowest - point[1])
+            clampTranslation()
+        }
     }
 
     private fun applyScale(wanted: Float, focusX: Float, focusY: Float) {
@@ -219,9 +252,11 @@ class RemoteView(context: Context, attrs: AttributeSet? = null) : View(context, 
         if (bounds.width() <= width) dx = (width - bounds.width()) / 2f - bounds.left
         else if (bounds.left > 0) dx = -bounds.left
         else if (bounds.right < width) dx = width - bounds.right
-        if (bounds.height() <= height) dy = (height - bounds.height()) / 2f - bounds.top
+        // Up and down, only the part the keyboard leaves uncovered counts as the screen
+        val shown = (height - coveredBottom).coerceAtLeast(1)
+        if (bounds.height() <= shown) dy = (shown - bounds.height()) / 2f - bounds.top
         else if (bounds.top > 0) dy = -bounds.top
-        else if (bounds.bottom < height) dy = height - bounds.bottom
+        else if (bounds.bottom < shown) dy = shown - bounds.bottom
         matrix.postTranslate(dx, dy)
     }
 

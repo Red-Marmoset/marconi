@@ -44,6 +44,15 @@
         <item name="android:fontFamily">@font/nebula_sans_semibold</item>
     </style>
 
+    <!-- The viewer's top bar in landscape, slimmer so more of the other computer's screen shows -->
+    <style name="TextAppearance.Marconi.Heading.Compact">
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="TextAppearance.Marconi.Subtitle.Compact" parent="TextAppearance.Marconi.Heading">
+        <item name="android:textSize">12sp</item>
+    </style>
+
     <style name="Marconi.Heading" parent="Widget.AppCompat.TextView">
         <item name="android:textAppearance">@style/TextAppearance.Marconi.Heading</item>
         <item name="android:textColor">@color/marconi_text</item>
