@@ -672,7 +672,7 @@ tester needs them.
    - Server: `FileService` (one thread per viewer, so disk work never holds up the picture or keys),
      `GuardedFiles` over the existing `Files::LocalFiles`, and `FilePaths` (clean absolute paths only: no `..`
      above the top, no backslashes, control characters, bad UTF-8, over-long names, Windows device names and
-     `C:` oddities). `Settings::filesEnabled` (default on; `--no-files`) and `Settings::fileRoot` (default none:
+     `C:` oddities). `Settings::filesEnabled` (default OFF, owner's choice: the tray's "Let viewers copy files" item or `--files` turns it on) and `Settings::fileRoot` (default none:
      the whole computer; `--file-root PATH` confines viewers to one folder, with links that point out refused).
      Only plain files open (a named pipe or device is refused), 32 open files at most, writes must arrive in
      order (no holes), a listing is capped at 200,000 items.

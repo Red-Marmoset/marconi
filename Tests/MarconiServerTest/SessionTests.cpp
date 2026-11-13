@@ -194,6 +194,12 @@ namespace MarconiServerTest
             CHECK(attempt("wrong") == Wire::LoginResult::Status::WrongPassword);
         });
 
+        RunTest("A new server shares no files and lets nobody in without a password until told to", []() {
+            Server::Settings settings;
+            CHECK(!settings.filesEnabled);
+            CHECK(!settings.allowNoPassword);
+        });
+
         RunTest("A server with no password refuses every login unless told to allow it", []() {
             Server::TestPatternScreen screen(4, 3);
             RecordingInput input;

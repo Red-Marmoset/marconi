@@ -18,6 +18,7 @@ namespace Marconi
             const char* kConfigFile = "settings.ini";
             const char* kPortKey = "/Server/Port";
             const char* kPasswordHashKey = "/Server/PasswordHash";
+            const char* kFilesEnabledKey = "/Server/FilesEnabled";
             const char* kConfiguredKey = "/Server/Configured";
             const uint16_t kDefaultPort = 1895;
 
@@ -133,6 +134,19 @@ namespace Marconi
             wxFileConfig config = MakeConfig(m_dataDir);
             config.Write(kPasswordHashKey, hash);
             config.Write(kConfiguredKey, true);
+            config.Flush();
+        }
+
+        bool ServerConfig::GetFilesEnabled() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return config.ReadBool(kFilesEnabledKey, false);
+        }
+
+        void ServerConfig::SetFilesEnabled(bool enabled)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kFilesEnabledKey, enabled);
             config.Flush();
         }
 

@@ -29,6 +29,7 @@ namespace Marconi
             {
                 ID_SetPassword = wxID_HIGHEST + 1,
                 ID_ChangePort,
+                ID_AllowFiles,
                 ID_CopyFingerprint,
                 ID_ShowProblem,
                 ID_CheckAgain,
@@ -40,6 +41,7 @@ namespace Marconi
         wxBEGIN_EVENT_TABLE(TrayIcon, wxTaskBarIcon)
             EVT_MENU(ID_SetPassword, TrayIcon::OnSetPassword)
             EVT_MENU(ID_ChangePort, TrayIcon::OnChangePort)
+            EVT_MENU(ID_AllowFiles, TrayIcon::OnAllowFiles)
             EVT_MENU(ID_CopyFingerprint, TrayIcon::OnCopyFingerprint)
             EVT_MENU(ID_ShowProblem, TrayIcon::OnShowProblem)
             EVT_MENU(ID_CheckAgain, TrayIcon::OnCheckAgain)
@@ -92,6 +94,7 @@ namespace Marconi
             menu->AppendSeparator();
             menu->Append(ID_SetPassword, hasPassword ? "Change password…" : "Set password…");
             menu->Append(ID_ChangePort, "Change port…");
+            menu->AppendCheckItem(ID_AllowFiles, "Let viewers copy files")->Check(m_config.GetFilesEnabled());
             menu->AppendSeparator();
             menu->Append(wxID_EXIT, "Quit Marconi Server");
             return menu;
@@ -134,6 +137,30 @@ namespace Marconi
                              "Marconi Server", wxOK | wxICON_ERROR);
             }
             m_config.SetPasswordHash(wxString::FromUTF8(hash.c_str()));
+        }
+
+        void TrayIcon::OnAllowFiles(wxCommandEvent&)
+        {
+            const bool enable = !m_config.GetFilesEnabled();
+            if (enable)
+            {
+                const int answer = wxMessageBox(
+                    "Anyone who connects with the access password will be able to browse, copy, change and delete "
+                    "files on this computer.\n\nAllow it?",
+                    "Marconi Server", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+                if (answer != wxYES)
+                {
+                    return;
+                }
+            }
+            std::string error;
+            if (!m_controller.ChangeFilesEnabled(enable, error))
+            {
+                wxMessageBox(wxString::Format("The setting was saved, but the server could not restart: %s",
+                                              wxString::FromUTF8(error.c_str())),
+                             "Marconi Server", wxOK | wxICON_ERROR);
+            }
+            m_config.SetFilesEnabled(enable);
         }
 
         void TrayIcon::OnChangePort(wxCommandEvent&)

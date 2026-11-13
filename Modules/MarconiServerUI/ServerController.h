@@ -64,8 +64,10 @@ namespace Marconi
             // the old listener is left stopped either way.
             bool ChangePort(uint16_t port, std::string& error);
 
-            // Changes the access password (already hashed; empty means no password) and restarts so logins are
-            // checked against it.
+            // Lets viewers browse and copy this computer's files, or stops them (restarts the listener).
+            bool ChangeFilesEnabled(bool enabled, std::string& error);
+
+            // Changes the access password (already hashed) and restarts so logins are checked against it.
             bool ChangePasswordHash(const std::string& passwordHash, std::string& error);
 
             const Server::Settings& GetSettings() const { return m_settings; }

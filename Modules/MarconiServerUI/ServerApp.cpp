@@ -117,6 +117,7 @@ namespace Marconi
             settings.serverName = wxGetHostName().utf8_string();
             settings.port = m_config->GetPort();
             settings.passwordHash = m_config->GetPasswordHash().utf8_string();
+            settings.filesEnabled = m_config->GetFilesEnabled();
 
             std::string identityError;
             if (!Server::LoadOrCreateIdentity(m_config->GetCertificatePath().utf8_string(),

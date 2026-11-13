@@ -205,6 +205,7 @@ namespace MarconiServerTest
         {
             Server::Settings settings;
             settings.allowNoPassword = true; // these tests log in without a password
+            settings.filesEnabled = true; // file access is off by default
             settings.fileRoot = dir.Text();
             return settings;
         }
@@ -799,6 +800,7 @@ namespace MarconiServerTest
             WriteFile(shared / "ok.txt", "ok");
             Server::Settings settings;
             settings.allowNoPassword = true; // these tests log in without a password
+            settings.filesEnabled = true; // file access is off by default
             settings.fileRoot = shared.generic_string();
             Rig rig(settings);
             CHECK(rig.Ready());
@@ -867,6 +869,7 @@ namespace MarconiServerTest
             WriteFile(dir.Path() / "x.txt", "xyz");
             Server::Settings open; // no root
             open.allowNoPassword = true; // these tests log in without a password
+            open.filesEnabled = true; // file access is off by default
             Rig rig(open);
             CHECK(rig.Ready());
             Files::MarconiFiles& files = rig.Files();

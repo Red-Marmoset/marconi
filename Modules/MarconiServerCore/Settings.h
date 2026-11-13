@@ -40,8 +40,9 @@ namespace Marconi
             std::string privateKeyPem;
 
             // Whether viewers may browse and copy this computer's files (needs the viewer to offer file transfer
-            // too). On by default: the viewer has already logged in with the access password.
-            bool filesEnabled = true;
+            // too). Off by default: letting a viewer reach the computer's files is a bigger step than letting it see
+            // the screen, so it is turned on deliberately (the tray menu, or --files).
+            bool filesEnabled = false;
             // The one folder viewers may reach ("/" to them), or empty for the whole computer.
             std::string fileRoot;
         };

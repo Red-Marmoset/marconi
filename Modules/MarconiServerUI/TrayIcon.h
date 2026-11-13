@@ -25,6 +25,7 @@ namespace Marconi
         private:
             void ShowProblem();
             void OnSetPassword(wxCommandEvent& event);
+            void OnAllowFiles(wxCommandEvent& event);
             void OnChangePort(wxCommandEvent& event);
             void OnCopyFingerprint(wxCommandEvent& event);
             void OnShowProblem(wxCommandEvent& event);

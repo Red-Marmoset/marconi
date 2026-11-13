@@ -35,6 +35,10 @@ namespace Marconi
             wxString GetPasswordHash() const;
             void SetPasswordHash(const wxString& hash);
 
+            // Whether viewers may browse and copy this computer's files. Off until someone turns it on.
+            bool GetFilesEnabled() const;
+            void SetFilesEnabled(bool enabled);
+
             // True until a password has been set (or deliberately left empty) once, so the tray app can prompt on
             // first run.
             bool IsFirstRun() const;

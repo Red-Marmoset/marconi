@@ -40,8 +40,8 @@ namespace
         printf("  --make-hash TEXT      print the hash of a password and exit (store it, not the password)\n");
         printf("  --cert-file PATH      load the server's certificate from PATH (made on first run with --key-file)\n");
         printf("  --key-file PATH       load the server's private key from PATH (made on first run with --cert-file)\n");
-        printf("  --no-files            don't let viewers browse or copy this computer's files\n");
-        printf("  --file-root PATH      let viewers reach only this folder (default: the whole computer)\n");
+        printf("  --files               let viewers browse and copy this computer's files (off by default)\n");
+        printf("  --file-root PATH      with --files, let viewers reach only this folder (default: the whole computer)\n");
         printf("  --lock-on-disconnect  lock this computer's screen when a viewer disconnects\n");
         printf("  --service             run as the Windows service (started by Windows, not by hand)\n");
         printf("  --session ID          the helper the service starts for console session ID\n");
@@ -196,9 +196,9 @@ int main(int argc, char** argv)
             }
             settings.passwordHash = Marconi::Server::HashPassword(text);
         }
-        else if (arg == "--no-files")
+        else if (arg == "--files")
         {
-            settings.filesEnabled = false;
+            settings.filesEnabled = true;
         }
         else if (arg == "--file-root")
         {

@@ -170,6 +170,14 @@ namespace Marconi
             return StartLocked(error);
         }
 
+        bool ServerController::ChangeFilesEnabled(bool enabled, std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            StopLocked();
+            m_settings.filesEnabled = enabled;
+            return StartLocked(error);
+        }
+
         bool ServerController::ChangePasswordHash(const std::string& passwordHash, std::string& error)
         {
             std::lock_guard<std::mutex> lock(m_mutex);
