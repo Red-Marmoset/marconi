@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server on a Mac can share the screen and take mouse and keyboard control, once allowed in System Settings (not yet tried on a Mac).
+- Marconi Server says in plain words when it can't share the screen or can't be controlled, for example on a Wayland desktop or before a Mac permission is given.
+- Marconi Server on Linux no longer closes when the screen size changes, and types characters that have no key.
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.

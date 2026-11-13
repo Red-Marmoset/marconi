@@ -44,6 +44,16 @@ namespace Marconi
             // No capture here: serve a moving test pattern and log the input that comes in, and keep the reason to
             // show in the tray menu.
             m_problem = "Can't share this computer's screen. " + screenError;
+            {
+                // Ask for the control permission now too (on a Mac this shows its prompt), so both can be given
+                // in one go. The input made here is thrown away: a test pattern must not move the real mouse.
+                std::string inputError;
+                Server::CreateSystemInput(inputError);
+                if (!inputError.empty() && inputError != screenError)
+                {
+                    m_problem += " " + inputError;
+                }
+            }
             LOG_WARNING("Server", "Can't share this computer's screen (%s); serving a test pattern.",
                         screenError.c_str());
             m_pattern = std::make_unique<Server::TestPatternScreen>(1280, 720);
