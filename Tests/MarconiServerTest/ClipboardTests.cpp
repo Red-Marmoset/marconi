@@ -19,6 +19,11 @@
 #include <memory>
 #include <thread>
 
+#if defined(_WIN32)
+#define popen _popen
+#define pclose _pclose
+#endif
+
 namespace MarconiServerTest
 {
     using namespace Marconi;

@@ -115,7 +115,7 @@ namespace Marconi
             Server::Settings settings;
             settings.serverVersion = GetVersionString();
             settings.serverName = wxGetHostName().utf8_string();
-            settings.port = m_config->GetPort();
+            settings.port = m_config->GetListenPort();
             settings.passwordHash = m_config->GetPasswordHash().utf8_string();
             settings.filesEnabled = m_config->GetFilesEnabled();
 

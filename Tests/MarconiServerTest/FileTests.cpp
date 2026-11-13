@@ -359,9 +359,14 @@ namespace MarconiServerTest
             CHECK(files.Resolve("/inner/../inner/a.txt", real, error) == Wire::FileStatus::Ok);
             CHECK(files.Resolve("/../outside", real, error) == Wire::FileStatus::BadPath);
             CHECK(files.Resolve("/inner/../../outside", real, error) == Wire::FileStatus::BadPath);
+#if defined(_WIN32)
+            // A Windows path such as "C:/Users/..." has a ':' in it, which a name can't have, so it's refused.
+            CHECK(files.Resolve(outside.Text(), real, error) == Wire::FileStatus::BadPath);
+#else
             CHECK(files.Resolve(outside.Text(), real, error) == Wire::FileStatus::Ok); // just a name under the root
             CHECK(real == dir.Text() + outside.Text());
             CHECK(real.find(outside.Text() + "/secret") == std::string::npos);
+#endif
 
             std::vector<Wire::FileInfo> entries;
             CHECK(files.List("/", entries, error) == Wire::FileStatus::Ok);
