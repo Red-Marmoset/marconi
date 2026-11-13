@@ -92,6 +92,62 @@ namespace MarconiServerTest
         texts.push_back(utf8);
     }
 
+    bool MemoryClipboard::Read(Marconi::Server::ClipboardContents& out)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = contents;
+        return !out.IsEmpty();
+    }
+
+    bool MemoryClipboard::Write(const Marconi::Server::ClipboardContents& value)
+    {
+        std::function<void()> notify;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            contents = value;
+            ++writes;
+            notify = handler;
+        }
+        if (notify)
+        {
+            notify();
+        }
+        return true;
+    }
+
+    void MemoryClipboard::SetChangeHandler(std::function<void()> value)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        handler = std::move(value);
+    }
+
+    void MemoryClipboard::SimulateCopy(const Marconi::Server::ClipboardContents& value)
+    {
+        std::function<void()> notify;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            contents = value;
+            notify = handler;
+        }
+        if (notify)
+        {
+            notify();
+        }
+    }
+
+    void MemoryClipboard::Preset(const Marconi::Server::ClipboardContents& value)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        contents = value;
+    }
+
+    void RecordingClientListener::OnServerClipboard(const Marconi::Rfb::ClipboardContent& content)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        clipboards.push_back(content);
+        changed.notify_all();
+    }
+
     void RecordingClientListener::OnConnected(const Marconi::Rfb::ServerInit& init)
     {
         std::lock_guard<std::mutex> lock(mutex);

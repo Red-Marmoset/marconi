@@ -5,6 +5,7 @@
 
 #include <MarconiCore/Net/Tls.h>
 #include <MarconiCore/Wire/WireCompress.h>
+#include <MarconiCore/Wire/WireImage.h>
 
 #include <Log/Log.h>
 
@@ -229,6 +230,15 @@ namespace Marconi
                     case Type::Displays:
                         ApplyDisplays(Displays::Decode(body).displays, false);
                         break;
+                    case Type::ClipboardOffer:
+                        HandleClipboardOffer(ClipboardOffer::Decode(body));
+                        break;
+                    case Type::ClipboardRequest:
+                        HandleClipboardRequest(ClipboardRequest::Decode(body));
+                        break;
+                    case Type::ClipboardData:
+                        HandleClipboardData(ClipboardData::Decode(body));
+                        break;
                     case Type::Pong:
                         Pong::Decode(body);
                         break;
@@ -309,6 +319,16 @@ namespace Marconi
                                  : "The server has no password set, so it refused the connection";
                 return false;
             }
+
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                m_offeredText.clear();
+                m_offeredPng.clear();
+                m_awaitText = false;
+                m_awaitImage = false;
+                m_incoming = Rfb::ClipboardContent();
+            }
+            m_clipboardGranted = (welcome.capabilities & options.capabilities & Capability::Clipboard) != 0;
 
             int width = 0;
             int height = 0;
@@ -443,9 +463,131 @@ namespace Marconi
             // Clipboard over the Marconi protocol is Phase 6; nothing to send yet.
         }
 
-        bool Client::OfferClipboard(const Rfb::ClipboardContent& /*content*/)
+        bool Client::OfferClipboard(const Rfb::ClipboardContent& content)
         {
-            return false; // not active yet
+            if (!m_clipboardGranted.load() || !m_connected.load())
+            {
+                return false;
+            }
+            Bytes text;
+            Bytes png;
+            if (!content.utf8Text.empty() && content.utf8Text.size() <= kMaxClipboardTextBytes)
+            {
+                text.assign(content.utf8Text.begin(), content.utf8Text.end());
+            }
+            if (!content.dib.empty() && DibToPng(content.dib, png) && png.size() > kMaxClipboardImageBytes)
+            {
+                png.clear();
+            }
+            if (text.empty() && png.empty())
+            {
+                return false; // nothing this protocol can carry (empty, too big, or an image form it can't read)
+            }
+            ClipboardOffer offer;
+            offer.hasText = !text.empty();
+            offer.hasImage = !png.empty();
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                m_offeredText = std::move(text);
+                m_offeredPng = std::move(png);
+            }
+            return Send(offer.Encode());
+        }
+
+        bool Client::RequestServerClipboard()
+        {
+            if (!m_clipboardGranted.load() || !m_connected.load())
+            {
+                return false;
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                m_awaitText = true;
+                m_awaitImage = true;
+                m_incoming = Rfb::ClipboardContent();
+            }
+            ClipboardRequest text;
+            text.format = ClipboardRequest::Format::Text;
+            ClipboardRequest image;
+            image.format = ClipboardRequest::Format::Image;
+            return Send(text.Encode()) && Send(image.Encode());
+        }
+
+        void Client::HandleClipboardOffer(const ClipboardOffer& offer)
+        {
+            if (!m_clipboardGranted.load())
+            {
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                m_awaitText = offer.hasText;
+                m_awaitImage = offer.hasImage;
+                m_incoming = Rfb::ClipboardContent();
+            }
+            if (offer.hasText)
+            {
+                ClipboardRequest request;
+                request.format = ClipboardRequest::Format::Text;
+                Send(request.Encode());
+            }
+            if (offer.hasImage)
+            {
+                ClipboardRequest request;
+                request.format = ClipboardRequest::Format::Image;
+                Send(request.Encode());
+            }
+        }
+
+        void Client::HandleClipboardRequest(const ClipboardRequest& request)
+        {
+            if (!m_clipboardGranted.load())
+            {
+                return;
+            }
+            ClipboardData data;
+            data.format = request.format;
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                data.data = request.format == ClipboardRequest::Format::Text ? m_offeredText : m_offeredPng;
+            }
+            Send(data.Encode()); // empty when we have nothing in that form, so the server isn't left waiting
+        }
+
+        void Client::HandleClipboardData(ClipboardData&& data)
+        {
+            Rfb::ClipboardContent delivered;
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                const bool isText = data.format == ClipboardRequest::Format::Text;
+                bool& awaited = isText ? m_awaitText : m_awaitImage;
+                if (!m_clipboardGranted.load() || !awaited)
+                {
+                    return; // nothing was asked for in that form
+                }
+                awaited = false;
+                if (isText)
+                {
+                    if (data.data.size() <= kMaxClipboardTextBytes)
+                    {
+                        m_incoming.utf8Text.assign(data.data.begin(), data.data.end());
+                    }
+                }
+                else if (data.data.size() <= kMaxClipboardImageBytes)
+                {
+                    PngToDib(data.data, m_incoming.dib); // stays empty for a picture this build can't read
+                }
+                if (m_awaitText || m_awaitImage)
+                {
+                    return;
+                }
+                delivered = std::move(m_incoming);
+                m_incoming = Rfb::ClipboardContent();
+            }
+            if (!delivered.IsEmpty())
+            {
+                m_listener.OnServerClipboard(delivered);
+            }
         }
 
         void Client::RequestFullUpdate()

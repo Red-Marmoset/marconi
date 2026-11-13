@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Auth.h"
+#include "ClipboardAccess.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Session.h"
@@ -46,6 +47,10 @@ namespace Marconi
 
             void SetFrameIntervalMs(int ms) { m_frameIntervalMs = ms; }
 
+            // Shares this computer's clipboard with each viewer (null, the default, shares none). The clipboard
+            // must outlive the listener. Call before Run() or ServeOne().
+            void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
+
             // The SHA-256 fingerprint of the certificate the server presents, as a lowercase hex string, so it can
             // be shown to the person setting the server up. Empty before Start() or if the identity is bad.
             const std::string& GetCertificateFingerprint() const { return m_fingerprint; }
@@ -63,6 +68,7 @@ namespace Marconi
             uint16_t m_port = 0;
             std::string m_fingerprint; // the certificate's SHA-256, in hex, for display
             int m_frameIntervalMs = 16;
+            ClipboardAccess* m_clipboard = nullptr;
             std::atomic<bool> m_stop{false};
             std::atomic<Session*> m_current{nullptr}; // the live session, so Stop() can end it
         };

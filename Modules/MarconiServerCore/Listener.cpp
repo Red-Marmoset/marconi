@@ -115,6 +115,7 @@ namespace Marconi
             TlsServerTransport transport(std::move(tls));
             Session session(transport, m_screen, m_input, m_settings, &m_auth);
             session.SetFrameIntervalMs(m_frameIntervalMs);
+            session.SetClipboard(m_clipboard);
             m_current = &session;
             session.Run();
             m_current = nullptr;

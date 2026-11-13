@@ -3,6 +3,7 @@
 // can connect to a real server; capturing the actual screen (and injecting input) comes with the platform work.
 
 #include <MarconiCore/Version.h>
+#include <MarconiServerCore/ClipboardAccess.h>
 #include <MarconiServerCore/IdentityStore.h>
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/Listener.h>
@@ -212,7 +213,15 @@ int main(int argc, char** argv)
         }
     }
 
+    // Share the clipboard only with the real screen: the test pattern stands in for a computer that isn't there.
+    std::unique_ptr<Marconi::Server::ClipboardAccess> systemClipboard;
+    if (systemScreen)
+    {
+        systemClipboard = Marconi::Server::CreateSystemClipboard();
+    }
+
     Marconi::Server::Listener listener(*screen, *input, settings);
+    listener.SetClipboard(systemClipboard.get());
     std::string error;
     if (!listener.Start(error))
     {
@@ -221,6 +230,7 @@ int main(int argc, char** argv)
     }
     printf("Marconi Server %s serving %s on port %u. Connect with marconi://this-computer\n",
            Marconi::GetVersionString(), what, static_cast<unsigned>(listener.GetPort()));
+    printf("Clipboard sharing: %s\n", systemClipboard ? "on" : "off");
     printf("Certificate fingerprint: %s\n", listener.GetCertificateFingerprint().c_str());
     if (settings.passwordHash.empty())
     {

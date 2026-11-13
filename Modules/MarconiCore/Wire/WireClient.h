@@ -28,7 +28,7 @@ namespace Marconi
             std::string password;   // sent at login (inside TLS once encryption is added)
             std::string clientName; // shown in the server's log and its "someone connected" notice
             int connectTimeoutMs = 10000;
-            uint64_t capabilities = Capability::MultipleDisplays; // what this client offers; grows with each phase
+            uint64_t capabilities = Capability::MultipleDisplays | Capability::Clipboard; // what this client offers
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
@@ -58,10 +58,10 @@ namespace Marconi
             void SendPointerEvent(int x, int y, uint8_t buttonMask) override;
             void SendKeyEvent(uint32_t keysym, bool down) override;
             void SendClientCutText(const std::string& latin1Text) override;
-            bool HasExtendedClipboard() const override { return false; }
-            bool ServerAcceptsClipboardImages() const override { return false; }
+            bool HasExtendedClipboard() const override { return m_clipboardGranted.load(); }
+            bool ServerAcceptsClipboardImages() const override { return m_clipboardGranted.load(); }
             bool OfferClipboard(const Rfb::ClipboardContent& content) override;
-            bool RequestServerClipboard() override { return false; }
+            bool RequestServerClipboard() override;
             void RequestFullUpdate() override;
             std::vector<Rfb::Screen> GetScreens() const override;
             bool SupportsDesktopResize() const override { return m_supportsResize.load(); }
@@ -76,6 +76,9 @@ namespace Marconi
             void HandleStill(const Still& still);
             void HandleMove(const Move& move);
             void ApplyDisplays(const std::vector<Display>& displays, bool initial);
+            void HandleClipboardOffer(const ClipboardOffer& offer);
+            void HandleClipboardRequest(const ClipboardRequest& request);
+            void HandleClipboardData(ClipboardData&& data);
             bool Send(const Bytes& framed); // one message, serialised; false if not connected or the write failed
             void MarkInput();
 
@@ -93,6 +96,17 @@ namespace Marconi
             std::string m_encryptionName; // guarded by m_nameMutex
             std::atomic<bool> m_stopping{false};
             std::atomic<bool> m_supportsResize{false};
+
+            // Clipboard sharing, once the server granted it. `m_offered` is what we last told the server we have (it
+            // asks for it when someone pastes); the await flags and `m_incoming` collect what we asked the server for,
+            // which is delivered to the listener once every asked-for format has arrived.
+            std::atomic<bool> m_clipboardGranted{false};
+            std::mutex m_clipboardMutex;
+            Bytes m_offeredText;
+            Bytes m_offeredPng;
+            bool m_awaitText = false;
+            bool m_awaitImage = false;
+            Rfb::ClipboardContent m_incoming;
 
             std::vector<Rfb::Rect> m_frameRects; // changed rects collected between FrameBegin and FrameEnd
             mutable std::mutex m_infoMutex;

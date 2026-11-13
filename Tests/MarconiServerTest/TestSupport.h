@@ -5,6 +5,7 @@
 
 #include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Wire/WireChannel.h>
+#include <MarconiServerCore/ClipboardAccess.h>
 #include <MarconiServerCore/InputSink.h>
 
 #include <condition_variable>
@@ -85,6 +86,26 @@ namespace MarconiServerTest
         std::vector<std::string> texts;
     };
 
+    // A clipboard in memory, standing in for the computer's. Like a real one it reports a change to the handler after
+    // every Write as well as after SimulateCopy, so tests see the echo a platform would cause.
+    class MemoryClipboard : public Marconi::Server::ClipboardAccess
+    {
+    public:
+        bool Read(Marconi::Server::ClipboardContents& out) override;
+        bool Write(const Marconi::Server::ClipboardContents& contents) override;
+        void SetChangeHandler(std::function<void()> handler) override;
+
+        // Someone using this computer copies something: sets the content and reports the change.
+        void SimulateCopy(const Marconi::Server::ClipboardContents& contents);
+        // Sets the content without reporting a change (what was already there before anyone connected).
+        void Preset(const Marconi::Server::ClipboardContents& contents);
+
+        std::mutex mutex;
+        Marconi::Server::ClipboardContents contents;
+        int writes = 0; // how many times the server set it
+        std::function<void()> handler;
+    };
+
     // The client side's callbacks, recorded so a test can wait for them. Callbacks arrive on the client's worker
     // thread, so everything is guarded.
     class RecordingClientListener : public Marconi::SessionListener
@@ -93,6 +114,7 @@ namespace MarconiServerTest
         void OnConnected(const Marconi::Rfb::ServerInit& serverInit) override;
         void OnFramebufferUpdated(const std::vector<Marconi::Rfb::Rect>& rects) override;
         void OnScreenLayout(const std::vector<Marconi::Rfb::Screen>& screens) override;
+        void OnServerClipboard(const Marconi::Rfb::ClipboardContent& content) override;
         void OnDisconnected(const Marconi::DisconnectInfo& info) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
 
@@ -106,6 +128,7 @@ namespace MarconiServerTest
         Marconi::Rfb::ServerInit serverInit;
         int updates = 0;
         int screenLayouts = 0;
+        std::vector<Marconi::Rfb::ClipboardContent> clipboards; // each clipboard the server delivered
         int certificateQuestions = 0;              // how many times the server's certificate was queried
         std::vector<uint8_t> lastCertificateSha256; // the fingerprint last asked about
         bool trustCertificate = true;              // what OnUntrustedCertificate returns
@@ -114,6 +137,7 @@ namespace MarconiServerTest
     void RunSessionTests();
     void RunListenerTests();
     void RunEndToEndTests();
+    void RunClipboardTests();
     void RunPasswordTests();
     void RunIdentityTests();
 } // namespace MarconiServerTest

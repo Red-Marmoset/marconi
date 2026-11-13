@@ -321,6 +321,11 @@ namespace Marconi
             static Pointer Decode(Reader& reader);
         };
 
+        // The most clipboard data either end will send or accept: text in UTF-8 bytes, and an image as PNG bytes.
+        // Anything larger is not offered, not delivered and not applied (a peer that ignores it is not an error).
+        constexpr size_t kMaxClipboardTextBytes = 4 * 1024 * 1024;
+        constexpr size_t kMaxClipboardImageBytes = 32 * 1024 * 1024;
+
         struct ClipboardOffer
         {
             bool hasText = false;
