@@ -316,12 +316,17 @@ namespace MarconiUI
 
     void ViewerFrame::RememberDetected(const wxString& detected)
     {
-        // Unlike the window settings, this is a fact about the machine, so headless runs keep it too.
-        if (m_options.savedId.empty() || m_options.detected == detected)
+        // Unlike the window settings, this is a fact about the machine, so headless runs keep it too. An unsaved
+        // computer keeps it in the window, for saving it from the bar.
+        if (m_options.detected == detected)
         {
             return;
         }
         m_options.detected = detected;
+        if (m_options.savedId.empty())
+        {
+            return;
+        }
         ConnectionStore store;
         SavedConnection saved;
         if (store.Load(m_options.savedId, saved))
@@ -378,7 +383,8 @@ namespace MarconiUI
         }
         bool accepted = AskUser([this, kind]() {
             SetStatusText("Waiting for credentials...");
-            bool offerRemember = !m_options.savedId.empty() && ConnectionStore::IsKeychainAvailable();
+            // Unsaved computers too: the password is kept if the user then saves the computer (OfferToSave).
+            bool offerRemember = ConnectionStore::IsKeychainAvailable();
             CredentialsDialog dialog(this, GetServerDisplayName(), kind,
                                      wxString::FromUTF8(m_options.credentials.username), offerRemember);
             if (dialog.ShowModal() != wxID_OK)
@@ -585,6 +591,12 @@ namespace MarconiUI
                 });
             }
         }
+        if (m_rememberPassword && m_options.savedId.empty())
+        {
+            // Not saved yet: the password goes with it if the user saves it from the bar below.
+            m_rememberForSave = true;
+            m_rememberPassword = false;
+        }
         if (m_rememberPassword)
         {
             // Only now: the credentials are known to work.
@@ -612,6 +624,7 @@ namespace MarconiUI
         {
             ToggleFullScreen();
         }
+        OfferToSave();
         UpdateControls();
         UpdateSystemKeyCapture();
         UpdateStatus();

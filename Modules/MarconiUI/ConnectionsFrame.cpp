@@ -562,6 +562,19 @@ namespace MarconiUI
         options.address.port = service.port;
         options.address.protocol = service.protocol;
         options.skipProbe = true;
+        // For saving it after the login: the name it announced, and its Bonjour name, which keeps working when its
+        // IP address changes (phones get a new one often); the IP address if it announced no name.
+        options.suggestedName = wxString::FromUTF8(service.instance);
+        wxString host = wxString::FromUTF8(service.hostName);
+        if (host.EndsWith("."))
+        {
+            host.RemoveLast();
+        }
+        options.saveAddress = host.empty() ? wxString::FromUTF8(service.ipv4) : host;
+        const char* kind = service.protocol == Marconi::Protocol::Marconi ? "marconi %u"
+                           : service.protocol == Marconi::Protocol::Rdp   ? "rdp %u"
+                                                                          : "vnc %u";
+        options.detected = wxString::Format(kind, static_cast<unsigned>(service.port));
         (new ViewerFrame(options))->Show();
     }
 

@@ -8,6 +8,8 @@
 #include <MarconiMcp/Registration.h>
 #include <MarconiMcp/Tools.h>
 
+#include <MarconiCore/Net/Discovery.h>
+
 #include "StoreComputers.h"
 
 #include <MarconiConnections/ConnectionStore.h>
@@ -132,6 +134,7 @@ namespace
         Marconi::Mcp::ToolOptions toolOptions;
         toolOptions.readOnly = readOnly;
         toolOptions.saved = haveSaved ? &saved : nullptr;
+        toolOptions.discover = []() { return Marconi::Net::Discover(1500); };
         if (const char* password = std::getenv("MARCONI_PASSWORD"))
         {
             toolOptions.defaultPassword = password;

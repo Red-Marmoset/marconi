@@ -7,6 +7,10 @@
 #include <MarconiMcp/Protocol.h>
 #include <MarconiMcp/SavedComputers.h>
 
+#include <MarconiCore/Net/Discovery.h>
+
+#include <chrono>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -37,6 +41,8 @@ namespace Marconi
             bool readOnly = false;        // offer only the tools that look
             std::string defaultPassword;  // used when connect gets none (MARCONI_PASSWORD)
             SavedComputers* saved = nullptr; // Marconi's saved connections, when available
+            // Looks for computers on this network (Marconi's "On this network"); none when empty.
+            std::function<std::vector<Net::DiscoveredService>()> discover;
         };
 
         class MarconiTools : public ToolSet
@@ -56,6 +62,14 @@ namespace Marconi
             ToolResult Disconnect();
             ToolResult Status();
             ToolResult Screenshot(const nlohmann::json& arguments);
+
+            // Computers on this network (ToolsNetwork.cpp): searched for at most every kNetworkCacheSeconds.
+            const std::vector<Net::DiscoveredService>& NetworkComputers();
+            // The ones that aren't saved connections already, as list_connections shows them.
+            nlohmann::json NetworkList(const std::vector<SavedComputer>& saved);
+            // The address of the computer on this network called `name`, if there is one; throws ArgumentError if
+            // Marconi can't connect to it.
+            bool FindNetworkComputer(const std::string& name, std::string& address, std::string& foundName);
 
             // The mouse, keyboard and clipboard (ToolsInput.cpp).
             static void AddInputTools(std::vector<ToolDefinition>& tools);
@@ -79,7 +93,12 @@ namespace Marconi
             ToolOptions m_options;
             Connection m_connection;
             ScreenshotView m_view;
+            std::vector<Net::DiscoveredService> m_network;
+            std::chrono::steady_clock::time_point m_networkSearched;
+            bool m_networkSearchedOnce = false;
         };
+
+        constexpr int kNetworkCacheSeconds = 30;
 
         // A pause between input events where timing matters (double clicks, drags).
         constexpr int kInputPauseMs = 15;

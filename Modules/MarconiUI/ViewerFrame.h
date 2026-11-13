@@ -74,6 +74,8 @@ namespace MarconiUI
         wxString macAddress;    // for waking the computer up when it doesn't answer
         wxRect windowRect;      // where the window was last time; empty = fit it to the desktop
         wxString savedId;       // the saved connection this window was opened from, if any
+        wxString suggestedName; // not saved: the name to offer when saving it (what the computer announced)
+        wxString saveAddress;   // not saved: the address to save instead of the one connected to (a Bonjour name)
         wxString detected;      // from the saved connection: what the last probe found, e.g. "vnc 5900"
         wxString layout;        // from the saved connection: where the toolbar and panels were
         wxString sshHostKey;    // from the saved connection: the SSH host key trusted for file transfer
@@ -210,6 +212,10 @@ namespace MarconiUI
         void OnServerUpdateProgress(const Marconi::Wire::UpdateUploader::Progress& progress);
         void ShowServerUpdateBar(const wxString& message, const std::vector<ServerUpdateBar::Button>& buttons);
         void HideServerUpdateBar();
+        // After a successful login to a computer that isn't saved: a bar offering to save it (ViewerFrameSave.cpp).
+        void OfferToSave();
+        void SaveThisComputer();
+        void HideSaveBar();
         void EnterUpdatingState();     // the server said it is updating and went: reconnect, saying so
         void CheckServerAfterUpdate(); // reconnected after an update: did it take?
         void SaveSettings();
@@ -249,6 +255,8 @@ namespace MarconiUI
         bool m_connected = false;
         ConnectionLostBar* m_lostBar = nullptr;
         ServerUpdateBar* m_updateBar = nullptr; // made the first time it is needed
+        ServerUpdateBar* m_saveBar = nullptr;   // "Save this computer?", made the first time it is needed
+        bool m_saveOffered = false;             // asked once per window
         std::string m_updateInstaller;          // the server installer being offered
         std::string m_updateVersion;            // its version
         std::string m_updateSentVersion;        // set once the server said it is installing; checked on reconnect
@@ -292,6 +300,7 @@ namespace MarconiUI
         std::unique_ptr<Marconi::Gamepad::GamepadForwarder> m_gamepadForwarder; // before the session goes, this goes
         long m_clipboardChangeCount = -1;
         bool m_rememberPassword = false; // the user ticked "remember" at the prompt: save once logged in
+        bool m_rememberForSave = false;  // ...for a computer that isn't saved yet: saved with it, if the user saves it
         std::thread m_probeThread;       // finds which protocol the machine offers, before connecting
         std::atomic<bool> m_probeCancel{false};
         bool m_usingRemembered = false; // connecting with ViewerOptions::detected, not a fresh probe

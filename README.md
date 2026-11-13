@@ -52,6 +52,10 @@ best option it supports. It remembers what it found, so connecting next time is 
 **On this network** lists computers nearby that announce themselves, as Macs with Screen Sharing do. The list
 updates every 10 seconds.
 
+After you log in to a computer that isn't saved, Marconi asks once whether to save it. A computer from **On this
+network** is saved by the name it announces (such as `Sams-Phone.local`), which keeps working when its IP address
+changes. If you ticked "Remember" at the login, its password is saved with it.
+
 Some computers offer Remote Desktop (built into Windows, and a choice on many Linux desktops) instead of VNC. Marconi
 connects to those too: you log in with an account on that computer. Over Remote Desktop the picture, keyboard and
 mouse work; the clipboard and changing the other computer's screen size come later. SSH (a text-only connection) is

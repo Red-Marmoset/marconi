@@ -94,6 +94,14 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   (the password reaches the computer, never the AI), and MarconiMcp reading a real `~/.config/marconi.conf`. Not
   checked: reading a real keychain (none here; Credential Manager on Windows).
 
+- **On this network** 2026-11-13 (0.11.6, owner's request): `list_connections` gives `saved` and
+  `on_this_network` (the computers Marconi's discovery finds that no saved connection points at, with their kind;
+  Remote Desktop ones are marked not usable), and `connect` takes their announced names, using the IP address and
+  port they announce. Searched for 1.5 seconds, at most every 30 seconds. The viewer now offers to save any computer
+  it logs in to that isn't saved (a bar, once per window), so a phone found on the network can become a saved
+  connection. Checked on Linux with tests (a stand-in discovery list, and connecting by name to a test VNC server);
+  not checked against a real phone.
+
 - **Installer component** 2026-11-13 (0.11.5): MarconiMcp, `Apps.json` and `marconi.mcpb` are the component "AI
   tools (MarconiMcp)" (`SecAiTools`, ticked by default) instead of part of the main one, as the owner first asked
   ("in the installer but as an option"). The page and `/AITOOLS=` only run when it's chosen; an upgrade with it

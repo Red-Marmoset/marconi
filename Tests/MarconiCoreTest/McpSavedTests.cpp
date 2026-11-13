@@ -227,5 +227,73 @@ namespace MarconiTest
             CHECK(without.CallTool("connect", {{"connection", "drips"}}, result) && result.isError);
             CHECK(without.CallTool("list_connections", json::object(), result) && result.isError);
         });
+
+        RunTest("MCP on this network: listed unless saved, searched at most every 30 seconds", []() {
+            FakeSaved saved;
+            saved.computers = {Computer("1", "Studio", "studio.local")};
+            int searches = 0;
+            Mcp::ToolOptions options;
+            options.saved = &saved;
+            options.discover = [&searches]() {
+                ++searches;
+                Net::DiscoveredService phone;
+                phone.instance = "Sam's Phone";
+                phone.hostName = "Sams-Phone.local.";
+                phone.ipv4 = "192.168.1.30";
+                phone.port = 5900;
+                phone.protocol = Protocol::Vnc;
+                Net::DiscoveredService studio = phone;
+                studio.instance = "Studio";
+                studio.hostName = "studio.local.";
+                studio.ipv4 = "192.168.1.31";
+                Net::DiscoveredService office = phone;
+                office.instance = "Office";
+                office.hostName = "office.local.";
+                office.ipv4 = "";
+                office.port = 3389;
+                office.protocol = Protocol::Rdp;
+                return std::vector<Net::DiscoveredService>{phone, studio, office};
+            };
+            Mcp::MarconiTools tools(options);
+            Mcp::ToolResult result;
+            CHECK(tools.CallTool("list_connections", json::object(), result) && !result.isError);
+            const json listed = json::parse(AllText(result));
+            CHECK(listed["saved"].size() == 1 && listed["saved"][0]["name"] == "Studio");
+            const json& network = listed["on_this_network"];
+            CHECK(network.size() == 2); // Studio is saved already
+            CHECK(network[0]["name"] == "Sam's Phone" && network[0]["address"] == "192.168.1.30");
+            CHECK(network[0]["kind"] == "VNC" && !network[0].contains("usable"));
+            CHECK(network[1]["address"] == "office.local" && network[1]["usable"] == false);
+            CHECK(tools.CallTool("list_connections", json::object(), result));
+            CHECK(searches == 1);
+
+            // Remote Desktop isn't something the AI tools can use yet.
+            CHECK(tools.CallTool("connect", {{"connection", "office"}}, result) && result.isError);
+            CHECK(AllText(result).find("Remote Desktop") != std::string::npos);
+        });
+
+        RunTest("MCP on this network: connect by the name a computer announces", []() {
+            FakeServer server;
+            Mcp::ToolOptions options; // no saved connections, as when wx can't start
+            options.discover = [&server]() {
+                Net::DiscoveredService phone;
+                phone.instance = "Sam's Phone";
+                phone.hostName = "Sams-Phone.local.";
+                phone.ipv4 = "127.0.0.1";
+                phone.port = server.GetPort();
+                phone.protocol = Protocol::Vnc;
+                return std::vector<Net::DiscoveredService>{phone};
+            };
+            Mcp::MarconiTools tools(options);
+            Mcp::ToolResult result;
+            std::thread connecting([&]() {
+                tools.CallTool("connect", {{"connection", "sam's phone"}, {"password", "hunter2"}}, result);
+            });
+            const bool accepted = server.AcceptClient();
+            const bool loggedIn = accepted && ServeVncPasswordLogin(server, "hunter2");
+            connecting.join();
+            CHECK(loggedIn && !result.isError);
+            CHECK(AllText(result).find("Connected to Sam's Phone") == 0);
+        });
     }
 } // namespace MarconiTest

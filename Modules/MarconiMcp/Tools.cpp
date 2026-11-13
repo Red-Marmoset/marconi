@@ -73,7 +73,8 @@ namespace Marconi
                 "server). If the computer's certificate or SSH key isn't trusted, the result gives its fingerprint; "
                 "connect again with trust_fingerprint set to it to accept it.";
             connect.inputSchema = ObjectSchema(
-                {{"connection", Property("string", "The name of a connection saved in Marconi, such as \"studio\".")},
+                {{"connection", Property("string", "The name of a connection saved in Marconi, such as \"studio\", "
+                                                    "or of a computer list_connections found on this network.")},
                  {"address", Property("string", "The computer's address, when it isn't a saved connection.")},
                  {"username", Property("string", "User name, when the computer asks for an account.")},
                  {"password", Property("string", "Password. If left out, the MARCONI_PASSWORD environment "
@@ -90,9 +91,10 @@ namespace Marconi
             ToolDefinition list;
             list.name = "list_connections";
             list.title = "Saved connections";
-            list.description = "The computers saved in Marconi: name, address, group and notes, and whether a "
-                               "password is saved (passwords themselves are never shown). Connect to one by its name. "
-                               "Use this when the user names a computer.";
+            list.description = "The computers saved in Marconi (name, address, group and notes, and whether a "
+                               "password is saved; passwords themselves are never shown), and the ones found on this "
+                               "network that aren't saved. Connect to either kind by its name. Use this when the "
+                               "user names a computer.";
             list.inputSchema = ObjectSchema(nlohmann::json::object());
             list.readOnly = true;
             tools.push_back(list);
@@ -216,7 +218,7 @@ namespace Marconi
                 std::string error;
                 const SavedComputer* computer =
                     FindSavedComputer(computers, name.empty() ? request.address : name, error);
-                if (!computer && !name.empty())
+                if (!computer && !name.empty() && !FindNetworkComputer(name, request.address, savedName))
                 {
                     throw ArgumentError{error};
                 }
@@ -238,7 +240,7 @@ namespace Marconi
                     }
                 }
             }
-            else if (!name.empty())
+            else if (!name.empty() && !FindNetworkComputer(name, request.address, savedName))
             {
                 throw ArgumentError{"Marconi's saved connections can't be read here; give an address instead."};
             }
@@ -291,12 +293,14 @@ namespace Marconi
 
         ToolResult MarconiTools::ListConnections()
         {
-            if (!m_options.saved)
+            if (!m_options.saved && !m_options.discover)
             {
                 return ToolResult::Error("Marconi's saved connections can't be read here.");
             }
+            const std::vector<SavedComputer> computers =
+                m_options.saved ? m_options.saved->List() : std::vector<SavedComputer>();
             nlohmann::json list = nlohmann::json::array();
-            for (const SavedComputer& computer : m_options.saved->List())
+            for (const SavedComputer& computer : computers)
             {
                 nlohmann::json entry = {{"name", computer.DisplayName()}, {"address", computer.address}};
                 if (!computer.group.empty())
@@ -322,9 +326,19 @@ namespace Marconi
                 entry["password_saved"] = computer.hasPassword;
                 list.push_back(entry);
             }
+            const nlohmann::json network = NetworkList(computers);
             ToolResult result;
-            result.AddText(list.empty() ? std::string("No connections are saved in Marconi.")
-                                        : list.dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
+            if (list.empty() && network.empty())
+            {
+                result.AddText("No connections are saved in Marconi, and no computers were found on this network.");
+                return result;
+            }
+            nlohmann::json all = {{"saved", list}};
+            if (m_options.discover)
+            {
+                all["on_this_network"] = network;
+            }
+            result.AddText(all.dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
             return result;
         }
 
