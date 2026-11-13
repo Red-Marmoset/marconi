@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.11
+
+- The README says how to check that a downloaded Android app is genuine.
+
 ## 0.9.10
 
 - The build and package scripts use the most recently built copy of the engine's build tool, never a debug or first-stage one.
