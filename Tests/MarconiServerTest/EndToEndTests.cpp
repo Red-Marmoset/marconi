@@ -6,6 +6,7 @@
 
 #include <MarconiCore/Wire/WireClient.h>
 #include <MarconiServerCore/Listener.h>
+#include <MarconiServerCore/PasswordHash.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
 #include <chrono>
@@ -101,6 +102,57 @@ namespace MarconiServerTest
             CHECK(clientListener.WaitFor([&]() { return clientListener.disconnected; }));
             listener.Stop();
             serverThread.join();
+        });
+
+        RunTest("A client with no password asks for one after trusting the server, and cancelling ends it quietly",
+                []() {
+            Server::TestPatternScreen screen(8, 8);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.port = 0;
+            settings.passwordHash = Server::HashPassword("letmein", 10000);
+
+            auto attempt = [&](bool give, const std::string& password, RecordingClientListener& clientListener) {
+                Server::Listener listener(screen, input, settings);
+                listener.SetFrameIntervalMs(1);
+                std::string error;
+                CHECK(listener.Start(error, "127.0.0.1"));
+                std::thread serverThread([&]() { listener.ServeOne(5000); });
+
+                {
+                    std::lock_guard<std::mutex> lock(clientListener.mutex);
+                    clientListener.givePassword = give;
+                    clientListener.passwordToGive = password;
+                }
+                Wire::Client client(clientListener);
+                Wire::ClientOptions options;
+                options.host = "127.0.0.1";
+                options.port = listener.GetPort();
+                options.askForPassword = true;
+                client.Connect(options);
+                CHECK(clientListener.WaitFor(
+                    [&]() { return clientListener.connected || clientListener.disconnected; }, 10000));
+
+                client.Disconnect();
+                listener.Stop();
+                serverThread.join();
+            };
+
+            RecordingClientListener right;
+            attempt(true, "letmein", right);
+            CHECK(right.connected);
+            CHECK(right.certificateQuestions == 1 && right.passwordQuestions == 1);
+
+            RecordingClientListener wrong;
+            attempt(true, "nope", wrong);
+            CHECK(!wrong.connected && wrong.disconnected);
+            CHECK(wrong.disconnectError == "The password was not accepted");
+
+            RecordingClientListener cancelled;
+            attempt(false, "", cancelled);
+            CHECK(!cancelled.connected && cancelled.disconnected);
+            CHECK(cancelled.passwordQuestions == 1);
+            CHECK(cancelled.disconnectError.empty());
         });
     }
 } // namespace MarconiServerTest

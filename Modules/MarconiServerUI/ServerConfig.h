@@ -29,8 +29,10 @@ namespace Marconi
             wxString GetKeyPath() const;
             wxString GetLogDirectory() const;
 
-            uint16_t GetPort() const;
-            void SetPort(uint16_t port);
+            // Not GetPort/SetPort: Windows' winspool.h defines SetPort as a macro, which renames the function in some
+            // files and not others.
+            uint16_t GetListenPort() const;
+            void SetListenPort(uint16_t port);
 
             // The access password as a stored hash (empty means no password is set). The plain password is never
             // kept; the caller hashes it first.

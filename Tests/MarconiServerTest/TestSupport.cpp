@@ -187,6 +187,20 @@ namespace MarconiServerTest
         return trustCertificate;
     }
 
+    bool RecordingClientListener::OnCredentialsRequired(Marconi::Rfb::CredentialsKind /*kind*/,
+                                                        Marconi::Rfb::Credentials& credentials)
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        ++passwordQuestions;
+        changed.notify_all();
+        if (!givePassword)
+        {
+            return false;
+        }
+        credentials.password = passwordToGive;
+        return true;
+    }
+
     bool RecordingClientListener::WaitFor(const std::function<bool()>& predicate, int timeoutMs)
     {
         std::unique_lock<std::mutex> lock(mutex);

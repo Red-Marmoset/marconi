@@ -110,7 +110,7 @@ namespace Marconi
             return logs.GetPath();
         }
 
-        uint16_t ServerConfig::GetPort() const
+        uint16_t ServerConfig::GetListenPort() const
         {
             wxFileConfig config = MakeConfig(m_dataDir);
             long port = config.ReadLong(kPortKey, kDefaultPort);
@@ -121,7 +121,7 @@ namespace Marconi
             return static_cast<uint16_t>(port);
         }
 
-        void ServerConfig::SetPort(uint16_t port)
+        void ServerConfig::SetListenPort(uint16_t port)
         {
             wxFileConfig config = MakeConfig(m_dataDir);
             config.Write(kPortKey, static_cast<long>(port));

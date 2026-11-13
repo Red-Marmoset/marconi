@@ -304,7 +304,7 @@ namespace Marconi
                              "Marconi Server", wxOK | wxICON_ERROR);
                 return;
             }
-            m_config.SetPort(static_cast<uint16_t>(port));
+            m_config.SetListenPort(static_cast<uint16_t>(port));
         }
 
         void TrayIcon::OnNotify(wxCommandEvent&)

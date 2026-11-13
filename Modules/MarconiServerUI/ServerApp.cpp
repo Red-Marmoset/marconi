@@ -138,6 +138,24 @@ namespace Marconi
             SetAppName("marconi-server");
             SetVendorName("Red Marmoset Studios");
 
+            // One tray app per user: a second would fight the first for the port and add a second icon. A command
+            // line job (--set-password-file) may still run alongside it.
+            bool commandLineJob = false;
+            for (int i = 1; i < argc; ++i)
+            {
+                commandLineJob = commandLineJob || wxString(argv[i]) == "--set-password-file";
+            }
+            if (!commandLineJob)
+            {
+                m_instanceChecker = std::make_unique<wxSingleInstanceChecker>();
+                if (m_instanceChecker->CreateDefault() && m_instanceChecker->IsAnotherRunning())
+                {
+                    wxMessageBox("Marconi Server is already running. Look for its icon in the system tray.",
+                                 "Marconi Server", wxOK | wxICON_INFORMATION);
+                    return false;
+                }
+            }
+
             m_config = std::make_unique<ServerConfig>();
             if (m_config->GetDataDirectory().IsEmpty())
             {
@@ -286,7 +304,7 @@ namespace Marconi
             Server::Settings settings;
             settings.serverVersion = GetVersionString();
             settings.serverName = wxGetHostName().utf8_string();
-            settings.port = m_config->GetPort();
+            settings.port = m_config->GetListenPort();
             settings.passwordHash = m_config->GetPasswordHash().utf8_string();
             settings.filesEnabled = m_config->GetFilesEnabled();
             settings.allowedAddresses = m_config->GetAllowedAddresses();
