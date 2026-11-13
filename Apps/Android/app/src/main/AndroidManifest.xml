@@ -28,6 +28,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".EditConnectionActivity"
+            android:exported="false"
+            android:parentActivityName=".ConnectActivity"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- The connection lives in this activity, so it keeps running through rotation and keyboard changes -->
         <activity
             android:name=".ViewerActivity"

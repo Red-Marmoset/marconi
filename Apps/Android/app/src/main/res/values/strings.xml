@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Marconi</string>
-    <string name="address_hint">Computer, for example studio-pc, 192.168.1.20:1 or marconi://host</string>
+    <string name="address_hint">Address, for example drips, 192.168.1.20:1 or marconi://drips</string>
+    <string name="address_help">A plain name or address connects with VNC. Add :1 for a VNC display number, ::5901 for a port, marconi:// for a Marconi server, ssh:// to go through the computer\'s SSH login.</string>
+    <string name="address_needed">Enter the computer\'s address</string>
+    <string name="name_hint">Name, for example Drips</string>
+    <string name="add_computer">Add a computer</string>
+    <string name="edit_computer">Change a computer</string>
+    <string name="save">Save</string>
+    <string name="save_and_connect">Save and connect</string>
+    <string name="edit">Change</string>
+    <string name="delete">Remove</string>
+    <string name="delete_question">Remove %1$s from the list?</string>
+    <string name="no_computers">No computers yet. Add one below to connect to it.</string>
+    <string name="list_help">Tap a computer to connect. Touch and hold to change or remove it.</string>
     <string name="username_hint">User name (optional)</string>
     <string name="password_hint">Password (optional)</string>
     <string name="connect">Connect</string>

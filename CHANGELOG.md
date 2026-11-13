@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.1
+
+- The Android app keeps a list of computers: add one with its name, address and user name, tap it to connect, touch and hold to change or remove it.
+
 ## 0.9.0
 
 - Marconi runs on Android phones and tablets (`Apps/Android`) and on iPad and iPhone (`Apps/iPad`), for VNC, VNC through SSH and Marconi servers.
