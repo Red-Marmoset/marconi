@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // Settings: the appearance choice, and who made Marconi.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.os.Bundle
 import android.widget.TextView

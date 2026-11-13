@@ -15,7 +15,7 @@
     <string>Marconi connects to computers on your local network to show their screens.</string>
     <key>CFBundleURLTypes</key><array>
         <dict>
-            <key>CFBundleURLName</key><string>com.RedMarmosetStudios.Marconi</string>
+            <key>CFBundleURLName</key><string>com.redmarmosetstudios.marconi</string>
             <key>CFBundleURLSchemes</key><array>
                 <string>vnc</string>
                 <string>marconi</string>

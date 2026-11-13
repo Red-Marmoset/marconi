@@ -96,13 +96,13 @@ val checkMarconiNative = tasks.register("checkMarconiNative") {
             logger.warn("checkMarconiNative: llvm-nm not found, skipping the native name check")
             return@doLast
         }
-        val declared = Regex("external fun ([A-Za-z0-9_]+)").findAll(File(projectDir, "src/main/java/com/redmarmoset/marconi/NativeSession.kt").readText())
+        val declared = Regex("external fun ([A-Za-z0-9_]+)").findAll(File(projectDir, "src/main/java/com/redmarmosetstudios/marconi/NativeSession.kt").readText())
             .map { it.groupValues[1] }.toSet()
         for (abi in marconiAbis) {
             val library = File(jniLibsDir, "$abi/libMarconi.so")
             val output = ByteArrayOutputStream()
             project.exec { commandLine(nm.absolutePath, "-D", library.absolutePath); standardOutput = output }
-            val exported = Regex("Java_com_redmarmoset_marconi_NativeSession_([A-Za-z0-9_]+)").findAll(output.toString())
+            val exported = Regex("Java_com_redmarmosetstudios_marconi_NativeSession_([A-Za-z0-9_]+)").findAll(output.toString())
                 .map { it.groupValues[1] }.toSet()
             val missing = declared - exported
             if (missing.isNotEmpty()) throw GradleException("libMarconi.so ($abi) lacks native functions NativeSession.kt declares: $missing")
@@ -112,11 +112,11 @@ val checkMarconiNative = tasks.register("checkMarconiNative") {
 tasks.named("preBuild") { dependsOn(checkMarconiNative) }
 
 android {
-    namespace = "com.redmarmoset.marconi"
+    namespace = "com.redmarmosetstudios.marconi"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.redmarmoset.marconi"
+        applicationId = "com.redmarmosetstudios.marconi"
         minSdk = 24
         targetSdk = 35
         versionCode = marconiRevision

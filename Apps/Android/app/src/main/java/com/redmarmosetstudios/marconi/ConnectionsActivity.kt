@@ -2,7 +2,7 @@
 // The start screen, as on the desktop: a quick connect box, the saved connections (favourites and groups first)
 // with search, and the computers found on this network.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.content.Intent
 import android.os.Bundle

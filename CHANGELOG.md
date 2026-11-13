@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.8
+
+- The Android, iPad and Mac apps are now identified as com.redmarmosetstudios.marconi.
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.

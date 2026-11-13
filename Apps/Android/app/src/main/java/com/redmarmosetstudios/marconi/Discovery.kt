@@ -2,7 +2,7 @@
 // "On this network": asks the network every 10 seconds, on a thread of its own, for computers advertising screen
 // sharing, Remote Desktop or SSH, and keeps a computer listed until it has missed three rounds in a row.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.content.Context
 import android.net.wifi.WifiManager

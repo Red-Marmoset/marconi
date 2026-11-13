@@ -2,7 +2,7 @@
 // One connection to another computer, run by the native core (Modules/MarconiAndroid). The listener's callbacks
 // arrive on the connection thread; the three ask* methods block that thread until the app answers.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.graphics.Bitmap
 
