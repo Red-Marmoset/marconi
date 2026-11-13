@@ -867,5 +867,7 @@ glass.
   (the server's clipboard ends on something other than the last copy). A race in the offer/request/data exchange
   under rapid copies; not yet investigated.
 - A server with no password now refuses every login (`Settings::allowNoPassword`, `--allow-no-password` for testing).
-  The tray's first-run prompt still accepts an empty password and the installer still has a password page; both are
-  to change (the owner prefers setting the password in the tray).
+  The tray's first-run prompt and its Set password item now refuse an empty password, its menu says "No password set:
+  viewers can't connect" until one is set, and the server installer no longer has a password page (the owner prefers
+  setting the password in the tray). `--set-password-file` stays in the tray program but nothing in the installer
+  uses it now.

@@ -59,23 +59,27 @@ namespace Marconi
                 return icon;
             }
 
-            // Asks for an access password (empty allowed = no password). Returns false if the person cancelled.
-            // On OK, `hashOut` is the stored hash (empty for no password).
+            // Asks for an access password, and asks again if it is left empty: a server with no password refuses every
+            // viewer. Returns false if the person cancelled. On OK, `hashOut` is the stored hash.
             bool AskForPassword(const wxString& message, std::string& hashOut)
             {
-                wxPasswordEntryDialog dialog(nullptr, message, "Marconi Server password");
-                if (dialog.ShowModal() != wxID_OK)
+                wxString prompt = message;
+                for (;;)
                 {
-                    return false;
-                }
-                wxString password = dialog.GetValue();
-                if (password.IsEmpty())
-                {
-                    hashOut.clear();
+                    wxPasswordEntryDialog dialog(nullptr, prompt, "Marconi Server password");
+                    if (dialog.ShowModal() != wxID_OK)
+                    {
+                        return false;
+                    }
+                    wxString password = dialog.GetValue();
+                    if (password.IsEmpty())
+                    {
+                        prompt = "A password is needed: without one, nobody can connect.\n\n" + message;
+                        continue;
+                    }
+                    hashOut = Server::HashPassword(password.utf8_string());
                     return true;
                 }
-                hashOut = Server::HashPassword(password.utf8_string());
-                return true;
             }
         } // namespace
 
@@ -125,13 +129,13 @@ namespace Marconi
                 return false;
             }
 
-            // First run: ask for a password once (empty is allowed, and means anyone who reaches the port can
-            // connect). After this the tray menu changes it.
+            // First run: ask for a password once. Until one is set the server refuses every viewer. After this the tray
+            // menu changes it.
             if (m_config->IsFirstRun())
             {
                 std::string hash;
-                if (AskForPassword("Welcome to Marconi Server.\n\nSet an access password, or leave it empty for no "
-                                   "password. Viewers are asked for it when they connect.",
+                if (AskForPassword("Welcome to Marconi Server.\n\nSet an access password. Viewers are asked for it when "
+                                   "they connect, and nobody can connect until you set one.",
                                    hash))
                 {
                     settings.passwordHash = hash;

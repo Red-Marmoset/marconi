@@ -17,10 +17,9 @@
 ;
 ; "Start Marconi Server now" on the finish page needs the ShellExecAsUser plug-in, as the client's installer does.
 ;
-; The access password is typed on its own page. It never goes on a command line (where any program could read it): Setup
-; writes it to a private temporary file, MarconiServer.exe --set-password-file reads it, stores only its hash and removes
-; the file. A silent install (/S) has no page and takes no password, so the tray icon asks for one the first time it
-; runs (SERVER_PLAN.md, section 1, point 9).
+; The access password is not asked for here: Marconi Server's tray icon asks for one the first time it runs (and the
+; icon's menu changes it later). Until a password is set the server refuses every viewer (SERVER_PLAN.md, section 1,
+; point 9).
 
 !ifndef VERSION | STAGE_DIR | OUT_FILE
     !error "Run Package.ps1 rather than makensis directly (it defines VERSION, STAGE_DIR and OUT_FILE)."
@@ -76,10 +75,6 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 ${StrStr}
 ${UnStrStr}
 
-Var PasswordBox
-Var ConfirmBox
-Var Password        ; what was typed on the password page ("" when none: silent install, or an upgrade keeping it)
-Var HasSettings     ; 1 when an earlier install left its settings, so the password may stay as it is
 Var ConsoleUser     ; the account signed in at this computer's screen: it runs the tray app and keeps the settings
 Var WasRunning      ; 1 when Setup closed a running ${APP_NAME} (it is started again at the end)
 
@@ -96,7 +91,7 @@ Var WasRunning      ; 1 when Setup closed a running ${APP_NAME} (it is started a
 !define MUI_HEADERIMAGE_UNBITMAP "${HEADER_BITMAP}"
 
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${APP_NAME} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME} on this computer, so you can see and control it from another computer with Marconi.$\r$\n$\r$\nAnyone who knows the access password you choose can control this computer, so pick one you would not mind guarding.$\r$\n$\r$\nClick Next to continue."
+!define MUI_WELCOMEPAGE_TEXT "This will install ${APP_NAME} on this computer, so you can see and control it from another computer with Marconi.$\r$\n$\r$\nAnyone who knows the access password can control this computer. The first time ${APP_NAME} starts, it asks you to choose one, and nobody can connect until you do.$\r$\n$\r$\nClick Next to continue."
 !define MUI_FINISHPAGE_TITLE "${APP_NAME} is ready"
 !define MUI_FINISHPAGE_TEXT "${APP_NAME} ${VERSION} has been installed on this computer.$\r$\n$\r$\nTo connect, open Marconi on another computer and type marconi://this computer's name. If Windows asks about the certificate, check that it matches the one shown by the ${APP_NAME} icon near the clock, then trust it.$\r$\n$\r$\nClick Finish to close Setup."
 ; Setup runs as administrator, and MUI's own run would start the program that way too: it would then keep its settings
@@ -111,7 +106,6 @@ Var WasRunning      ; 1 when Setup closed a running ${APP_NAME} (it is started a
 !insertmacro MUI_PAGE_LICENSE "${STAGE_DIR}\LicensePage.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
-Page custom PasswordPageCreate PasswordPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -199,61 +193,6 @@ Function .onInit
     SetRegView 64
     ; Everything is for the whole computer: the shared start menu and the shared settings folder (ProgramData).
     SetShellVarContext all
-    StrCpy $Password ""
-    ${If} ${FileExists} "$APPDATA\${DATA_FOLDER}\settings.ini"
-        StrCpy $HasSettings 1
-    ${Else}
-        StrCpy $HasSettings 0
-    ${EndIf}
-FunctionEnd
-
-; The password page: a password and its confirmation. Only the first install has to set one; an upgrade can leave both
-; empty to keep the password the server already has.
-Function PasswordPageCreate
-    !insertmacro MUI_HEADER_TEXT "Access password" "Choose the password Marconi asks for when it connects to this computer."
-    nsDialogs::Create 1018
-    Pop $0
-    ${If} $0 == error
-        Abort
-    ${EndIf}
-
-    ${NSD_CreateLabel} 0 0 100% 24u "Anyone who knows this password can see and control this computer from another computer. It is kept scrambled on this computer, never as you typed it."
-    Pop $0
-    ${NSD_CreateLabel} 0 30u 100% 10u "Password"
-    Pop $0
-    ${NSD_CreatePassword} 0 42u 100% 12u ""
-    Pop $PasswordBox
-    ${NSD_CreateLabel} 0 60u 100% 10u "Type it again"
-    Pop $0
-    ${NSD_CreatePassword} 0 72u 100% 12u ""
-    Pop $ConfirmBox
-    ${If} $HasSettings == 1
-        ${NSD_CreateLabel} 0 92u 100% 20u "${APP_NAME} is already set up here. Leave both boxes empty to keep its current password."
-        Pop $0
-    ${Else}
-        ${NSD_CreateLabel} 0 92u 100% 20u "You can change it later from the ${APP_NAME} icon near the clock."
-        Pop $0
-    ${EndIf}
-    nsDialogs::Show
-FunctionEnd
-
-Function PasswordPageLeave
-    ${NSD_GetText} $PasswordBox $0
-    ${NSD_GetText} $ConfirmBox $1
-    ${If} $0 == ""
-    ${AndIf} $1 == ""
-        ${If} $HasSettings == 1
-            StrCpy $Password ""
-            Return
-        ${EndIf}
-        MessageBox MB_OK|MB_ICONEXCLAMATION "Please choose an access password."
-        Abort
-    ${EndIf}
-    ${If} $0 != $1
-        MessageBox MB_OK|MB_ICONEXCLAMATION "The two passwords are not the same. Please type them again."
-        Abort
-    ${EndIf}
-    StrCpy $Password $0
 FunctionEnd
 
 ; Explorer launches the program on Setup's behalf, so it runs as the signed-in user. If Explorer isn't running, or is
@@ -332,26 +271,6 @@ Section "${APP_NAME}" SecApp
         ${EndIf}
     ${EndIf}
 
-    ; The access password: through a private temporary file, never a command line. The server reads it, keeps only its
-    ; hash and removes the file; Delete here is for when it couldn't.
-    ${If} $Password != ""
-        InitPluginsDir
-        ClearErrors
-        FileOpen $0 "$PLUGINSDIR\access.txt" w
-        ${IfNot} ${Errors}
-            FileWriteWord $0 "65279" ; the byte order mark: the file is UTF-16 little-endian
-            FileWriteUTF16LE $0 "$Password"
-            FileClose $0
-            ExecWait '"$INSTDIR\${APP_EXE}" --set-password-file "$PLUGINSDIR\access.txt"' $1
-            Delete "$PLUGINSDIR\access.txt"
-            ${If} $1 != 0
-                MessageBox MB_OK|MB_ICONEXCLAMATION "${APP_NAME} could not store the password (code $1). It will ask for one when it first runs." /SD IDOK
-            ${EndIf}
-        ${Else}
-            MessageBox MB_OK|MB_ICONEXCLAMATION "Setup could not write the password to a temporary file. ${APP_NAME} will ask for one when it first runs." /SD IDOK
-        ${EndIf}
-        StrCpy $Password ""
-    ${EndIf}
 SectionEnd
 
 Section "Allow through Windows Firewall" SecFirewall
@@ -377,7 +296,7 @@ Section "Start menu shortcut" SecStartMenu
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} program and its access password."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} program."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecFirewall} "Let other computers reach ${APP_NAME} through Windows Firewall (port ${DEFAULT_PORT})."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecAutoStart} "Start ${APP_NAME} when someone signs in to Windows."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME} to the Start menu."

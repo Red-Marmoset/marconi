@@ -67,7 +67,7 @@ namespace Marconi
             menu->Append(wxID_ANY, wxString::Format("Port %u", static_cast<unsigned>(m_controller.GetBoundPort())))
                 ->Enable(false);
             bool hasPassword = !m_config.GetPasswordHash().IsEmpty();
-            menu->Append(wxID_ANY, hasPassword ? "Password required" : "No password set")->Enable(false);
+            menu->Append(wxID_ANY, hasPassword ? "Password required" : "No password set: viewers can't connect")->Enable(false);
 
             wxString fingerprint = wxString::FromUTF8(m_controller.GetFingerprint().c_str());
             if (!fingerprint.IsEmpty())
@@ -100,17 +100,22 @@ namespace Marconi
         void TrayIcon::OnSetPassword(wxCommandEvent&)
         {
             wxPasswordEntryDialog dialog(nullptr,
-                                         "Enter an access password for this server, or leave it empty for no "
-                                         "password.\nViewers are asked for it when they connect.",
+                                         "Enter an access password for this server.\nViewers are asked for it when "
+                                         "they connect, and nobody can connect without one.",
                                          "Marconi Server password");
             if (dialog.ShowModal() != wxID_OK)
             {
                 return;
             }
             wxString password = dialog.GetValue();
+            if (password.IsEmpty())
+            {
+                wxMessageBox("A password is needed: without one, nobody can connect. The password was not changed.",
+                             "Marconi Server", wxOK | wxICON_INFORMATION);
+                return;
+            }
 
             std::string hash;
-            if (!password.IsEmpty())
             {
                 hash = Server::HashPassword(password.utf8_string());
                 if (hash.empty())

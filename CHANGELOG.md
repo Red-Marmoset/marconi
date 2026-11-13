@@ -5,7 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
-- Marconi Server refuses every login until a password is set.
+- Marconi Server refuses every login until a password is set, and its tray icon asks for one the first time it starts.
+- Marconi Server's installer no longer asks for a password; the tray icon does.
 
 - A Marconi Server installer for Windows, included in Marconi's own setup.
 - F8 menu: Install Marconi Server on the Other Computer, which copies the installer to its desktop.

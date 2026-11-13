@@ -224,10 +224,11 @@ You don't have to walk to the other computer. While you are connected to a Windo
    Otherwise it can copy the download address to the clipboard for you to open in a web browser over there.
 2. On the other computer's screen, in Marconi, double-click the installer on its desktop and say yes when Windows asks
    for permission.
-3. Setup asks you to choose an **access password**. Anyone who knows it can control that computer, so pick one you
-   would not mind guarding. It doesn't have to match the VNC password. Setup also lets Marconi Server through Windows
-   Firewall (you can untick that) and starts it whenever someone signs in (you can untick that too).
-4. When Setup finishes, close the connection and connect again. Marconi finds Marconi Server by itself and uses it;
+3. Setup lets Marconi Server through Windows Firewall (you can untick that) and starts it whenever someone signs in
+   (you can untick that too). When Setup finishes, Marconi Server starts and asks you to choose an **access
+   password**. Anyone who knows it can control that computer, so pick one you would not mind guarding. It doesn't
+   have to match the VNC password.
+4. Close the connection and connect again. Marconi finds Marconi Server by itself and uses it;
    your saved connection stays as it is.
 
 To share the computer you are sitting at, open Marconi's **Settings** and choose **Share this computer...**, which
@@ -236,8 +237,7 @@ starts the same installer here.
 The installer comes inside Marconi's own Windows setup (it is an option you can untick). To remove Marconi Server, use
 Windows' Settings > Apps, or run `Uninstall.exe` in `Program Files\Marconi Server`. That removes the program and the
 firewall rule, and keeps the settings and password unless you tick the option to remove them too. Running the
-installer with `/S` installs without any questions and without a password; Marconi Server then asks for one the first
-time it starts.
+installer with `/S` installs without any questions; Marconi Server then asks for a password the first time it starts.
 
 ### What it does and doesn't do yet
 
@@ -247,8 +247,8 @@ access password.
 It doesn't yet: share the clipboard, copy files, show more than one screen, change the screen's size, show the other
 computer's mouse pointer shape, play sound, or carry game controllers. It also runs only while someone is signed in
 to Windows, so it can't show the sign-in screen or keep going through a restart on its own. If you change its port,
-the Windows Firewall rule (made for port 1895) has to be changed to match. A server with no password lets anyone who
-reaches it in, so set one. Other VNC viewers can't connect to it; it only talks to Marconi.
+the Windows Firewall rule (made for port 1895) has to be changed to match. A server with no password refuses every
+viewer, so set one. Other VNC viewers can't connect to it; it only talks to Marconi.
 
 ### Starting it by hand
 

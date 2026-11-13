@@ -67,6 +67,11 @@ namespace Marconi
         {
             ChooseScreenAndInput();
             m_listener = std::make_unique<Server::Listener>(*m_screen, *m_input, m_settings);
+            if (m_systemScreen && !m_clipboard)
+            {
+                m_clipboard = Server::CreateSystemClipboard(); // the test pattern stands in for a computer that isn't there
+            }
+            m_listener->SetClipboard(m_clipboard.get());
             if (!m_listener->Start(error))
             {
                 m_listener.reset();

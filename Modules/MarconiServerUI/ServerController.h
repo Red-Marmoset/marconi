@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <MarconiServerCore/ClipboardAccess.h>
 #include <MarconiServerCore/InputSink.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/ScreenSource.h>
@@ -82,6 +83,7 @@ namespace Marconi
             std::unique_ptr<Server::InputSink> m_systemInput;
             std::unique_ptr<Server::TestPatternScreen> m_pattern;
             std::unique_ptr<Server::InputSink> m_loggingInput;
+            std::unique_ptr<Server::ClipboardAccess> m_clipboard; // shared only with the real screen
             Server::ScreenSource* m_screen = nullptr;
             Server::InputSink* m_input = nullptr;
             std::string m_servedDescription;
