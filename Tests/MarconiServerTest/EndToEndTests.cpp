@@ -38,6 +38,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0;
             settings.serverName = "End To End PC";
             settings.serverVersion = "0.6.0.0";

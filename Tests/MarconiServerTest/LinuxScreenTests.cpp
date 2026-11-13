@@ -152,6 +152,7 @@ namespace MarconiServerTest
             std::unique_ptr<Server::ScreenSource> screen = Server::CreateSystemScreen(error);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0;
             Server::Listener listener(*screen, input, settings);
             listener.SetFrameIntervalMs(5);

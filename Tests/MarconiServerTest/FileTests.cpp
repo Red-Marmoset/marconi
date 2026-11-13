@@ -204,6 +204,7 @@ namespace MarconiServerTest
         Server::Settings ConfinedTo(const TempDir& dir)
         {
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.fileRoot = dir.Text();
             return settings;
         }
@@ -797,6 +798,7 @@ namespace MarconiServerTest
             WriteFile(outer.Path() / "secret.txt", "secret");
             WriteFile(shared / "ok.txt", "ok");
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.fileRoot = shared.generic_string();
             Rig rig(settings);
             CHECK(rig.Ready());
@@ -864,6 +866,7 @@ namespace MarconiServerTest
             TempDir dir;
             WriteFile(dir.Path() / "x.txt", "xyz");
             Server::Settings open; // no root
+            open.allowNoPassword = true; // these tests log in without a password
             Rig rig(open);
             CHECK(rig.Ready());
             Files::MarconiFiles& files = rig.Files();

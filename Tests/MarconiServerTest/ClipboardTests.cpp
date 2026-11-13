@@ -95,7 +95,11 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen{8, 8};
             RecordingInput input;
             MemoryClipboard clipboard;
-            Server::Settings settings;
+            Server::Settings settings = []() {
+                Server::Settings made;
+                made.allowNoPassword = true; // these tests log in without a password
+                return made;
+            }();
             std::unique_ptr<Server::Listener> listener;
             std::thread serverThread;
             RecordingClientListener clientListener;
@@ -420,6 +424,7 @@ namespace MarconiServerTest
             RecordingInput input;
             MemoryClipboard clipboard;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             Server::Session session(serverTransport, screen, input, settings);
             session.SetClipboard(&clipboard);
             session.SetFrameIntervalMs(1);

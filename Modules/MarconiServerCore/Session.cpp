@@ -176,7 +176,12 @@ namespace Marconi
 
             Wire::LoginResult result;
             result.status = Wire::LoginResult::Status::Ok;
-            if (m_auth != nullptr)
+            if (m_auth != nullptr && !m_auth->HasPassword() && !m_settings.allowNoPassword)
+            {
+                result.status = Wire::LoginResult::Status::NoPassword;
+                LOG_INFO("Server", "Viewer '%s' refused: this server has no password set", hello.clientName.c_str());
+            }
+            else if (m_auth != nullptr)
             {
                 int retryAfterSeconds = 0;
                 Auth::Result check = m_auth->Check(login.password, retryAfterSeconds);

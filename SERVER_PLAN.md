@@ -860,3 +860,12 @@ glass.
 
 | Date | Phase | Machines | Resolution | Capture | Encode | Decode | Present | Glass to glass | Bitrate |
 |---|---|---|---|---|---|---|---|---|---|
+
+## Known issues (integration branch)
+
+- `ClipboardTests.cpp` "Many quick copies in both directions end on the last one and never loop" fails about 2 runs in 7
+  (the server's clipboard ends on something other than the last copy). A race in the offer/request/data exchange
+  under rapid copies; not yet investigated.
+- A server with no password now refuses every login (`Settings::allowNoPassword`, `--allow-no-password` for testing).
+  The tray's first-run prompt still accepts an empty password and the installer still has a password page; both are
+  to change (the owner prefers setting the password in the tray).

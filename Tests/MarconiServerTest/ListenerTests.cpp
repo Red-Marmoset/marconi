@@ -41,6 +41,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0; // a free port
             settings.serverName = "Socket PC";
             settings.serverVersion = "0.6.0.0";
@@ -86,6 +87,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0;
             settings.serverName = "Socket PC";
             settings.serverVersion = "0.6.0.0";

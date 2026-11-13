@@ -23,6 +23,10 @@ namespace Marconi
             // connection.
             std::string passwordHash;
 
+            // Let viewers in when no password is set. Off by default: a server with no password refuses every login
+            // (the viewer is told so) until one is set. Only for testing and for people who choose it knowingly.
+            bool allowNoPassword = false;
+
             // Lock this computer's screen whenever a viewer that has logged in disconnects (closes the window, loses
             // the connection or says Bye), whether or not the viewer asked. Off by default. A viewer can still ask
             // for a lock itself with the Lock message.

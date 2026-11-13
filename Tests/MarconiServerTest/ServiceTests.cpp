@@ -164,6 +164,7 @@ namespace MarconiServerTest
                   screen(4, 3)
             {
                 Server::Settings settings;
+                settings.allowNoPassword = true; // these tests log in without a password
                 settings.lockOnDisconnect = lockOnDisconnect;
                 session = std::make_unique<Server::Session>(serverTransport, screen, input, settings);
                 session->SetFrameIntervalMs(1);
@@ -755,6 +756,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0;
             Server::Listener listener(screen, input, settings);
             listener.SetFrameIntervalMs(1);
@@ -783,6 +785,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 0;
             settings.serverVersion = "1.0.0.0";
             settings.lockOnDisconnect = true;
@@ -837,6 +840,7 @@ namespace MarconiServerTest
             std::string dir = std::string(tmp && *tmp ? tmp : "/tmp") + "/marconi-svc-" +
                               std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.port = 4321;
             std::string error;
             CHECK(Server::LoadServiceConfig(dir, settings, error)); // no folder yet
@@ -864,6 +868,7 @@ namespace MarconiServerTest
                 file << text;
             };
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             std::string error;
             write("# a comment\n\nfuture-key = whatever\nport = 1900\n");
             CHECK(Server::LoadServiceConfig(dir, settings, error) && settings.port == 1900);

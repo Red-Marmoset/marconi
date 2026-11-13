@@ -5,6 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server refuses every login until a password is set.
+
 - A Marconi Server installer for Windows, included in Marconi's own setup.
 - F8 menu: Install Marconi Server on the Other Computer, which copies the installer to its desktop.
 - Settings: Share this computer, which runs the Marconi Server installer here.

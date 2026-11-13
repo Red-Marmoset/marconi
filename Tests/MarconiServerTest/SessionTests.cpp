@@ -56,6 +56,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(4, 3);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.serverName = "Test PC";
             settings.serverVersion = "0.6.0.0";
             Server::Session session(serverTransport, screen, input, settings);
@@ -159,6 +160,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(4, 3);
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             settings.passwordHash = Server::HashPassword("letmein", 10000);
             Server::Auth auth(settings.passwordHash);
 
@@ -190,6 +192,43 @@ namespace MarconiServerTest
 
             CHECK(attempt("letmein") == Wire::LoginResult::Status::Ok);
             CHECK(attempt("wrong") == Wire::LoginResult::Status::WrongPassword);
+        });
+
+        RunTest("A server with no password refuses every login unless told to allow it", []() {
+            Server::TestPatternScreen screen(4, 3);
+            RecordingInput input;
+            Server::Auth auth("");
+
+            auto attempt = [&](bool allowNoPassword) {
+                Server::Settings settings;
+                settings.allowNoPassword = allowNoPassword;
+                Pipe clientToServer;
+                Pipe serverToClient;
+                PipeTransport serverTransport(clientToServer, serverToClient);
+                PipeTransport clientTransport(serverToClient, clientToServer);
+                Server::Session session(serverTransport, screen, input, settings, &auth);
+                session.SetFrameIntervalMs(1);
+                std::thread serverThread([&]() { session.Run(); });
+
+                Viewer viewer(clientTransport);
+                Wire::Bytes bytes;
+                Wire::Reader body(nullptr, 0);
+                viewer.Send(Wire::Hello{}.Encode());
+                CHECK(viewer.Next(bytes, body) == Wire::Type::Welcome);
+                Wire::Welcome::Decode(body);
+                viewer.Send(Wire::Login{"anything"}.Encode());
+                CHECK(viewer.Next(bytes, body) == Wire::Type::LoginResult);
+                Wire::LoginResult::Status status = Wire::LoginResult::Decode(body).status;
+
+                session.Stop();
+                clientToServer.Close();
+                serverToClient.Close();
+                serverThread.join();
+                return status;
+            };
+
+            CHECK(attempt(false) == Wire::LoginResult::Status::NoPassword);
+            CHECK(attempt(true) == Wire::LoginResult::Status::Ok);
         });
 
         RunTest("A client that doesn't start with Hello is dropped", []() {

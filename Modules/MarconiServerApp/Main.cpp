@@ -35,6 +35,7 @@ namespace
         printf("  --size WxH            the test pattern's size (default 1280x720)\n");
         printf("  --name NAME           the name shown to viewers (default: this computer)\n");
         printf("  --password TEXT       require this access password (for testing; it shows in process lists)\n");
+        printf("  --allow-no-password   let viewers in with no password set (for testing only)\n");
         printf("  --password-hash HASH  require the password behind this hash (from --make-hash)\n");
         printf("  --make-hash TEXT      print the hash of a password and exit (store it, not the password)\n");
         printf("  --cert-file PATH      load the server's certificate from PATH (made on first run with --key-file)\n");
@@ -206,6 +207,10 @@ int main(int argc, char** argv)
                 return 2;
             }
         }
+        else if (arg == "--allow-no-password")
+        {
+            settings.allowNoPassword = true;
+        }
         else if (arg == "--password-hash")
         {
             if (!TakeValue(argc, argv, i, "--password-hash", settings.passwordHash))
@@ -361,7 +366,14 @@ int main(int argc, char** argv)
     printf("Certificate fingerprint: %s\n", listener.GetCertificateFingerprint().c_str());
     if (settings.passwordHash.empty())
     {
-        printf("No password set: any viewer that reaches this port can connect. Use --password to require one.\n");
+        if (settings.allowNoPassword)
+        {
+            printf("No password set, and --allow-no-password is on: any viewer that reaches this port can connect.\n");
+        }
+        else
+        {
+            printf("No password set: every login is refused until one is set. Use --password (or --allow-no-password for testing).\n");
+        }
     }
     else
     {

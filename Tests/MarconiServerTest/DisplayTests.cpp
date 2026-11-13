@@ -280,6 +280,7 @@ namespace MarconiServerTest
             static Server::Settings MakeSettings()
             {
                 Server::Settings settings;
+                settings.allowNoPassword = true; // these tests log in without a password
                 settings.port = 0;
                 settings.serverName = "Display PC";
                 settings.serverVersion = "0.0.0.0";
@@ -395,6 +396,7 @@ namespace MarconiServerTest
             Server::TestPatternScreen screen(4, 3); // can't change its size
             RecordingInput input;
             Server::Settings settings;
+            settings.allowNoPassword = true; // these tests log in without a password
             Server::Session session(serverTransport, screen, input, settings);
             session.SetFrameIntervalMs(1);
             std::thread serverThread([&]() { session.Run(); });
