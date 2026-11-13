@@ -646,6 +646,14 @@ yet):
 ### Phase 4: video
 
 1. **Decide the Linux decoder** (section 1 point 5) and add the external dependency if needed.
+   *Done (branch claude/ffmpeg):* ffmpeg 7.1.1 is in the engine as `External/ffmpeg` (decode-only, H.264, LGPL, static;
+   see the engine's `Documentation/FFmpeg.md` for the build and the licence duties). `Modules/MarconiCore/Video/
+   VideoDecoder_Ffmpeg.cpp` is the backend, built wherever the external exists (Linux; macOS recipe untried, no
+   Windows recipe: Windows uses Media Foundation). It sits behind a TEMPORARY local interface
+   (`VideoDecoder_Local.h`) to be replaced by the real `VideoDecoder` from the video branch. Tested on Linux with a
+   12-frame clip (`Tests/MarconiCoreTest/VideoDecoderFfmpegTests.cpp`): colours, one picture per call, damage and
+   recovery at the next keyframe, size change. Not done: VAAPI, HEVC/AV1, presentation, a Windows/macOS FFmpeg build.
+   The server must put its colour matrix and range in the stream (VUI) or the viewer assumes BT.601 limited range.
 2. `VideoEncoder` interface; `Encoder_Windows.cpp` on Media Foundation: hardware H.264 when available, software
    fallback, low-latency settings, GPU colour conversion from the captured texture. `--bench` prints encode times
    and bitrates for 1080p and 4K.

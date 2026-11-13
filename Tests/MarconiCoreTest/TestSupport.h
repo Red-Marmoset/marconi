@@ -170,4 +170,5 @@ namespace MarconiTest
     void RunServerInstallerTests();
     void RunRdpPointerTests();
     void RunRdpClientTests();
+    void RunVideoDecoderFfmpegTests();
 } // namespace MarconiTest
