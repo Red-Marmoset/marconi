@@ -144,12 +144,14 @@ Architecture: $ARCH
 Maintainer: $MAINTAINER
 Installed-Size: $INSTALLED_SIZE
 Depends: $DEPENDS
+Recommends: libdbus-1-3, xdg-desktop-portal, pipewire
 Homepage: https://github.com/Red-Marmoset/marconi
 Description: Share this computer's screen with Marconi
  Marconi Server lets the Marconi viewer on another computer see and control
- this computer's screen. It runs in your signed-in desktop X11 session, with
- an icon in the system tray, and asks you to choose an access password the
- first time. Nobody can connect until a password is set.
+ this computer's screen. It runs in your signed-in desktop (X11, or Wayland
+ through the desktop's screen-sharing permission), with an icon in the system
+ tray, and asks you to choose an access password the first time. Nobody can
+ connect until a password is set.
 CONTROL
 
 # dpkg wants directories 755, files 644 (the programs 755) and everything owned by root.

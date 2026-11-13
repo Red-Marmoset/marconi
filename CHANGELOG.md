@@ -5,6 +5,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server on Linux can share a Wayland desktop (GNOME, KDE): it asks your desktop for permission once, and says what to do if you decline.
 - Marconi Server keeps a log file for each run (tray, service and helper), the newest 20 kept, with no passwords in it.
 - Marconi Server on Linux: a package (`PackageServerLinux.sh`) that installs it in the applications menu and can start it when you sign in.
 - Marconi Server no longer writes what a viewer types to its log when it has no screen to control.

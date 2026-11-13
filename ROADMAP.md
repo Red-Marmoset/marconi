@@ -45,8 +45,11 @@ Also planned or missing, from the plans and the README's "Not available yet":
 - Marconi Server: the first Windows run is done (the screen, encryption and scaling were seen working). Still to try
   on Windows: the installer from the F8 menu, the Windows service, clipboard, files and the extra screens. The tray
   program talking to the Windows service (Phase 3) is written, tried on Linux only. Still planned: the macOS server
-  (written, never built), Wayland on Linux (Phase 8), several viewers at once (Phase 6 step 7), video (Phase 4),
+  (written, never built), several viewers at once (Phase 6 step 7), video (Phase 4),
   datagrams (Phase 5) and game controllers (Phase 7).
+- Marconi Server on a Linux Wayland desktop (GNOME, KDE; screen only on Sway) through the desktop's screen-sharing
+  permission: written and tried against a stand-in desktop and a real compositor's picture; the real permission window
+  and real keyboard and mouse control are still to be tried (Phase 8).
 - Marconi Server controls, all written and tried on Linux only: who can connect (by address), disconnecting idle
   viewers, a message when someone connects, a log file for each run, the password asked for in the tray, file
   sharing off until switched on, and a Linux package.

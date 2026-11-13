@@ -306,7 +306,18 @@ computers like them. Install it with `sudo apt install ./MarconiServer-...deb`. 
 applications menu and the programs `marconi-server` (with the tray icon) and `marconi-server-console` (without). The
 server has to run inside your signed-in desktop, because that is where the screen is, so it is not a system service: to
 start it every time you sign in, run `systemctl --user enable --now marconi-server.service` as yourself. It shares an
-X11 desktop; a Wayland-only desktop can't be shared yet.
+X11 desktop directly.
+
+On a **Wayland** desktop (the default on recent GNOME and KDE) a program isn't allowed to look at the screen or press
+keys by itself, so Marconi Server asks your desktop, which shows its own window the first time: choose the screen to
+share and press Share (or Allow). Your desktop remembers the answer, so it doesn't ask again next time. If you say no, or
+close the window, the tray icon's menu shows a "Problem" line saying so; choose "Check again" to be asked once more (if
+your desktop doesn't ask again, remove its earlier answer for Marconi Server in its privacy or screen-sharing settings).
+It needs the desktop's screen-sharing service (`xdg-desktop-portal` with the part for your desktop, such as
+`xdg-desktop-portal-gnome` or `xdg-desktop-portal-kde`) and PipeWire, which a normal GNOME or KDE install already has.
+Sway and other wlroots desktops let viewers see the screen but not control it. Copying text between the computers
+only works with older (X11) programs on Wayland for now. This part has been tried against a stand-in desktop and on a real compositor's picture, but
+not yet by a person clicking the real permission window, so please report what you see.
 
 ## Keeping Marconi up to date
 
