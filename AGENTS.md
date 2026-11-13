@@ -8,6 +8,9 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 The server component (Marconi Server) is planned in `SERVER_PLAN.md`: read it before working on the server, follow
 its phases in order, and keep it current (decisions, measurements, finished steps).
 
+Letting AI tools (Claude Code, Codex, Claude Desktop) drive Marconi is planned in `MCP_PLAN.md`, the same way: read
+it before working on that, follow its phases in order, and keep it current.
+
 ## Working with the owner
 
 - **Don't fill gaps with assumptions** (the owner's rule). When you notice you're assuming something about what the

@@ -64,7 +64,13 @@ plain words in anything users read. Keep this file current: decisions, findings,
 ### Standard output
 
 In stdio mode standard output carries only MCP messages; one stray line breaks the connection. Logs go to a file
-next to the viewer's logs (and errors to standard error). Unchecked: where the engine's `Log` writes by default.
+next to the viewer's logs (and errors to standard error).
+
+The engine's `Log` writes info and verbose messages to standard output (finding 1), and MarconiCore logs from the
+connection code. So at start-up MarconiMcp keeps a private copy of the real standard output for MCP messages and
+points the process's standard output at standard error (`dup`/`dup2`, `_dup`/`_dup2` on Windows). Anything else
+that prints, the engine's log or a library, then goes to standard error, which the AI tools keep for logs. No
+engine change needed.
 
 ### Tools offered to the AI
 
@@ -78,8 +84,9 @@ next to the viewer's logs (and errors to standard error). Unchecked: where the e
 | `get_clipboard`, `set_clipboard` | The remote clipboard |
 | `wait_for_change` | Until the picture changes, or a timeout |
 
-- **Scaling:** Claude scales big images down, so screenshots are scaled by us and the mouse tools take screenshot
-  coordinates. Unchecked: the exact size limit (recalled as about 1568 pixels on the long side).
+- **Scaling:** screenshots are scaled by us and the mouse tools take screenshot coordinates. By default a
+  screenshot fits within 1568 pixels on each side and 1.15 megapixels, which every current Claude model takes;
+  a `max_size` option allows up to 2576 pixels for models that accept more (finding 4).
 - **Settling:** wait until no update has arrived for about 300 ms, with a time limit.
 - **Cursor:** drawn into the screenshot from `OnCursorShape` and the last pointer position.
 - **Blocking questions:** passwords come from `connect` arguments or an environment variable; an untrusted
@@ -91,8 +98,13 @@ next to the viewer's logs (and errors to standard error). Unchecked: where the e
 
 - **Claude Code:** `claude mcp add --scope user marconi -- <path>`; remove with `claude mcp remove`.
 - **Codex:** `codex mcp add marconi -- <path>`; remove with `codex mcp remove`. Writes `~/.codex/config.toml`.
-- **Claude Desktop:** a `marconi.mcpb` built at packaging time (the program plus a `manifest.json`), opened with
-  Claude Desktop to install.
+- **Claude Desktop:** a `.mcpb` desktop extension built at packaging time, one per platform (finding 5). It holds
+  its own copy of the program and a `manifest.json` (`manifest_version` "0.3", `server.type` "binary",
+  `compatibility.platforms` set to the one platform). Installing means opening the file: Claude Desktop shows its
+  own install screen and the user confirms there, so Marconi can't tell whether it was installed.
+- **Finding `claude` on Windows** (finding 3): PATH, then `%USERPROFILE%\.local\bin\claude.exe` (Anthropic's own
+  installer, which doesn't always add itself to PATH), then `%LOCALAPPDATA%\Microsoft\WinGet\Links\claude.exe`,
+  then npm's global folder. The command found is run by its full path.
 - Each tool's own command is used rather than editing its settings, so we never write their file formats.
 
 ### Detecting installed apps (engine)
@@ -114,8 +126,8 @@ MarconiMcp lets an AI tool control real computers. The AI tools ask before each 
 ### Phase 0: agree the plan, check the unknowns
 
 - Owner reviews this file.
-- Check each item in section 6, recording findings here.
-- Done when: the owner agrees and section 6 has answers or a plan for each.
+- Check the unknowns, recording findings in section 6. First pass done 2026-11-13; the "still open" items remain.
+- Done when: the owner agrees, makes the decision in finding 2, and the open items are answered or have a plan.
 
 ### Phase 1: connect and screenshot
 
@@ -145,8 +157,9 @@ MarconiMcp lets an AI tool control real computers. The AI tools ask before each 
 
 ### Phase 5: Windows installer
 
-- MarconiMcp staged with the app; the "Connect Marconi to your AI tools" page; registering as the signed-in user;
-  the uninstaller removes registrations.
+- MarconiMcp staged with the app; the "Connect Marconi to your AI tools" page; registering as the signed-in user
+  (finding 2, and the decision there); the uninstaller removes registrations. An install for everyone can only
+  remove the registrations of whoever is signed in when it is uninstalled.
 - Done when: installing for one user and for everyone both register correctly, and uninstalling removes them.
 
 ### Phase 6: the "AI tools…" window
@@ -156,7 +169,9 @@ MarconiMcp lets an AI tool control real computers. The AI tools ask before each 
 
 ### Phase 7: macOS and Linux packages
 
-- MarconiMcp inside `Marconi.app` (signed with it) and in the Linux package.
+- MarconiMcp in `Marconi.app/Contents/MacOS/` and as `/usr/bin/marconi-mcp` in the Linux package.
+- `Package.sh` signs MarconiMcp first, then the app, without `--deep` (finding 6), with the same hardened runtime
+  and timestamp options when a real identity is used.
 - Done when: the window registers the bundled program on both, and Claude Code can use it.
 
 ### Phase 8: Claude Desktop
@@ -170,17 +185,47 @@ MarconiMcp lets an AI tool control real computers. The AI tools ask before each 
   registration commands built for each tool.
 - `Tools/fake_vnc_server.py` logs every input event, so input can be checked without a real desktop.
 
-## 6. Unknowns to check before relying on them
+## 6. Findings (checked 2026-11-13)
 
-- Where the engine's `Log` writes by default (must not be standard output).
-- Whether ShellExecAsUser can wait for a command and report its exit code; if not, another way to run registration
-  as the signed-in user.
-- How `claude` is installed on Windows (a `.cmd` from npm, or the native installer), so the installer and app can
-  find and run it.
-- Claude's image size limit for screenshots.
-- The `.mcpb` manifest format, how a user installs one, and which Claude plans allow desktop extensions.
-- Signing a second program inside `Marconi.app`.
-- Whether Marconi's own server accepts a second connection, so a viewer can watch a Marconi-protocol session.
+1. **Engine logging writes to standard output.** `Log::Print` (engine-log `Log.cpp`) sends info and verbose
+   messages to `stdout`, warnings and errors to `stderr`, plus the debugger and the log file when set. Handled by
+   redirecting standard output at start-up (section 3).
+2. **ShellExecAsUser can't wait or report an exit code.** Its documentation describes it as `ExecShell` run as
+   the signed-in user, with no wait mode. What this means:
+   - Installing just for the signed-in user: Setup isn't elevated, so it runs `MarconiMcp --register` with the
+     built-in `ExecWait` and gets the exit code. No problem.
+   - Installing for everyone: Setup is elevated and may be running as a different account (an administrator's
+     password typed at the prompt), so it has to go through ShellExecAsUser and can't see the result. **Decision
+     needed (owner):**
+     - (a) recommended: Setup starts `MarconiMcp --register ...` as the signed-in user, and MarconiMcp shows its
+       own message only if registering fails;
+     - (b) Setup skips the page when installing for everyone, and Marconi offers it the first time it starts.
+3. **Where `claude` lives on Windows.** Anthropic's own installer: `%USERPROFILE%\.local\bin\claude.exe` (known
+   not always to be added to PATH). WinGet: `%LOCALAPPDATA%\Microsoft\WinGet\Links\claude.exe`. npm: under npm's
+   global folder (`npm config get prefix`); the exact file there wasn't confirmed. Codex's install locations
+   haven't been checked yet.
+4. **Image size.** Anthropic's vision guide recommends at most 1.15 megapixels and 1568 pixels per side; newer
+   models take up to 2576 pixels and 3.75 megapixels. The real limit is a token budget, so a 1920x1080 picture
+   becomes 1456x819, not 1568x882. Anthropic's own computer-use tool rejects oversized screenshots rather than
+   shrinking them. Not checked: what Claude Code does with an oversized image from an MCP server, and Codex's
+   limits.
+5. **`.mcpb` format** (modelcontextprotocol/mcpb `MANIFEST.md`): current `manifest_version` is "0.3"; required
+   `manifest_version`, `name`, `version`, `description`, `author.name`, `server`. `server.type` "binary" is
+   supported, with `mcp_config` (`command`, `args`, `env`) and `${__dirname}` for the extension's folder; `.exe` is
+   added on Windows automatically. `compatibility.platforms` takes `darwin`, `win32`, `linux`. The spec doesn't
+   say whether one file can carry programs for several platforms, so we build one per platform. Install by
+   double-clicking, dragging into Claude Desktop, or its Extensions settings. Team and Enterprise admins can turn
+   extensions off. Not confirmed: whether Free and Pro accounts can install them.
+6. **Signing a second program in `Marconi.app`.** Apple's guidance: helper programs go in `Contents/MacOS`,
+   nested code is signed before what contains it, and `--deep` is to be avoided. `Package.sh` signs only the app
+   today, so it needs a step for MarconiMcp first. Not checked: whether macOS blocks the copy Claude Desktop
+   unpacks from the `.mcpb`.
+7. **Marconi's own server takes one viewer at a time** (`Listener::ServeOne`). A second connection isn't turned
+   away; it waits unanswered until the first ends. So watching alongside works for VNC only, until
+   `SERVER_PLAN.md` phase 6 step 7 ("several viewers at once, or take over") is done.
+
+Still open: Claude Code's handling of oversized MCP images; Codex's Windows install locations; npm's `claude`
+file; Free/Pro and `.mcpb`; macOS and the unpacked `.mcpb` program; the decision in finding 2.
 
 ## 7. Not in this plan unless the owner asks
 
