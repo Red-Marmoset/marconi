@@ -481,9 +481,12 @@ FunctionEnd
 ; ended, and the AI tools themselves stay open (Claude Code was seen starting a new copy by itself; others not checked).
 ; MarconiMcp has no window to close politely, so it is ended outright;
 ; it keeps nothing that would be lost. PowerShell comes with Windows; tasklist and taskkill can't filter by folder.
+; Setup is a 32-bit program, and the 32-bit PowerShell it would start sees no path for a 64-bit process, so nothing
+; matched: Sysnative is the 64-bit System32 as a 32-bit program sees it (Setup only runs on 64-bit Windows).
+; Called again just before MarconiMcp.exe is replaced, since an AI tool may start a new copy in between.
 !macro CloseRunningMcpFunction PREFIX
 Function ${PREFIX}CloseRunningMcp
-    nsExec::ExecToStack `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "@(Get-Process MarconiMcp -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith('$INSTDIR\', 'OrdinalIgnoreCase') } | Stop-Process -Force -PassThru | ForEach-Object { $$_.WaitForExit(10000) | Out-Null; 1 }).Count"`
+    nsExec::ExecToStack `"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "@(Get-Process MarconiMcp -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith('$INSTDIR\', 'OrdinalIgnoreCase') } | Stop-Process -Force -PassThru | ForEach-Object { $$_.WaitForExit(10000) | Out-Null; 1 }).Count"`
     Pop $0
     Pop $1
     ${If} $0 == 0
@@ -619,6 +622,7 @@ Section "AI tools (MarconiMcp)" SecAiTools
     ; The program AI tools such as Claude Code start to use other computers through Marconi, the list of AI tools it
     ; looks for, and the Claude Desktop extension. The page after installing connects it to the tools it finds.
     SetOutPath "$INSTDIR"
+    Call CloseRunningMcp
     File "${STAGE_DIR}\App\MarconiMcp.exe"
     File "${STAGE_DIR}\App\Apps.json"
     File "${STAGE_DIR}\App\marconi.mcpb"
@@ -628,6 +632,7 @@ SectionEnd
 Section "-AiToolsUnticked"
     ${IfNot} ${SectionIsSelected} ${SecAiTools}
         Call AiToolsRemoveUnticked
+        Call CloseRunningMcp
         Delete "$INSTDIR\MarconiMcp.exe"
         Delete "$INSTDIR\Apps.json"
         Delete "$INSTDIR\marconi.mcpb"
