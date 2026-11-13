@@ -5,14 +5,14 @@ rem
 rem Run it from your Marconi checkout, whatever branch it's on:   TestAiTools.bat
 rem When you're done with it:                                      TestAiTools.bat clean
 rem
-rem It puts both branches (Marconi's and the engine's claude/sweet-bell-nobab4) in their own folders under
+rem It puts both repos' main branches (Marconi's and the engine's, as on GitHub) in their own folders under
 rem %LOCALAPPDATA%\MarconiAiToolsTest, as git worktrees (extra checkouts sharing your repos' history). The engine copy
 rem borrows your engine's modules, wxWidgets and BuildTool (C:\code\engine, or UNA_ENGINE_PATH) through folder links,
 rem so nothing is downloaded or rebuilt twice. Then it builds and runs the tests and walks through Claude Code, the
 rem AI tools window and the installer, asking before anything that changes your setup.
 
 setlocal EnableDelayedExpansion
-set "BRANCH=claude/sweet-bell-nobab4"
+set "BRANCH=main"
 set "TESTDIR=%LOCALAPPDATA%\MarconiAiToolsTest"
 set "MW=%TESTDIR%\marconi"
 set "EW=%TESTDIR%\engine"
