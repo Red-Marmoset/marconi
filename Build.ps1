@@ -229,5 +229,26 @@ if ([IO.Path]::GetFullPath($projectFile) -eq [IO.Path]::GetFullPath((Join-Path $
     }
     Copy-Item -LiteralPath (Join-Path $scriptDir "Build\MarconiMcp\$Config\MarconiMcp.exe") -Destination $appOutput
     Copy-Item -LiteralPath (Join-Path $enginePath "Packaging\Apps.json") -Destination $appOutput
+
+    # The Claude Desktop extension (marconi.mcpb): Installer\Mcpb\manifest.json filled in and MarconiMcp.exe as
+    # server/MarconiMcp.exe, in a zip written entry by entry. Compress-Archive in Windows PowerShell names entries with
+    # backslashes, and Anthropic's mcpb tool can't unpack folder entries; Tools/make_mcpb.sh is the same for macOS.
+    $mcpVersion = (Get-Content (Join-Path $scriptDir "Project.json") -Raw | ConvertFrom-Json).version
+    $manifest = (Get-Content -Raw -LiteralPath (Join-Path $scriptDir "Installer\Mcpb\manifest.json")).
+        Replace("@VERSION@", $mcpVersion).Replace("@PROGRAM@", "MarconiMcp.exe").Replace("@PLATFORM@", "win32")
+    $extension = Join-Path $appOutput "marconi.mcpb"
+    if (Test-Path -LiteralPath $extension) { Remove-Item -Force -LiteralPath $extension }
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::Open($extension, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        $writer = New-Object System.IO.StreamWriter($zip.CreateEntry("manifest.json").Open(),
+                                                     (New-Object System.Text.UTF8Encoding($false)))
+        $writer.Write($manifest)
+        $writer.Dispose()
+        [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,
+            (Join-Path $appOutput "MarconiMcp.exe"), "server/MarconiMcp.exe")
+    } finally {
+        $zip.Dispose()
+    }
 }
 Write-Host "Marconi build complete." -ForegroundColor Green

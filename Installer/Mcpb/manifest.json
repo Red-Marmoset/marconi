@@ -1,0 +1,52 @@
+{
+    "manifest_version": "0.3",
+    "name": "marconi",
+    "display_name": "Marconi",
+    "version": "@VERSION@",
+    "description": "See and use other computers through Marconi: connect, look at the screen, and use the mouse, keyboard and clipboard.",
+    "long_description": "Marconi connects to other computers (VNC, VNC through SSH, or Marconi's own server). With this extension Claude can connect to the computers you name, take screenshots, click, type and use the clipboard. You can watch by connecting to the same computer with Marconi.",
+    "author": {
+        "name": "Red Marmoset Studios Ltd.",
+        "url": "https://github.com/Red-Marmoset/marconi"
+    },
+    "homepage": "https://github.com/Red-Marmoset/marconi",
+    "license": "MIT",
+    "server": {
+        "type": "binary",
+        "entry_point": "server/@PROGRAM@",
+        "mcp_config": {
+            "command": "${__dirname}/server/@PROGRAM@",
+            "args": [],
+            "env": {
+                "MARCONI_PASSWORD": "${user_config.password}"
+            }
+        }
+    },
+    "user_config": {
+        "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "The password for the computers Marconi connects to, if they need one. It's kept out of the conversation.",
+            "sensitive": true,
+            "required": false
+        }
+    },
+    "tools": [
+        {"name": "connect", "description": "Connect to a computer's desktop"},
+        {"name": "disconnect", "description": "End the connection"},
+        {"name": "status", "description": "Whether connected, and the desktop's size and displays"},
+        {"name": "screenshot", "description": "See the desktop or part of it"},
+        {"name": "click", "description": "Click at a point"},
+        {"name": "move", "description": "Move the pointer"},
+        {"name": "drag", "description": "Drag from one point to another"},
+        {"name": "scroll", "description": "Turn the mouse wheel"},
+        {"name": "type_text", "description": "Type text"},
+        {"name": "key", "description": "Press a key or a combination"},
+        {"name": "get_clipboard", "description": "Read the clipboard"},
+        {"name": "set_clipboard", "description": "Set the clipboard"},
+        {"name": "wait_for_change", "description": "Wait for the screen to change"}
+    ],
+    "compatibility": {
+        "platforms": ["@PLATFORM@"]
+    }
+}

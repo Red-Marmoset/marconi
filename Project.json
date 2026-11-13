@@ -1,7 +1,7 @@
 {
     "name": "Marconi",
     "type": "windowed",
-    "version": "0.11.2",
+    "version": "0.11.3",
     "description": "Marconi - cross-platform VNC client",
     "modules": [
         "MarconiCore",
@@ -28,7 +28,8 @@
         ],
         "buildFiles": [
             "MarconiMcp.exe",
-            "Apps.json"
+            "Apps.json",
+            "marconi.mcpb"
         ],
         "license": "LICENSE",
         "installerScript": "Installer/Marconi.nsi",

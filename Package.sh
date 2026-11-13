@@ -175,10 +175,16 @@ package_macos() {
     # against --deep).
     if [[ "$IDENTITY" == "-" ]]; then
         codesign --force --sign - "$app/Contents/MacOS/MarconiMcp"
-        codesign --force --sign - "$app"
     else
         # Notarization requires the hardened runtime and a secure timestamp.
         codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app/Contents/MacOS/MarconiMcp"
+    fi
+    # The Claude Desktop extension, made from the signed MarconiMcp, among the resources the app's signature seals.
+    bash "$ROOT/Tools/make_mcpb.sh" "$app/Contents/MacOS/MarconiMcp" darwin "$BASE_VERSION" \
+        "$app/Contents/Resources/marconi.mcpb"
+    if [[ "$IDENTITY" == "-" ]]; then
+        codesign --force --sign - "$app"
+    else
         codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app"
     fi
     codesign --verify --strict "$app"

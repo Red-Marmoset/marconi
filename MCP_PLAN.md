@@ -72,6 +72,15 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   `claude mcp get` reported it connected. `Package.sh` also puts MarconiMcp in `Marconi.app/Contents/MacOS` (signed
   before the app, without `--deep`) and `Apps.json` in `Contents/Resources` for Phase 9; that part needs a Mac.
 
+- **Phase 8 done in code** 2026-11-13 (0.11.3): `Installer/Mcpb/manifest.json` (manifest 0.3, a binary server,
+  the password as a hidden setting passed in `MARCONI_PASSWORD`); `Build.ps1` makes `marconi.mcpb` beside Marconi
+  on Windows (written entry by entry with .NET), `Tools/make_mcpb.sh` does it on macOS from the signed MarconiMcp
+  (`Package.sh`), and the Windows package ships it. Anthropic's `mcpb` tool 2.1.2 validated the manifest and
+  unpacked a bundle `make_mcpb.sh` made here (a zip without folder entries, which `mcpb unpack` can't handle), and
+  the program inside answered as an MCP server. Not checked: installing it in Claude Desktop (not available here);
+  whether Claude Desktop finds `server/MarconiMcp.exe` as written (the spec's own Windows example names the `.exe`);
+  and on Windows the bundled copy is made before the package signs MarconiMcp.exe, so it's unsigned.
+
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
 1. **MCP is the way in.** Claude's "connectors" are MCP servers, and Claude Code, Codex and Claude Desktop all take

@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.3
+
+- On Windows and macOS, Marconi can be added to Claude Desktop as an extension, from the installer or the AI tools window.
+
 ## 0.11.2
 
 - The Linux package and the macOS app include the part of Marconi that AI tools use.
