@@ -6,6 +6,7 @@
 #include <memory>
 
 #include <wx/app.h>
+#include <wx/snglinst.h>
 
 namespace Marconi
 {
@@ -29,6 +30,8 @@ namespace Marconi
 
             bool m_commandOnly = false; // ran a command line job: no tray icon, no server
             int m_commandResult = 0;
+            // Held while the tray app runs, so a second copy started by the same user sees it and quits.
+            std::unique_ptr<wxSingleInstanceChecker> m_instanceChecker;
             std::unique_ptr<ServerConfig> m_config;
             std::unique_ptr<ServerController> m_controller;
             TrayIcon* m_tray = nullptr; // owned by wx once created; removed in OnExit

@@ -330,7 +330,15 @@ namespace Marconi
                 return false;
             }
             int on = 1;
+#if defined(_WIN32)
+            // On Windows SO_REUSEADDR would let a second program bind the same port and take its connections; ask
+            // for the port to ourselves instead, so a second server fails to start.
+            setsockopt(Native(handle), SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&on),
+                       sizeof(on));
+#else
+            // Elsewhere it only lets a restarted server reuse the port straight away; a second bind still fails.
             setsockopt(Native(handle), SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&on), sizeof(on));
+#endif
             if (bind(Native(handle), reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
                 listen(Native(handle), 4) != 0)
             {
