@@ -169,4 +169,5 @@ namespace MarconiTest
     void RunRdpPointerTests();
     void RunRdpClientTests();
     void RunMcpTests();
+    void RunMcpRegistrationTests();
 } // namespace MarconiTest

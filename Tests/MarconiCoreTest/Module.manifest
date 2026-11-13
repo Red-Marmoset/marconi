@@ -3,7 +3,7 @@
     "version": "0.1.0",
     "type": "console",
     "description": "Tests for the Marconi core: streams, handshake, decoders, client against a scripted fake server",
-    "dependencies": ["Test", "MarconiCore", "MarconiMcp"],
+    "dependencies": ["Test", "MarconiCore", "MarconiMcp", "Process", "AppDetect"],
     "externalDependencies": ["wxwidgets", "stb", "json"],
     "platforms": ["Windows", "Linux", "macOS"]
 }

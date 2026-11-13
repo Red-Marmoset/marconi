@@ -34,6 +34,22 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   typed `echo` with a random word, and its one screenshot straight after showed the command and its output, as did
   the watching viewer.
 
+- **Phase 4 (engine) done before Phase 3** 2026-11-13, so finding the AI tools is written once: on the engine's
+  `claude/sweet-bell-nobab4` branch (7038f35), not yet in its `main`. New engine modules `Process` (running a
+  program with a time limit and collecting its output; `.cmd` files through `cmd.exe`) and `AppDetect` (reads
+  `Packaging/Apps.json`: commands on PATH and on the PATH saved in the registry, files, folders, Windows'
+  installed-programs list). `Packaging/Include/DetectApps.nsh` is made from `Apps.json` by `AppDetect` and checked
+  by AppDetectTest, rather than by `PackageProject.ps1` as first planned: PowerShell couldn't be run here, and a
+  committed file needs no step at packaging time. `PackageProject.ps1` adds `Packaging/Include` to makensis's
+  include folders and signs every `.exe` it ships (Phase 5 step 1); that change hasn't been run. Tested on Linux,
+  and the Windows code under Wine (cross-compiled ProcessTest and AppDetectTest, and a 64-bit build of
+  `Tests/AppDetectTest/DetectAppsTest.nsi`) with stand-in programs and registry entries.
+- **Phase 3 done** 2026-11-13: `--register`, `--unregister`, `--status` (one JSON line per tool) and
+  `--show-errors` (a message box on Windows, for Setup). Checked with the real Claude Code 2.1.323 and Codex 0.169.0
+  (each in a throwaway home folder): found, added, reported as pointing at this program, removed. Claude Code
+  refuses a name that's taken, so the old entry is removed first; Codex replaces it. Marconi now needs the engine
+  branch above until it's merged.
+
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
 1. **MCP is the way in.** Claude's "connectors" are MCP servers, and Claude Code, Codex and Claude Desktop all take
