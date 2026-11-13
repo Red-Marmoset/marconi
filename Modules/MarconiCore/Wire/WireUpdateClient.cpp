@@ -145,6 +145,10 @@ namespace Marconi
             offer.size = file.size();
             offer.sha256.resize(32);
             Crypto::Sha256(file.data(), file.size(), offer.sha256.data());
+            if (m_offerHook)
+            {
+                m_offerHook(offer);
+            }
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 m_file = std::move(file);

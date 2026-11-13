@@ -175,6 +175,7 @@ namespace MarconiServerTest
         std::lock_guard<std::mutex> lock(mutex);
         disconnected = true;
         disconnectError = info.error;
+        disconnectServerUpdating = info.serverUpdating;
         changed.notify_all();
     }
 

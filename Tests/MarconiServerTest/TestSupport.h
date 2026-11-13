@@ -133,6 +133,7 @@ namespace MarconiServerTest
         bool connected = false;
         bool disconnected = false;
         std::string disconnectError;
+        bool disconnectServerUpdating = false; // the server said it was updating before it went
         Marconi::Rfb::ServerInit serverInit;
         int updates = 0;
         int screenLayouts = 0;
@@ -161,4 +162,5 @@ namespace MarconiServerTest
     void RunRuleTests();
     void RunTrayTests();
     void RunVideoTests();
+    void RunUpdateTests();
 } // namespace MarconiServerTest

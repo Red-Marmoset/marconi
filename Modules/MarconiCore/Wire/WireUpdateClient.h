@@ -77,6 +77,10 @@ namespace Marconi
             // Forgets the "installing" mark once the viewer has reconnected and compared versions.
             void ClearInstalling() { m_installing = false; }
 
+            // Tests only: changes each real offer just before it is sent (a wrong hash, a size past the limit), so the
+            // server's refusals can be tried with the real client.
+            void SetOfferHookForTests(std::function<void(UpdateOffer&)> hook) { m_offerHook = std::move(hook); }
+
         private:
             void SetStage(Stage stage);                   // records and reports
             void Report();
@@ -91,6 +95,7 @@ namespace Marconi
             std::thread m_sender;
             std::atomic<bool> m_cancel{false};
             std::atomic<bool> m_installing{false};
+            std::function<void(UpdateOffer&)> m_offerHook;
         };
     } // namespace Wire
 } // namespace Marconi
