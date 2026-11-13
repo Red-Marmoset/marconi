@@ -22,7 +22,7 @@ namespace MarconiUI
         ID_SEND_CLIPBOARD,
         ID_GET_CLIPBOARD,
         ID_PASTE_FILES,
-        ID_SEND_CTRL_ALT_DEL,
+        ID_SEND_CTRL_ALT_DEL, // the Send Keys items run from here to ID_SEND_F10, in menu order
         ID_SEND_ALT_TAB,
         ID_SEND_ALT_F4,
         ID_SEND_WINDOWS_KEY,
@@ -30,6 +30,11 @@ namespace MarconiUI
         ID_SEND_CTRL_SHIFT_ESC,
         ID_SEND_PRINT_SCREEN,
         ID_SEND_CMD_TAB,
+        ID_SEND_MAC_SCREENSHOT, // Cmd+Shift+3
+        ID_SEND_MAC_SCREENSHOT_AREA, // Cmd+Shift+4
+        ID_SEND_MAC_SCREENSHOT_TOOL, // Cmd+Shift+5
+        ID_SEND_MAC_COPY_SCREEN, // Cmd+Ctrl+Shift+3
+        ID_SEND_MAC_COPY_SCREEN_AREA, // Cmd+Ctrl+Shift+4
         ID_SEND_F8,
         ID_SEND_F9,
         ID_SEND_F10,

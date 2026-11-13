@@ -171,12 +171,11 @@ namespace MarconiUI
         menu->Enable(ID_SYSTEM_KEYS, SystemKeyCapture::IsSupported());
         menu->Check(ID_SHOW_TOOLBAR, m_toolBar->IsShown()); // AUI hides the toolbar window with its pane
         menu->Check(ID_FILES, m_files->IsShown());
-        for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_ALT_TAB, ID_SEND_ALT_F4, ID_SEND_WINDOWS_KEY, ID_SEND_CTRL_ESC,
-                       ID_SEND_CTRL_SHIFT_ESC, ID_SEND_PRINT_SCREEN, ID_SEND_CMD_TAB, ID_SEND_F8, ID_SEND_F9,
-                       ID_SEND_F10, ID_REFRESH})
+        for (int id = ID_SEND_CTRL_ALT_DEL; id <= ID_SEND_F10; ++id) // every Send Keys item
         {
-            menu->Enable(id, m_connected && (id == ID_REFRESH || !m_canvas->IsViewOnly()));
+            menu->Enable(id, m_connected && !m_canvas->IsViewOnly());
         }
+        menu->Enable(ID_REFRESH, m_connected);
         menu->Enable(ID_SEND_CLIPBOARD, m_connected && !m_canvas->IsViewOnly());
         menu->Enable(ID_GET_CLIPBOARD, m_connected);
         menu->Enable(ID_PASTE_FILES, m_connected && ClipboardHasFiles());
@@ -195,6 +194,13 @@ namespace MarconiUI
         keys->Append(ID_SEND_CTRL_SHIFT_ESC, "Ctrl+&Shift+Esc");
         keys->Append(ID_SEND_PRINT_SCREEN, "&Print Screen");
         keys->Append(ID_SEND_CMD_TAB, "&Cmd+Tab (Mac)");
+        keys->AppendSeparator();
+        // The Mac's screenshot shortcuts: the first three save a file, the last two copy to the clipboard.
+        keys->Append(ID_SEND_MAC_SCREENSHOT, "Cmd+Shift+&3 (Mac: screenshot)");
+        keys->Append(ID_SEND_MAC_SCREENSHOT_AREA, "Cmd+Shift+&4 (Mac: screenshot of an area)");
+        keys->Append(ID_SEND_MAC_SCREENSHOT_TOOL, "Cmd+Shift+&5 (Mac: screenshot tool)");
+        keys->Append(ID_SEND_MAC_COPY_SCREEN, "Cmd+Ctrl+Shift+3 (Mac: copy the screen)");
+        keys->Append(ID_SEND_MAC_COPY_SCREEN_AREA, "Cmd+Ctrl+Shift+4 (Mac: copy an area)");
         keys->AppendSeparator();
         // Marconi keeps F8, F9 and F10 for itself, so these send them to the remote computer.
         keys->Append(ID_SEND_F8, "F&8");
@@ -312,12 +318,21 @@ namespace MarconiUI
         case ID_SEND_CMD_TAB:
             SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Tab});
             break;
+        case ID_SEND_MAC_SCREENSHOT:
+        case ID_SEND_MAC_SCREENSHOT_AREA:
+        case ID_SEND_MAC_SCREENSHOT_TOOL:
+            SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Shift_L,
+                                static_cast<uint32_t>('3' + event.GetId() - ID_SEND_MAC_SCREENSHOT)});
+            break;
+        case ID_SEND_MAC_COPY_SCREEN:
+        case ID_SEND_MAC_COPY_SCREEN_AREA:
+            SendKeyCombination({Marconi::Keysym::Super_L, Marconi::Keysym::Control_L, Marconi::Keysym::Shift_L,
+                                static_cast<uint32_t>('3' + event.GetId() - ID_SEND_MAC_COPY_SCREEN)});
+            break;
         case ID_SEND_KEYS:
         {
             std::unique_ptr<wxMenu> keys(CreateSendKeysMenu());
-            for (int id : {ID_SEND_CTRL_ALT_DEL, ID_SEND_ALT_TAB, ID_SEND_ALT_F4, ID_SEND_WINDOWS_KEY, ID_SEND_CTRL_ESC,
-                           ID_SEND_CTRL_SHIFT_ESC, ID_SEND_PRINT_SCREEN, ID_SEND_CMD_TAB, ID_SEND_F8, ID_SEND_F9,
-                           ID_SEND_F10})
+            for (int id = ID_SEND_CTRL_ALT_DEL; id <= ID_SEND_F10; ++id)
             {
                 keys->Enable(id, m_connected && !m_canvas->IsViewOnly());
             }

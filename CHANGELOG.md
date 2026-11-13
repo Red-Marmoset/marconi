@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.10.1
+
+- Send Keys can send the Mac's screenshot shortcuts (Cmd+Shift+3, 4 and 5, and Cmd+Ctrl+Shift+3 and 4).
+
 ## 0.10.0
 
 - The phone and tablet apps have landscape layouts.
