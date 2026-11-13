@@ -21,10 +21,10 @@ namespace Marconi
                     }
                 }
             };
-#if defined(_WIN32)
+#if defined(MARCONI_VIDEO_USE_MEDIA_FOUNDATION)
             add(WindowsDecodableCodecs());
 #endif
-#if defined(MARCONI_VIDEO_MAC)
+#if defined(MARCONI_VIDEO_USE_VIDEOTOOLBOX)
             add(MacDecodableCodecs());
 #endif
 #if defined(MARCONI_VIDEO_FFMPEG)
@@ -37,14 +37,14 @@ namespace Marconi
         std::unique_ptr<VideoDecoder> CreatePlatformVideoDecoder(Wire::VideoCodec codec)
         {
             std::unique_ptr<VideoDecoder> decoder;
-#if defined(_WIN32)
+#if defined(MARCONI_VIDEO_USE_MEDIA_FOUNDATION)
             decoder = CreateWindowsVideoDecoder(codec);
             if (decoder)
             {
                 return decoder;
             }
 #endif
-#if defined(MARCONI_VIDEO_MAC)
+#if defined(MARCONI_VIDEO_USE_VIDEOTOOLBOX)
             decoder = CreateMacVideoDecoder(codec);
             if (decoder)
             {

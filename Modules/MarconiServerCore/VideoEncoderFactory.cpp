@@ -9,7 +9,7 @@ namespace Marconi
     {
         std::vector<Wire::VideoCodec> PlatformEncodableCodecs()
         {
-#if defined(_WIN32)
+#if defined(MARCONI_VIDEO_USE_MEDIA_FOUNDATION)
             return WindowsEncodableCodecs();
 #else
             return {};
@@ -18,7 +18,7 @@ namespace Marconi
 
         std::unique_ptr<VideoEncoder> CreatePlatformVideoEncoder(Wire::VideoCodec codec)
         {
-#if defined(_WIN32)
+#if defined(MARCONI_VIDEO_USE_MEDIA_FOUNDATION)
             return CreateWindowsVideoEncoder(codec);
 #else
             (void)codec;

@@ -80,6 +80,8 @@ namespace MarconiUI
         // Headless (testing and automation): no window and no dialogs. Saves the picture the viewer would show
         // to the log folder every `snapshotEverySeconds`, and closes after `quitAfterSeconds`.
         bool headless = false;
+        bool video = false;      // ask a Marconi server for video (--video)
+        bool videoStats = false; // log the video's frames a second, bitrate and decode time (--stats)
         int snapshotEverySeconds = 5;
         int quitAfterSeconds = 60;
 

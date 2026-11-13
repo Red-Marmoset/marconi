@@ -5,6 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server can send the screen as video (H.264) to a viewer that asks for it, with the parts that stop moving sent again sharp; video is still switched off until it has been tried on Windows and Mac, so nothing changes yet.
+- Marconi Server `--stats` logs video frames a second, bitrate and how long each frame took; Marconi `--video` and `--stats` do the same on the viewer (and `--video` is the way to turn video on).
 - Marconi Server keeps a log file for each run (tray, service and helper), the newest 20 kept, with no passwords in it.
 - Marconi Server on Linux: a package (`PackageServerLinux.sh`) that installs it in the applications menu and can start it when you sign in.
 - Marconi Server no longer writes what a viewer types to its log when it has no screen to control.

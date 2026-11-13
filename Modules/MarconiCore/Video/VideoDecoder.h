@@ -17,12 +17,7 @@
 
 #include <MarconiCore/Wire/WireVideoMessages.h>
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#if TARGET_OS_OSX
-#define MARCONI_VIDEO_MAC 1 // the VideoToolbox backend is built on a Mac only, not on iOS
-#endif
-#endif
+#include <MarconiCore/Video/VideoBackendSwitch.h>
 
 #include <cstdint>
 #include <functional>
@@ -94,11 +89,11 @@ namespace Marconi
 
         // The backends' entry points. Each returns null when it can't decode `codec`. They are declared here so
         // VideoDecoderFactory.cpp can reach them; only the ones whose file is built on this platform exist.
-#if defined(_WIN32)
+#if defined(MARCONI_VIDEO_USE_MEDIA_FOUNDATION)
         std::vector<Wire::VideoCodec> WindowsDecodableCodecs();
         std::unique_ptr<VideoDecoder> CreateWindowsVideoDecoder(Wire::VideoCodec codec);
 #endif
-#if defined(MARCONI_VIDEO_MAC)
+#if defined(MARCONI_VIDEO_USE_VIDEOTOOLBOX)
         std::vector<Wire::VideoCodec> MacDecodableCodecs();
         std::unique_ptr<VideoDecoder> CreateMacVideoDecoder(Wire::VideoCodec codec);
 #endif

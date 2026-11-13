@@ -664,6 +664,112 @@ yet):
 Done when: full-screen video plays smoothly at the display's rate on a LAN with glass-to-glass under about 40 ms
 in the `--stats` log, and text is pixel-exact within half a second of stopping.
 
+#### Phase 4 status (branch `claude/server-video`)
+
+**Built and tested on Linux with a test-only codec: the whole pipeline except a real codec.** The Windows Media Foundation
+encoder and decoder and the macOS VideoToolbox decoder are written but have never been compiled; the Linux decoder is the
+ffmpeg slot below, for the `claude/ffmpeg` branch. Nothing here has produced a real H.264 picture yet. Hardware
+encoding, GPU colour conversion, GPU presentation, scaling a too-big picture down, `--bench` and the glass-to-glass
+numbers are not done (steps 2, 5 and 6 of the list above are done only as far as written here).
+
+**Decision recorded: how video and the Still rectangles share the screen.** A viewer that asked for video gets a hybrid:
+- *Moving parts are video.* A change that covers more than 1/32 of the picture is encoded as video. A smaller change (typing,
+  a menu, a blinking cursor) goes straight out as lossless Stills, because video would blur small text for a moment for
+  nothing (`VideoSessionOptions::smallChangeDivisor`).
+- *Still parts are sharp.* Every area sent as video is sent again as a lossless Still once nothing on the screen has changed
+  for 300 ms (`videoStillDelayMs`). While something keeps changing, the refresh waits.
+- *The viewer copies only what the frame says.* Each `VideoFrame` lists the rectangles of its picture to copy into the
+  framebuffer (`applyRects`), so a Still that already made some text sharp is not painted over by a blurry video picture of
+  the same text. The decoder always sees whole pictures; only the copy is selective. A rectangle with no area means "copy
+  nothing" (a keyframe sent only so a viewer's decoder can recover).
+- *Modes* (`StreamConfig.mode`): `Hybrid` is all of the above; `Video` is video only (no small-change Stills, no refresh);
+  `StillOnly` is the old path and always works. A viewer can change mode at any time; going back to `StillOnly` ends the
+  stream with `VideoStop(Switched)` and the server sends the whole picture as Stills.
+- *Why not a clean switch.* A clean switch (video while the screen moves, then stills of everything) re-sends the whole
+  screen on every pause and flashes blurry-to-sharp across all of it, even when only a video in one corner moved. Hybrid
+  costs a little bookkeeping (the dirty rectangles the encoder is told about) and keeps a static window sharp while another
+  one plays video.
+- Known limits of this choice: the dirty rectangles come from the capture (Linux X11 reports tiles; Windows GDI reports the
+  whole screen or nothing, so on Windows a hybrid stream today is "everything is video, then everything is sharp after
+  300 ms"); the sharp refresh is one rectangle per merged region, so a big region is a big message.
+
+**Protocol** (`Wire/WireVideoMessages.h`, numbers 80 to 85, all on the control channel; Phase 5 moves `VideoFrame` to datagrams).
+Negotiation: the viewer sets `Capability::Video` in Hello only if it has a decoder and was asked to (`--video`); the server
+grants it only if it has an encoder (`Welcome`). After the login the viewer sends `VideoOffer` (its codecs in order of
+preference, biggest picture, fastest rate) and `StreamConfig` (mode, maximum bitrate, maximum frame rate). The server picks the
+viewer's first codec it can encode and answers `VideoStart` (new stream id, codec, picture size, frame rate, starting bitrate,
+the desktop area the picture shows, codec set-up bytes), or `VideoStop` with the reason (no codec in common, no encoder, a
+picture bigger than the viewer's decoder takes) and goes on with Stills. `VideoFrame`: stream id, frame number (1, 2, ... in
+the stream, so a gap shows a loss), keyframe flag, capture time (server clock, microseconds), encode time, `applyRects`, payload.
+A change of picture size or place (a resolution change, another display) is a new `VideoStart` with a new stream id and a
+keyframe. `VideoRequestKeyframe` (stream id, reason, last good frame) from the viewer; the server serves it at most once per
+100 ms. `VideoFeedback` every half second (frames received and dropped, average decode time, queue depth, and the viewer's
+wishes: target bitrate, frame rate, quality 1 to 100); `VideoStop` either way ends the stream (from the viewer: "I can't
+decode"). Unknown codec numbers and message types are skipped, so newer peers can offer more.
+
+**Server** (`MarconiServerCore`): `VideoEncoder` interface (`VideoEncoder.h`: configure, extradata, encode a capture area, force
+keyframe, set bitrate, flush), `VideoSession` (negotiation, hybrid decision, pacing, still refresh, keyframe throttling,
+encoder failure fallback after 3 failures in a row, `--stats` log), `VideoRateControl` (the bitrate rule is written in its header:
+the lowest of the wishes is the ceiling, congestion cuts to three quarters, four clean reports raise by an eighth). The
+`Session` owns one `VideoSession` per viewer that was granted video; encoders come from `CreatePlatformVideoEncoder` (only the
+Windows one exists, and only when switched on, see below) or from `Session::SetVideoEncoderFactory` (tests).
+
+**Viewer** (`MarconiCore`): `VideoDecoder` interface (`Video/VideoDecoder.h`), `VideoReceiver` (follows the stream, spots lost
+frames from the frame numbers and asks for a keyframe once, retries after a second, gives up and says `VideoStop` after five
+failed decodes in a row, sends feedback), and `Wire::Client` copies decoded frames into the existing `Framebuffer` and reports
+them through `OnFramebufferUpdated`, exactly like Stills. `ClientOptions::offerVideo` is off by default; `--video` turns it on in
+the desktop app and `--stats` logs the viewer's frames a second, bitrate and decode time.
+
+**Platform backends are switched off until someone with the machine turns them on**
+(`Modules/MarconiCore/Video/VideoBackendSwitch.h`: uncomment `MARCONI_VIDEO_WINDOWS` or `MARCONI_VIDEO_VIDEOTOOLBOX`), so that an
+error in code written blind cannot stop the Windows or Mac build. With them off, a Windows or Mac server does not offer video and
+a viewer does not ask for it: everything is Stills as before. Files: `VideoEncoder_Windows.cpp` (Media Foundation H.264,
+hardware transform first with an event loop, Microsoft's software one second, no B-frames, CBR, GOP from `keyframeInterval`,
+keyframe on request, bitrate change at run time, CPU BGRX-to-NV12), `VideoDecoder_Windows.cpp` (Media Foundation decoder
+transform, software, one frame in and one out, NV12 to 0x00RRGGBB on the CPU), `VideoDecoder_Mac.cpp` (VideoToolbox, Annex B to
+AVCC, needs the frameworks added to the manifest). The first things to check on a machine are listed at the top of each file.
+
+**The ffmpeg decoder slot (for branch `claude/ffmpeg`).** Add `Modules/MarconiCore/Video/VideoDecoder_Ffmpeg.cpp` implementing
+`Marconi::Video::VideoDecoder` for `Wire::VideoCodec::H264` (HEVC and AV1 can follow; add them to the list it returns), plus the
+two functions declared in `VideoDecoder.h` under `MARCONI_VIDEO_FFMPEG`: `FfmpegDecodableCodecs()` and
+`CreateFfmpegVideoDecoder(codec)`, and make the module build define `MARCONI_VIDEO_FFMPEG` (so `VideoDecoderFactory.cpp` picks it
+up; it does nothing else). What is expected of it:
+1. Input is H.264 in Annex B (start codes), one `VideoFrame` payload per `Decode` call, no B-frames, parameter sets (SPS and PPS)
+   repeated in every keyframe. `Configure` also gets the stream's `extradata` (Annex B SPS and PPS; may be empty): pass it to the
+   decoder (or feed it first) so a keyframe without in-band sets still decodes.
+2. Low latency: open the codec with `AV_CODEC_FLAG_LOW_DELAY`, `AV_CODEC_FLAG2_FAST`, no frame threading (`thread_count = 1`, or
+   slice threading only), and no output reordering. Each call is `avcodec_send_packet` then `avcodec_receive_frame`; return
+   `DecodeStatus::Picture` when a frame came out and `NeedMoreInput` on `EAGAIN`. A frame a call late is a delay, not an error, but
+   the viewer shows it that much later, so the decoder must not hold frames back on purpose.
+3. Output is `DecodedPicture`: 0x00RRGGBB, one `uint32_t` per pixel, row by row, no padding, cropped to the coded picture's real
+   size (`width`/`height` of the frame, not a padded size). Convert with `sws_scale` (YUV to BGRA, BT.709, matching the server's
+   NV12 conversion) or an equivalent; keep the `SwsContext` between frames and rebuild it when the size changes.
+4. `Reset()` flushes (`avcodec_flush_buffers`) and the next frame is a keyframe. A frame that does not decode returns `Failed`
+   with a sentence in `error`; the viewer then asks the server for a keyframe by itself, so the decoder needs no recovery logic of
+   its own, and must never crash or leak on corrupt input (the receiver does feed it whatever the server sent).
+5. Used from one thread (the client's worker thread) and created once per stream (`VideoStart`); `Configure` may be called again
+   on the same object. No global state that two viewers in one process would share. Frame-copy cost counts: at 1080p the whole
+   conversion should stay under about 4 ms.
+6. It is built only where ffmpeg is built; other platforms keep an empty list, so the viewer there does not offer video.
+7. Test it with the loopback tests' shape: `Tests/MarconiServerTest/VideoTests.cpp` shows how a decoder is driven; an ffmpeg test
+   needs an H.264 stream, which can be made by the ffmpeg encoder in the same branch or checked in as a few hundred bytes (an IDR
+   frame and a P frame of a small picture), decoded and compared with a tolerance.
+
+**What was run on Linux (`MarconiServerTest`, `MarconiCoreTest`).** Every message round-trips, bad values are refused, every
+truncation of a valid message is refused, and 3000 random bodies plus every single-bit flip of a valid frame decode or are
+refused without crashing. With the test codec (lossy, deterministic, sequence-checked so a receiver that forgets to ask for a
+keyframe fails the test) and a fake clock: negotiation picks the viewer's first common codec; still-only and back; a lost
+frame and a lost first keyframe recover through one keyframe request each (throttled to 100 ms); a decoder-refused frame asks for
+a keyframe; a request for an old stream is ignored; a resolution change and a display change start a new stream; no common
+codec, a picture too big for the viewer, an encoder that won't start and one that fails mid-stream, and a viewer whose decoder
+refuses, all fall back to Stills; hybrid sharpening exactly 300 ms after the last change, not before, once only; small changes
+as Stills; video-only mode; pacing at 30 and 60 frames a second and a change that arrives early not being lost; bitrate
+hints (maximum, congestion, clean reports, a frame-rate wish, a stale stream's report ignored); the `--stats` line and its
+numbers; the real `Session` over a pipe (no encoder means no grant; the encoder is released when the viewer goes away); and the
+real client against the real listener over TLS (video starts and fills the framebuffer, then switching to still-only gives exact
+pixels). **Not run:** any real H.264, any Windows or Mac code, a Wayland or multi-viewer case, UDP, a long soak, real timing.
+`--bench` and the Phase 4 "done when" numbers do not exist yet.
+
 ### Phase 5: UDP
 
 1. `UdpSocket` for IPv6 and connected use; `Keys` over TLS; the UDP `Hello` that opens the client's path; session

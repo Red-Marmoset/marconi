@@ -66,6 +66,8 @@ namespace
         printf("                        (repeat for more; with none, anyone who reaches the port may try)\n");
         printf("  --idle-minutes N      disconnect a viewer that has done nothing for N minutes (default 0: never)\n");
         printf("  --notify              print a line when a viewer connects or disconnects\n");
+        printf("  --stats               log video frames a second, bitrate and capture-to-send time every few seconds\n");
+        printf("  --no-video            never offer video: every viewer gets still pictures\n");
         printf("  --lock-on-disconnect  lock this computer's screen when a viewer disconnects\n");
         printf("  --log-file PATH       also write a log file in the folder PATH (one per run, the newest 20 kept)\n");
         printf("  --service             run as the Windows service (started by Windows, not by hand)\n");
@@ -287,6 +289,14 @@ int main(int argc, char** argv)
         else if (arg == "--notify")
         {
             notify = true;
+        }
+        else if (arg == "--stats")
+        {
+            settings.videoStats = true;
+        }
+        else if (arg == "--no-video")
+        {
+            settings.videoEnabled = false;
         }
         else if (arg == "--files")
         {

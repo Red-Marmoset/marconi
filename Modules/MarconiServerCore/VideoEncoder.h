@@ -16,6 +16,7 @@
 
 #include "ScreenSource.h"
 
+#include <MarconiCore/Video/VideoBackendSwitch.h>
 #include <MarconiCore/Wire/WireVideoMessages.h>
 
 #include <cstdint>
@@ -94,7 +95,7 @@ namespace Marconi
         std::vector<Wire::VideoCodec> PlatformEncodableCodecs();
         std::unique_ptr<VideoEncoder> CreatePlatformVideoEncoder(Wire::VideoCodec codec);
 
-#if defined(_WIN32)
+#if defined(MARCONI_VIDEO_USE_MEDIA_FOUNDATION)
         // Implemented by VideoEncoder_Windows.cpp (not yet built on Windows).
         std::vector<Wire::VideoCodec> WindowsEncodableCodecs();
         std::unique_ptr<VideoEncoder> CreateWindowsVideoEncoder(Wire::VideoCodec codec);
