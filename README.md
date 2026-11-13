@@ -468,6 +468,23 @@ blocked too. For a release, also set `MARCONI_NOTARY_PROFILE` to a profile from 
 store-credentials`: `Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the
 ticket.
 
+### Packaging on a build server
+
+Finder lays out the disk image's window (the background with the arrow, and where the icons sit), because macOS
+26 only shows a background picture that Finder set itself. So the Mac that runs `Package.sh` needs:
+
+- **Someone logged in to its screen.** Finder doesn't run for a program started over SSH alone or as a background
+  service. Run the build server's agent as a user who is logged in, for example with automatic login and the agent
+  started when that user logs in, not as a service for the whole Mac.
+- **Permission for the agent to control Finder.** The first time, macOS asks on the screen, and the answer is kept
+  in *System Settings > Privacy & Security > Automation*. Allow it once while setting the Mac up: run `Package.sh`,
+  or `osascript -e 'tell application "Finder" to get name of startup disk'`, from the agent and click *Allow*. A
+  Mac managed by a device management service can be given the same permission by a profile instead (a privacy
+  preferences profile allowing the agent to send Apple events to Finder).
+
+`Package.sh` checks both before it builds, and says which one is missing. It hasn't been tried on hosted build
+services such as GitHub's Macs.
+
 ## Releasing (Linux)
 
     ./Package.sh                      # -> Build/Installer/Marconi-0.2.0.48-linux-amd64.deb

@@ -67,6 +67,10 @@ it before working on that, follow its phases in order, and keep it current.
 - **macOS disk image:** `./Package.sh` builds Release, wraps the binary in `Marconi.app` (`Installer/macOS/Info.plist`,
   `Marconi.icns`, fonts in `Contents/Resources`), signs it ad-hoc or with `MARCONI_SIGN_IDENTITY`, and writes
   `Build/Installer/Marconi-<version>-macos-<arch>.dmg`. BuildTool itself makes a bare executable, not a bundle.
+  Finder lays out the image's window (`Installer/macOS/DmgWindow.applescript`, sizes in `Tools/dmg_layout.py`,
+  background `Installer/Art/DmgBackground*.png` from `make_installer_art.py`), because macOS 26 ignores a background
+  Finder didn't set; so it needs a logged-in screen and permission to control Finder (README, "Packaging on a build
+  server"). Opening a Finder window takes focus, so don't run it while the owner is typing without saying so.
 - **Linux package:** `./Package.sh` on Linux builds Release and makes a Debian package,
   `Build/Installer/Marconi-<version>-linux-<arch>.deb`: the app as `/usr/bin/marconi`,
   `/usr/bin/marconi-mcp` (MarconiMcp) with `Apps.json` in `/usr/share/marconi`, `Installer/Linux/marconi.desktop`, the

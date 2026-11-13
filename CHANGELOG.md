@@ -22,9 +22,13 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - AI tools such as Claude Code and Codex can use other computers through Marconi: connect, see the screen, and use the mouse, keyboard and clipboard.
 - The Windows installer offers to connect Marconi to the AI tools it finds on the computer.
 
-## 0.10.1
+## 0.10.2
 
 - Fixed the picture freezing or staying black on some VNC servers, such as x11vnc on Linux.
+
+## 0.10.1
+
+- The Mac disk image opens in a square window with an arrow from Marconi to the Applications folder.
 
 ## 0.10.0
 
