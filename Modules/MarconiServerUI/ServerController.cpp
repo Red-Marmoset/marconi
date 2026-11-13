@@ -4,6 +4,7 @@
 #include "ServerController.h"
 
 #include <MarconiServerCore/AllowList.h>
+#include <MarconiServerCore/CaptureStatus.h>
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/SystemInput.h>
 #include <MarconiServerCore/SystemScreen.h>
@@ -167,7 +168,12 @@ namespace Marconi
         std::string ServerController::GetProblem() const
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            return m_problem;
+            if (!m_problem.empty())
+            {
+                return m_problem;
+            }
+            // A Wayland desktop answers later (the person allows it, or not): its state is read each time.
+            return Server::GetCaptureStatus();
         }
 
         bool ServerController::ChangePort(uint16_t port, std::string& error)

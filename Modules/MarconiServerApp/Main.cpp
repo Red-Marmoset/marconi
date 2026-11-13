@@ -4,6 +4,7 @@
 
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/AllowList.h>
+#include <MarconiServerCore/CaptureStatus.h>
 #include <MarconiServerCore/ClipboardAccess.h>
 #include <MarconiServerCore/DpiAwareness.h>
 #include <MarconiServerCore/ConnectionNotifier.h>
@@ -424,6 +425,12 @@ int main(int argc, char** argv)
             {
                 printf("Viewers will see this screen but can't control it.\n%s\n",
                        inputError.empty() ? "Mouse and keyboard control isn't available here yet." : inputError.c_str());
+            }
+            // On a Wayland desktop the desktop asks you (or says no) after this point; say what to do about it.
+            std::string status = Marconi::Server::GetCaptureStatus();
+            if (!status.empty())
+            {
+                printf("%s\n", status.c_str());
             }
         }
     }

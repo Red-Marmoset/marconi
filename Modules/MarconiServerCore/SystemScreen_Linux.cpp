@@ -3,10 +3,11 @@
 // display layout (RandR monitors), changing an output's mode, and the pointer's image and position (XFixes).
 //
 // This is the simple, reliable path (XGetImage), the Linux counterpart of the Windows GDI capture. It needs an X
-// server (DISPLAY set); Wayland-only sessions have none, and the server then falls back to the test pattern.
+// server (DISPLAY set). On a Wayland desktop the factory below hands over to SystemScreen_LinuxWayland.cpp instead.
 
 #include "SystemScreen.h"
 
+#include "WaylandSupport.h"
 #include "X11Support.h"
 
 #include <X11/Xlib.h>
@@ -627,6 +628,10 @@ namespace Marconi
 
         std::unique_ptr<ScreenSource> CreateSystemScreen(std::string& error)
         {
+            if (ShouldUseWaylandPortal())
+            {
+                return CreateWaylandSystemScreen(error); // a Wayland desktop: the desktop portal and PipeWire
+            }
             auto screen = std::make_unique<LinuxScreen>();
             if (!screen->Open(error))
             {
