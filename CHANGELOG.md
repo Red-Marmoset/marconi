@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.6
+
+- The macOS disk image is signed with the Developer ID certificate on the Mac when there is one.
+
 ## 0.9.5
 
 - The iPad and iPhone app has Marconi's icon, carries the version number, and signs with the team set on the Mac.

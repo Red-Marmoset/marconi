@@ -11,10 +11,11 @@
 # Sans in Contents/Resources), signs it and puts it on a disk image beside an Applications shortcut, so it installs
 # by dragging.
 #
-# Signing: ad-hoc by default, which runs on the Mac that built it. On another Mac, Gatekeeper blocks a downloaded
-# copy until it's allowed in System Settings > Privacy & Security ("Open Anyway"). To publish, sign with a
-# Developer ID and notarize:
-#   MARCONI_SIGN_IDENTITY="Developer ID Application: Red Marmoset Studios Ltd. (TEAMID)"
+# Signing: with the Developer ID Application certificate in this Mac's keychain when there is exactly one, else
+# ad hoc, which runs on the Mac that built it (on another Mac, Gatekeeper blocks a downloaded copy until it's
+# allowed in System Settings > Privacy & Security, "Open Anyway"). To choose a certificate, or to notarize, which
+# publishing needs:
+#   MARCONI_SIGN_IDENTITY="Developer ID Application: Red Marmoset Studios Ltd. (TEAMID)"   or "-" for ad hoc
 #   MARCONI_NOTARY_PROFILE=<profile>   from: xcrun notarytool store-credentials <profile>
 #
 # Linux: makes a Debian package (.deb), which installs on Ubuntu, Debian and the distributions based on them with
@@ -144,7 +145,17 @@ package_macos() {
         "$ROOT/Assets/Fonts/NebulaSans-LICENSE.txt" "$app/Contents/Resources/"
     cp "$ROOT/LICENSE" "$app/Contents/Resources/LICENSE.txt"
 
-    IDENTITY="${MARCONI_SIGN_IDENTITY:--}"
+    # The Developer ID certificate in the keychain, when there is exactly one and no choice was made
+    IDENTITY="${MARCONI_SIGN_IDENTITY:-}"
+    if [[ -z "$IDENTITY" ]]; then
+        local found
+        found="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | tr -d '"' | sort -u || true)"
+        if [[ -n "$found" && "$(wc -l <<< "$found")" -eq 1 ]]; then
+            IDENTITY="$found"
+        else
+            IDENTITY="-"
+        fi
+    fi
     if [[ "$IDENTITY" == "-" ]]; then
         codesign --force --sign - "$app"
     else

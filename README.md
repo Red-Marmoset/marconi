@@ -413,11 +413,13 @@ signs it, and makes a disk image to drag it to Applications from. It takes `--cl
 `--allow-dirty`, which work like the Windows options. The app is built for the Mac's own architecture, and it needs
 that Mac's macOS version or newer.
 
-By default the app is signed ad-hoc, which is enough on the Mac that built it. On another Mac, macOS blocks a
-downloaded copy the first time. Try to open it, then click *Open Anyway* in *System Settings > Privacy & Security*.
-Copies shared by AirDrop or USB stick may be blocked too. For a release, set `MARCONI_SIGN_IDENTITY` to a Developer
-ID Application certificate, and set `MARCONI_NOTARY_PROFILE` to a profile from `xcrun notarytool store-credentials`.
-`Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the ticket.
+The app is signed with the Developer ID Application certificate in the Mac's keychain when there is exactly one
+(set `MARCONI_SIGN_IDENTITY` to choose between several, or to `-` for none). Without one it is signed ad-hoc, which
+is enough on the Mac that built it; on another Mac, macOS blocks a downloaded copy the first time. Try to open it,
+then click *Open Anyway* in *System Settings > Privacy & Security*. Copies shared by AirDrop or USB stick may be
+blocked too. For a release, also set `MARCONI_NOTARY_PROFILE` to a profile from `xcrun notarytool
+store-credentials`: `Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the
+ticket.
 
 ## Releasing (Linux)
 
