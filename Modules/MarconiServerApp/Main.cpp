@@ -8,6 +8,7 @@
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/PasswordHash.h>
+#include <MarconiServerCore/ServerLog.h>
 #include <MarconiServerCore/SystemInput.h>
 #include <MarconiServerCore/SystemScreen.h>
 #include <MarconiServerCore/TestPatternScreen.h>
@@ -43,6 +44,7 @@ namespace
         printf("  --files               let viewers browse and copy this computer's files (off by default)\n");
         printf("  --file-root PATH      with --files, let viewers reach only this folder (default: the whole computer)\n");
         printf("  --lock-on-disconnect  lock this computer's screen when a viewer disconnects\n");
+        printf("  --log-file PATH       also write a log file in the folder PATH (one per run, the newest 20 kept)\n");
         printf("  --service             run as the Windows service (started by Windows, not by hand)\n");
         printf("  --session ID          the helper the service starts for console session ID\n");
         printf("  --data-dir DIR        the settings and certificate folder for --session and --set-password\n");
@@ -94,6 +96,7 @@ int main(int argc, char** argv)
     std::string controlCommand;
     unsigned controlViewerId = 0;
     int portOverride = -1;
+    std::string logDirectory; // empty: the console program writes no log file
     bool startServiceNow = true;
 
     for (int i = 1; i < argc; ++i)
@@ -125,6 +128,13 @@ int main(int argc, char** argv)
             }
             mode = Mode::Session;
             consoleSession = static_cast<unsigned>(std::strtoul(value.c_str(), nullptr, 10));
+        }
+        else if (arg == "--log-file" || arg == "--log-dir")
+        {
+            if (!TakeValue(argc, argv, i, arg.c_str(), logDirectory))
+            {
+                return 2;
+            }
         }
         else if (arg == "--data-dir")
         {
@@ -286,6 +296,14 @@ int main(int argc, char** argv)
     case Mode::Console:
         break;
     }
+
+    // The log file, when asked for. Its folder is the one given (--log-file PATH); the file is named with the time.
+    Marconi::Server::ServerLogFile logFile;
+    if (!logDirectory.empty() && !logFile.Open(logDirectory, "MarconiServerConsole"))
+    {
+        printf("Could not write a log file in %s; carrying on without one.\n", logDirectory.c_str());
+    }
+    LOG_INFO("Server", "Marconi Server %s (console) starting", Marconi::GetVersionString());
 
     // The real screen and input where this platform has them (Windows for now), unless --test-pattern was asked.
     // Elsewhere, and when there is no capture yet, serve the moving test pattern and log the input.

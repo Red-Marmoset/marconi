@@ -18,6 +18,21 @@ namespace Marconi
     {
         namespace
         {
+            // A viewer's name as it may go in the log: it arrives before any login, so anyone can send anything. Control
+            // characters (a line break could forge a log line) become spaces, and a long name is cut.
+            std::string LogSafe(const std::string& text)
+            {
+                std::string safe = text.substr(0, 64);
+                for (char& c : safe)
+                {
+                    if (static_cast<unsigned char>(c) < 0x20 || c == 0x7F)
+                    {
+                        c = ' ';
+                    }
+                }
+                return safe;
+            }
+
             // What this build's server can always do, for the capability handshake. It grows as phases land (video,
             // clipboard, files, gamepads). Resizing a display is added when the screen source can do it.
             constexpr uint64_t kServerCapabilities = Wire::Capability::MultipleDisplays;
@@ -135,7 +150,7 @@ namespace Marconi
                 std::lock_guard<std::mutex> lock(m_nameMutex);
                 m_viewerName = hello.clientName;
             }
-            LOG_INFO("Server", "Viewer '%s' connected, protocol %u", hello.clientName.c_str(),
+            LOG_INFO("Server", "Viewer '%s' connected, protocol %u", LogSafe(hello.clientName).c_str(),
                      static_cast<unsigned>(hello.version));
 
             Wire::Welcome welcome;
@@ -184,7 +199,7 @@ namespace Marconi
             if (m_auth != nullptr && !m_auth->HasPassword() && !m_settings.allowNoPassword)
             {
                 result.status = Wire::LoginResult::Status::NoPassword;
-                LOG_INFO("Server", "Viewer '%s' refused: this server has no password set", hello.clientName.c_str());
+                LOG_INFO("Server", "Viewer '%s' refused: this server has no password set", LogSafe(hello.clientName).c_str());
             }
             else if (m_auth != nullptr)
             {
@@ -193,7 +208,7 @@ namespace Marconi
                 if (check == Auth::Result::WrongPassword)
                 {
                     result.status = Wire::LoginResult::Status::WrongPassword;
-                    LOG_INFO("Server", "Viewer '%s' gave the wrong password", hello.clientName.c_str());
+                    LOG_INFO("Server", "Viewer '%s' gave the wrong password", LogSafe(hello.clientName).c_str());
                 }
                 else if (check == Auth::Result::LockedOut)
                 {

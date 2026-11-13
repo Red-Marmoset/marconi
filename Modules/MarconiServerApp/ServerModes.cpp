@@ -6,9 +6,14 @@
 #include <MarconiServerCore/ControlPipe.h>
 #include <MarconiServerCore/ControlSession.h>
 #include <MarconiServerCore/PasswordHash.h>
+#include <MarconiServerCore/ServerLog.h>
 #include <MarconiServerCore/ServiceConfig.h>
 #include <MarconiServerCore/ServiceHost.h>
 #include <MarconiServerCore/SessionHost.h>
+
+#include <MarconiCore/Version.h>
+
+#include <Log/Log.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -60,12 +65,18 @@ namespace Marconi
 
         int RunServiceMode()
         {
+            // The service has no console, so its log file (<data folder>/logs) is the only record of what it did.
+            ServerLogFile logFile;
+            logFile.Open(GetLogDirectory(GetDefaultDataDirectory()), "MarconiServerService");
+            LOG_INFO("Service", "Marconi Server service %s starting", GetVersionString());
             std::string error;
             if (!RunAsService(error))
             {
                 printf("Could not run as a service: %s\n", error.c_str());
+                LOG_WARNING("Service", "Could not run as a service: %s", error.c_str());
                 return 1;
             }
+            LOG_INFO("Service", "Marconi Server service stopped");
             return 0;
         }
 

@@ -9,6 +9,7 @@
 #include "Listener.h"
 #include "ListenerControlHost.h"
 #include "LoggingInputSink.h"
+#include "ServerLog.h"
 #include "ServiceConfig.h"
 #include "SystemInput.h"
 #include "SystemScreen.h"
@@ -44,12 +45,19 @@ namespace Marconi
         {
             std::string dataDirectory = options.dataDirectory.empty() ? GetDefaultDataDirectory()
                                                                       : options.dataDirectory;
+            // One log file per run in <data folder>/logs. The service starts this helper without a console, so
+            // without the file nothing would say why it stopped. If the folder can't be written, carry on without.
+            ServerLogFile logFile;
+            logFile.Open(GetLogDirectory(dataDirectory), "MarconiServerSession");
+            LOG_INFO("Service", "Session helper %s starting for console session %u", GetVersionString(),
+                     static_cast<unsigned>(options.consoleSession));
             Settings settings;
             settings.serverVersion = GetVersionString();
             std::string error;
             if (!LoadServiceConfig(dataDirectory, settings, error))
             {
                 printf("Could not read the settings in %s: %s\n", dataDirectory.c_str(), error.c_str());
+                LOG_WARNING("Service", "Could not read the settings in %s: %s", dataDirectory.c_str(), error.c_str());
                 return 1;
             }
             if (options.portOverride >= 0)
@@ -61,6 +69,8 @@ namespace Marconi
             {
                 printf("Could not load or make the server's certificate in %s: %s\n", dataDirectory.c_str(),
                        error.c_str());
+                LOG_WARNING("Service", "Could not load or make the server's certificate in %s: %s",
+                            dataDirectory.c_str(), error.c_str());
                 return 1;
             }
 
@@ -77,6 +87,7 @@ namespace Marconi
                 if (!systemScreen)
                 {
                     printf("Could not capture this computer's screen: %s\n", error.c_str());
+                    LOG_WARNING("Service", "Could not capture this computer's screen: %s", error.c_str());
                     return 3;
                 }
                 screen = systemScreen.get();
@@ -97,6 +108,8 @@ namespace Marconi
             {
                 printf("Could not start listening on port %u: %s\n", static_cast<unsigned>(settings.port),
                        error.c_str());
+                LOG_WARNING("Service", "Could not start listening on port %u: %s", static_cast<unsigned>(settings.port),
+                            error.c_str());
                 return 4;
             }
 
@@ -169,6 +182,7 @@ namespace Marconi
             done = true;
             monitor.join();
             pipe.Stop();
+            LOG_INFO("Service", "Session helper stopped");
             return 0;
         }
     } // namespace Server

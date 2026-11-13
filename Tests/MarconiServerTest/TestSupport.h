@@ -151,5 +151,6 @@ namespace MarconiServerTest
     void RunX11Tests();
     void RunDisplayTests();
     void RunLinuxScreenTests();
+    void RunLogTests();
     void RunServiceTests();
 } // namespace MarconiServerTest

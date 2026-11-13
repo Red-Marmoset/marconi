@@ -5,6 +5,8 @@
 
 #include <memory>
 
+#include <MarconiServerCore/ServerLog.h>
+
 #include <wx/app.h>
 
 namespace Marconi
@@ -30,6 +32,7 @@ namespace Marconi
             bool m_commandOnly = false; // ran a command line job: no tray icon, no server
             int m_commandResult = 0;
             std::unique_ptr<ServerConfig> m_config;
+            Server::ServerLogFile m_logFile; // one file per run in <data folder>/logs
             std::unique_ptr<ServerController> m_controller;
             TrayIcon* m_tray = nullptr; // owned by wx once created; removed in OnExit
         };

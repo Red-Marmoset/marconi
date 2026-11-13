@@ -138,7 +138,15 @@ namespace Marconi
                 return false;
             }
 
-            Log::InitializeFileLogging(m_config->GetLogDirectory().utf8_string(), "MarconiServer");
+            // One log file per run in <data folder>/logs. The installer's --set-password-file runs get their own
+            // files, so they can't push the tray app's own logs out of the kept ones.
+            bool setPasswordRun = false;
+            for (int i = 1; i + 1 < argc; ++i)
+            {
+                setPasswordRun = setPasswordRun || wxString(argv[i]) == "--set-password-file";
+            }
+            m_logFile.Open(m_config->GetLogDirectory().utf8_string(),
+                           setPasswordRun ? "MarconiServerSetPassword" : "MarconiServerTray");
             LOG_INFO("Server", "Marconi Server %s starting", GetVersionString());
 
             for (int i = 1; i + 1 < argc; ++i)
@@ -268,7 +276,7 @@ namespace Marconi
                 m_tray = nullptr;
             }
             LOG_INFO("Server", "Marconi Server stopped");
-            Log::ShutdownFileLogging();
+            m_logFile.Close();
             return wxApp::OnExit();
         }
     } // namespace ServerUI
