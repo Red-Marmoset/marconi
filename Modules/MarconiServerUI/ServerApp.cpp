@@ -9,6 +9,7 @@
 #include "TrayIcon.h"
 
 #include <MarconiCore/Version.h>
+#include <MarconiServerCore/DpiAwareness.h>
 #include <MarconiServerCore/IdentityStore.h>
 #include <MarconiServerCore/PasswordFile.h>
 #include <MarconiServerCore/ControlSocket.h>
@@ -49,6 +50,9 @@ namespace Marconi
     {
         namespace
         {
+            // Before anything else, so before any window exists: Windows only accepts the change until then.
+            [[maybe_unused]] const bool s_dpiAware = Server::EnableDpiAwareness();
+
             // The tray icon, drawn at runtime so the tray app needs no image file: a blue circle with the white "M" of
             // Marconi's own icon (a mirrored line with rounded joins and a round dot at each end, the same geometry as
             // MarconiUI/AppIcon.cpp, scaled to sit inside the circle). Keep the two in step.

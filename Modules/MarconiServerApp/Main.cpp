@@ -5,6 +5,7 @@
 #include <MarconiCore/Version.h>
 #include <MarconiServerCore/AllowList.h>
 #include <MarconiServerCore/ClipboardAccess.h>
+#include <MarconiServerCore/DpiAwareness.h>
 #include <MarconiServerCore/ConnectionNotifier.h>
 #include <MarconiServerCore/ControlSocket.h>
 #include <MarconiServerCore/IdentityStore.h>
@@ -103,6 +104,7 @@ namespace
 
 int main(int argc, char** argv)
 {
+    Marconi::Server::EnableDpiAwareness(); // before anything else: the screen is read at its real size
     Marconi::Server::Settings settings;
     settings.serverVersion = Marconi::GetVersionString();
     int width = 1280;
