@@ -574,7 +574,11 @@ namespace MarconiUI
         {
             // Win+L on Windows and most Linux desktops; Ctrl+Cmd+Q on a Mac (Command is Super over VNC).
             LOG_INFO("Viewer", "Locking the other computer's screen before disconnecting");
-            if (m_rfb != nullptr && m_rfb->IsAppleServer())
+            if (m_session && m_session->SendLock())
+            {
+                // A Marconi server locks itself when asked; no key shortcut needed.
+            }
+            else if (m_rfb != nullptr && m_rfb->IsAppleServer())
             {
                 SendKeyCombination({Marconi::Keysym::Control_L, Marconi::Keysym::Super_L, 'q'});
             }

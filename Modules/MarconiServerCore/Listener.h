@@ -63,6 +63,9 @@ namespace Marconi
             // The viewer that is connected and logged in, if any (one at a time for now). False when nobody is.
             bool GetViewer(ViewerSnapshot& viewer) const;
 
+            // Changes the password logins are checked against while the server runs ("" = none).
+            void SetPasswordHash(const std::string& passwordHash) { m_auth.SetPasswordHash(passwordHash); }
+
             // Ends the viewer with this id (from GetViewer), or the connected one when `viewerId` is 0. False if
             // there was none to end.
             bool DisconnectViewer(uint32_t viewerId);

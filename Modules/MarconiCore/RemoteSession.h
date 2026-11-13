@@ -134,6 +134,11 @@ namespace Marconi
 
         // Returns the counts so far and starts again from zero.
         virtual TrafficStats TakeTrafficStats() = 0;
+
+        // Asks the other computer to lock its screen, in the connection's own words (the Marconi protocol's Lock
+        // message). False when this kind of connection has no such message, so the caller sends the lock keys
+        // instead (Win+L). True means the request was sent, not that the lock happened.
+        virtual bool SendLock() { return false; }
     };
 
     namespace Rfb

@@ -4,14 +4,21 @@
 
 #include "TestSupport.h"
 
+#include <MarconiCore/Wire/WireClient.h>
 #include <MarconiCore/Wire/WireMessages.h>
 #include <MarconiServerCore/ControlProtocol.h>
 #include <MarconiServerCore/ControlSession.h>
+#include <MarconiServerCore/Listener.h>
+#include <MarconiServerCore/ListenerControlHost.h>
 #include <MarconiServerCore/ServiceSupervisor.h>
+#include <MarconiServerCore/ServiceConfig.h>
 #include <MarconiServerCore/Session.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <thread>
 
@@ -740,6 +747,135 @@ namespace MarconiServerTest
             CHECK(framed.size() == 2 && framed[1] == static_cast<uint8_t>(Wire::Type::Lock));
             Wire::Reader empty(nullptr, 0);
             Wire::Lock::Decode(empty);
+        });
+
+        // -- Over a real socket: the Wire client's lock request, and the tray icon's view of the listener ----------
+
+        RunTest("lock: the Wire client's lock request reaches the server before it disconnects", []() {
+            Server::TestPatternScreen screen(8, 8);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.port = 0;
+            Server::Listener listener(screen, input, settings);
+            listener.SetFrameIntervalMs(1);
+            std::string error;
+            CHECK(listener.Start(error, "127.0.0.1"));
+            std::thread serverThread([&]() { listener.ServeOne(5000); });
+
+            RecordingClientListener clientListener;
+            Wire::Client client(clientListener);
+            Wire::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = listener.GetPort();
+            options.clientName = "lock viewer";
+            client.Connect(options);
+            CHECK(clientListener.WaitFor([&]() { return clientListener.connected; }));
+
+            CHECK(client.SendLock());
+            CHECK(WaitUntil([&]() { return input.locks.load() == 1; }));
+            client.Disconnect();
+            listener.Stop();
+            serverThread.join();
+            CHECK(input.locks.load() == 1);
+        });
+
+        RunTest("tray status: the listener reports the connected viewer and can disconnect it", []() {
+            Server::TestPatternScreen screen(8, 8);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.port = 0;
+            settings.serverVersion = "1.0.0.0";
+            settings.lockOnDisconnect = true;
+            Server::Listener listener(screen, input, settings);
+            listener.SetFrameIntervalMs(1);
+            std::string error;
+            CHECK(listener.Start(error, "127.0.0.1"));
+            std::thread serverThread([&]() { listener.ServeOne(5000); });
+
+            std::string changedTo;
+            Server::ListenerControlHost host(
+                listener, settings, 5,
+                [&](const std::string& hash, std::string&) {
+                    changedTo = hash;
+                    return Control::ResultCode::Ok;
+                },
+                []() { return std::string("Default"); });
+            Control::ServerStatus status = host.GetStatus();
+            CHECK(status.viewers.empty() && !status.passwordSet && status.lockOnDisconnect);
+            CHECK(status.port == listener.GetPort() && status.consoleSession == 5 && status.desktop == "Default");
+
+            RecordingClientListener clientListener;
+            Wire::Client client(clientListener);
+            Wire::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = listener.GetPort();
+            options.clientName = "status viewer";
+            client.Connect(options);
+            CHECK(clientListener.WaitFor([&]() { return clientListener.connected; }));
+            CHECK(WaitUntil([&]() { return host.GetStatus().viewers.size() == 1; }));
+            status = host.GetStatus();
+            CHECK(status.viewers[0].name == "status viewer" && status.viewers[0].id != 0);
+
+            std::string text;
+            CHECK(host.DisconnectViewer(status.viewers[0].id + 100, text) == Control::ResultCode::NoSuchViewer);
+            CHECK(host.DisconnectViewer(status.viewers[0].id, text) == Control::ResultCode::Ok);
+            CHECK(clientListener.WaitFor([&]() { return clientListener.disconnected; }));
+            serverThread.join();
+            CHECK(host.GetStatus().viewers.empty());
+            // Disconnected from the server's side: that is not "the viewer left", so no lock.
+            CHECK(input.locks.load() == 0);
+
+            CHECK(host.SetPasswordHash("hash", text) == Control::ResultCode::Ok);
+            CHECK(changedTo == "hash" && host.GetStatus().passwordSet);
+            listener.Stop();
+        });
+
+        // -- The settings file the service and helper share ----------------------------------------------------
+
+        RunTest("service settings: a missing file leaves the defaults, a saved file loads back", []() {
+            const char* tmp = std::getenv("TMPDIR");
+            std::string dir = std::string(tmp && *tmp ? tmp : "/tmp") + "/marconi-svc-" +
+                              std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+            Server::Settings settings;
+            settings.port = 4321;
+            std::string error;
+            CHECK(Server::LoadServiceConfig(dir, settings, error)); // no folder yet
+            CHECK(settings.port == 4321 && !settings.lockOnDisconnect);
+
+            settings.serverName = "Office PC";
+            settings.passwordHash = "pbkdf2$1$aa$bb";
+            settings.lockOnDisconnect = true;
+            CHECK(Server::SaveServiceConfig(dir, settings, error));
+
+            Server::Settings loaded;
+            CHECK(Server::LoadServiceConfig(dir, loaded, error));
+            CHECK(loaded.port == 4321 && loaded.serverName == "Office PC");
+            CHECK(loaded.passwordHash == "pbkdf2$1$aa$bb" && loaded.lockOnDisconnect);
+            std::filesystem::remove_all(dir);
+        });
+
+        RunTest("service settings: comments and unknown keys are skipped, bad values are refused", []() {
+            const char* tmp = std::getenv("TMPDIR");
+            std::string dir = std::string(tmp && *tmp ? tmp : "/tmp") + "/marconi-svc2-" +
+                              std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+            std::filesystem::create_directories(dir);
+            auto write = [&](const char* text) {
+                std::ofstream file(Server::GetConfigPath(dir), std::ios::trunc);
+                file << text;
+            };
+            Server::Settings settings;
+            std::string error;
+            write("# a comment\n\nfuture-key = whatever\nport = 1900\n");
+            CHECK(Server::LoadServiceConfig(dir, settings, error) && settings.port == 1900);
+            write("port=notanumber\n");
+            CHECK(!Server::LoadServiceConfig(dir, settings, error) && !error.empty());
+            write("port=70000\n");
+            CHECK(!Server::LoadServiceConfig(dir, settings, error));
+            write("lock-on-disconnect=maybe\n");
+            CHECK(!Server::LoadServiceConfig(dir, settings, error));
+            write("no equals sign\n");
+            CHECK(!Server::LoadServiceConfig(dir, settings, error));
+            std::filesystem::remove_all(dir);
         });
     }
 } // namespace MarconiServerTest

@@ -69,6 +69,7 @@ namespace Marconi
             void SetQuality(int compressLevel, int qualityLevel) override;
             std::chrono::steady_clock::duration GetTimeSinceInput() const override;
             TrafficStats TakeTrafficStats() override;
+            bool SendLock() override;
 
         private:
             void Run(ClientOptions options);
