@@ -32,9 +32,10 @@ val isWindows = System.getProperty("os.name").lowercase().contains("windows")
 // or is too old to answer, and the release build is then signed with the debug key.
 val unaBuildTool: File? = run {
     val engine = File(System.getenv("UNA_ENGINE_PATH") ?: if (isWindows) "C:\\code\\engine" else File(marconiRoot, "../engine").path)
-    listOf("Release", "MinSizeRel", "Debug", "Bootstrap")
+    listOf("Release", "MinSizeRel")
         .map { File(engine, "Build/BuildTool/$it/" + if (isWindows) "BuildTool.exe" else "BuildTool") }
-        .firstOrNull { it.isFile }
+        .filter { it.isFile }
+        .maxByOrNull { it.lastModified() }  // the most recently built, so an old copy never hides a newer one
 }
 fun signingSetting(switch: String, setting: String): String? {
     val tool = unaBuildTool ?: return null
@@ -96,13 +97,13 @@ val checkMarconiNative = tasks.register("checkMarconiNative") {
             logger.warn("checkMarconiNative: llvm-nm not found, skipping the native name check")
             return@doLast
         }
-        val declared = Regex("external fun ([A-Za-z0-9_]+)").findAll(File(projectDir, "src/main/java/com/redmarmoset/marconi/NativeSession.kt").readText())
+        val declared = Regex("external fun ([A-Za-z0-9_]+)").findAll(File(projectDir, "src/main/java/com/redmarmosetstudios/marconi/NativeSession.kt").readText())
             .map { it.groupValues[1] }.toSet()
         for (abi in marconiAbis) {
             val library = File(jniLibsDir, "$abi/libMarconi.so")
             val output = ByteArrayOutputStream()
             project.exec { commandLine(nm.absolutePath, "-D", library.absolutePath); standardOutput = output }
-            val exported = Regex("Java_com_redmarmoset_marconi_NativeSession_([A-Za-z0-9_]+)").findAll(output.toString())
+            val exported = Regex("Java_com_redmarmosetstudios_marconi_NativeSession_([A-Za-z0-9_]+)").findAll(output.toString())
                 .map { it.groupValues[1] }.toSet()
             val missing = declared - exported
             if (missing.isNotEmpty()) throw GradleException("libMarconi.so ($abi) lacks native functions NativeSession.kt declares: $missing")
@@ -112,11 +113,11 @@ val checkMarconiNative = tasks.register("checkMarconiNative") {
 tasks.named("preBuild") { dependsOn(checkMarconiNative) }
 
 android {
-    namespace = "com.redmarmoset.marconi"
+    namespace = "com.redmarmosetstudios.marconi"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.redmarmoset.marconi"
+        applicationId = "com.redmarmosetstudios.marconi"
         minSdk = 24
         targetSdk = 35
         versionCode = marconiRevision
@@ -144,6 +145,10 @@ android {
                 storePassword = keystorePassword
                 keyAlias = signingSetting("--signing-value", "android.keyAlias") ?: signingVariable("android.keyAlias") ?: "marconi"
                 keyPassword = signingVariable("android.keyPassword") ?: keystorePassword
+                // v2 for every supported Android version; v3 as well (read from Android 9), so the release key can
+                // be replaced later with the old key vouching for the new one and updates still install
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }

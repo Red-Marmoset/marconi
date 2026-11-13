@@ -6,7 +6,7 @@
 // the left button, one finger moves the pointer, two fingers move and zoom the picture, and scroll the other
 // computer's window while the picture fits the screen. With view only on, one finger moves the picture.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.content.Context
 import android.graphics.Bitmap

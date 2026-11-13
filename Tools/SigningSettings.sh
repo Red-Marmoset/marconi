@@ -7,13 +7,15 @@
 # Expects ROOT (the Marconi checkout). find_buildtool sets BUILDTOOL, or leaves it empty when there is none.
 
 find_buildtool() {
-    local engine cfg
+    local engine cfg candidate
     engine="${UNA_ENGINE_PATH:-$ROOT/../engine}"
     BUILDTOOL=""
-    for cfg in Release MinSizeRel Debug Bootstrap; do
-        if [[ -x "$engine/Build/BuildTool/$cfg/BuildTool" ]]; then
-            BUILDTOOL="$engine/Build/BuildTool/$cfg/BuildTool"
-            return
+    # The more recently built of the Release and MinSizeRel copies (never Debug or Bootstrap), so an old one left in
+    # one folder never hides a newer one
+    for cfg in Release MinSizeRel; do
+        candidate="$engine/Build/BuildTool/$cfg/BuildTool"
+        if [[ -x "$candidate" && ( -z "$BUILDTOOL" || "$candidate" -nt "$BUILDTOOL" ) ]]; then
+            BUILDTOOL="$candidate"
         fi
     done
 }

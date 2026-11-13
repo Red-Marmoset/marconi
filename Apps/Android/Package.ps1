@@ -32,10 +32,10 @@ function Skip([string]$reason) {
 
 # BuildTool builds the native library, and says which environment variables Project.json names for the release key.
 $engine = if ($env:UNA_ENGINE_PATH) { $env:UNA_ENGINE_PATH } else { "C:\code\engine" }
-$buildTool = $null
-foreach ($cfg in @('Release', 'MinSizeRel', 'Debug', 'Bootstrap')) {
-    if (Test-Path "$engine\Build\BuildTool\$cfg\BuildTool.exe") { $buildTool = "$engine\Build\BuildTool\$cfg\BuildTool.exe"; break }
-}
+# The more recently built of the engine's Release and MinSizeRel BuildTool copies (never Debug or Bootstrap), so an
+# old one left in one folder never hides a newer one
+$buildTool = @('Release', 'MinSizeRel') | ForEach-Object { "$engine\Build\BuildTool\$_\BuildTool.exe" } |
+    Where-Object { Test-Path $_ } | Sort-Object { (Get-Item $_).LastWriteTimeUtc } -Descending | Select-Object -First 1
 if (-not $buildTool) { Skip "no BuildTool under $engine\Build\BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)." }
 $env:UNA_ENGINE_PATH = $engine
 

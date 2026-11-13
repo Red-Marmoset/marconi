@@ -255,6 +255,16 @@ download for your computer. Settings has a "Check for updates now" button, and a
 Marconi didn't check by itself. On Windows, the installer closes a running Marconi before updating and starts it
 again afterwards.
 
+### Checking the Android app is ours
+
+The Android app on the releases page is signed by Red Marmoset Studios, and every version is signed the same way.
+To check a download is genuine, compare the SHA-256 fingerprint of its signing certificate with this one:
+
+    58:95:65:E6:06:FA:1D:E5:E0:C4:F2:03:D3:E8:26:6E:09:44:F2:03:D7:3C:39:50:F0:BC:CA:7F:E8:89:E2:99
+
+With the Android SDK, `apksigner verify --print-certs Marconi-<version>-android.apk` prints it. Because it doesn't
+come from the Play Store, Android asks the first time whether the app you downloaded it with may install apps.
+
 ## Not available yet
 
 - **Encryption without a certificate** (TigerVNC's "TLSVnc"). See "Is the connection private?" above.
@@ -423,6 +433,12 @@ set `MARCONI_ANDROID_KEYSTORE` to its path and `MARCONI_ANDROID_KEYSTORE_PASSWOR
 differ from the defaults, `MARCONI_ANDROID_KEY_ALIAS` (`marconi`) and `MARCONI_ANDROID_KEY_PASSWORD` (the
 keystore's). For a test build signed with the debug key, run `./gradlew assembleDebug` in `Apps/Android`. An app
 signed with a different key than the one installed has to be uninstalled first.
+
+Before publishing, check the app is signed with the release key, not the debug one:
+`apksigner verify --print-certs Build/Installer/Marconi-<version>-android.apk` (in the SDK's `build-tools`) must
+show the SHA-256 fingerprint in [Checking the Android app is ours](#checking-the-android-app-is-ours). Put that
+fingerprint in the release's notes on GitHub too. Keep the keystore and its passwords backed up: updates install
+over an earlier version only when they're signed with the same key.
 
 ## Releasing (macOS)
 

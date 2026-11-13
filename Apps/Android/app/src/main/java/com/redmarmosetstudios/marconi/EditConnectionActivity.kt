@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // Adding or changing a saved connection, with the same choices as the desktop's connection dialog.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.content.Intent
 import android.os.Bundle
@@ -40,6 +40,7 @@ class EditConnectionActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_edit_connection)
+        findViewById<android.view.View>(android.R.id.content).padForSystemBars()
         store = SavedConnections(this)
         val existing = intent.getStringExtra(EXTRA_ID)?.let { store.load(it) }
         isNew = existing == null

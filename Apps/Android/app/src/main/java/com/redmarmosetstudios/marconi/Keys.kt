@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Red Marmoset Studios Ltd.
 // X11 keysyms for the keys the app sends (the values in MarconiCore/Keysyms.h), and the map from Android key codes.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.view.KeyEvent
 

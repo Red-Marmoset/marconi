@@ -4,7 +4,7 @@
 // and answers the session's questions (passwords, certificates, SSH keys) with dialogs while the connection
 // thread waits.
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -80,6 +80,7 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_viewer)
+        findViewById<android.view.View>(android.R.id.content).padForSystemBars()
         WindowCompat.setDecorFitsSystemWindows(window, true)
         store = SavedConnections(this)
         remote = findViewById(R.id.remote)
@@ -341,7 +342,7 @@ class ViewerActivity : AppCompatActivity(), NativeSession.Listener, RemoteView.I
             val folder = File(cacheDir, "screenshots").apply { mkdirs() }
             val file = File(folder, "Marconi screenshot.png")
             FileOutputStream(file).use { picture.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            val uri = FileProvider.getUriForFile(this, "com.redmarmoset.marconi.files", file)
+            val uri = FileProvider.getUriForFile(this, "com.redmarmosetstudios.marconi.files", file)
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
                 putExtra(Intent.EXTRA_STREAM, uri)

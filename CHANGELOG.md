@@ -5,6 +5,26 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.12
+
+- The Android app is signed so that its signing key can be replaced later without breaking updates.
+
+## 0.9.11
+
+- The README says how to check that a downloaded Android app is genuine.
+
+## 0.9.10
+
+- The build and package scripts use the most recently built copy of the engine's build tool, never a debug or first-stage one.
+
+## 0.9.9
+
+- On Android, the top of each screen and the button at the bottom no longer sit under the phone's status bar and navigation buttons.
+
+## 0.9.8
+
+- The Android, iPad and Mac apps are now identified as com.redmarmosetstudios.marconi.
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.

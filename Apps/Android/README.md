@@ -64,7 +64,7 @@ connection.
 - `Modules/MarconiAndroid/Bridge_Android.cpp` is the JNI side of `NativeSession.kt`: one native session per
   Kotlin object, the picture copied into an Android bitmap, and the session's questions (password, certificate,
   SSH key) handed to Kotlin, which shows a dialog while the connection thread waits.
-- `app/src/main/java/com/redmarmoset/marconi/`: `ConnectActivity` (the first screen), `ViewerActivity` (the
+- `app/src/main/java/com/redmarmosetstudios/marconi/`: `ConnectActivity` (the first screen), `ViewerActivity` (the
   session and the dialogs), `RemoteView` (drawing, touch and typing), `Keys` (key codes to keysyms).
 
 Engine logging goes to logcat with the channel as the tag: `adb logcat -s Rfb Viewer BuildTool`.

@@ -2,7 +2,7 @@
 // Saved connections, with the same choices the desktop app keeps: kept in the app's preferences, passwords in an
 // encrypted store of their own (the phone's keystore guards its key).
 
-package com.redmarmoset.marconi
+package com.redmarmosetstudios.marconi
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
