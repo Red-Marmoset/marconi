@@ -174,6 +174,7 @@ namespace MarconiTest
     void RunServerInstallerTests();
     void RunRdpPointerTests();
     void RunRdpClientTests();
+    void RunVideoDecoderFfmpegTests();
     void RunMcpTests();
     void RunMcpRegistrationTests();
     void RunMcpSavedTests();

@@ -52,6 +52,7 @@ namespace Test
         MarconiTest::RunServerInstallerTests();
         MarconiTest::RunRdpPointerTests();
         MarconiTest::RunRdpClientTests();
+        MarconiTest::RunVideoDecoderFfmpegTests();
         MarconiTest::RunMcpTests();
         MarconiTest::RunMcpRegistrationTests();
         MarconiTest::RunMcpSavedTests();
