@@ -196,5 +196,56 @@ namespace Marconi
             }
             return AssembleServices(records);
         }
+
+        namespace
+        {
+            std::string WithoutTrailingDot(const std::string& host)
+            {
+                return !host.empty() && host.back() == '.' ? host.substr(0, host.size() - 1) : host;
+            }
+        } // namespace
+
+        bool IsLocalName(const std::string& host)
+        {
+            const std::string name = WithoutTrailingDot(host);
+            const std::string suffix = ".local";
+            return name.size() > suffix.size() && SameName(name.substr(name.size() - suffix.size()), suffix);
+        }
+
+        bool ResolveLocalName(const std::string& host, int timeoutMs, std::string& ipv4,
+                              const std::string& destination, uint16_t destinationPort)
+        {
+            const std::string name = WithoutTrailingDot(host);
+            UdpSocket socket;
+            std::string error;
+            if (!socket.Open(error) || !Send(socket, destination, destinationPort, {{name, Dns::kTypeA}}))
+            {
+                return false;
+            }
+            Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(timeoutMs);
+            uint8_t buffer[9000];
+            for (;;)
+            {
+                auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count();
+                if (left <= 0)
+                {
+                    return false;
+                }
+                ptrdiff_t got = socket.ReceiveFrom(buffer, sizeof(buffer), static_cast<int>(left));
+                if (got < 0)
+                {
+                    return false;
+                }
+                std::vector<Dns::Record> records;
+                if (got > 0 && Dns::ParseMessage(buffer, static_cast<size_t>(got), records))
+                {
+                    if (const Dns::Record* a = FindRecord(records, Dns::kTypeA, name))
+                    {
+                        ipv4 = a->ipv4;
+                        return true;
+                    }
+                }
+            }
+        }
     } // namespace Net
 } // namespace Marconi

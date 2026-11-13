@@ -34,5 +34,13 @@ namespace Marconi
         std::vector<DiscoveredService> Discover(int listenMs, const std::string& destination = "224.0.0.251",
                                                 uint16_t destinationPort = 5353,
                                                 const std::atomic<bool>* cancel = nullptr);
+
+        // True for a Bonjour name such as "Phone.local" or "Phone.local.".
+        bool IsLocalName(const std::string& host);
+
+        // Asks the network for a Bonjour name's IPv4 address the same way, for when the system can't find it
+        // (Windows can't look up names such as "Android_YERZVNFQ.local"). Waits up to `timeoutMs` for an answer.
+        bool ResolveLocalName(const std::string& host, int timeoutMs, std::string& ipv4,
+                              const std::string& destination = "224.0.0.251", uint16_t destinationPort = 5353);
     } // namespace Net
 } // namespace Marconi

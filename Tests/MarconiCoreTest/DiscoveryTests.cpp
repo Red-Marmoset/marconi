@@ -275,5 +275,54 @@ namespace MarconiTest
             CHECK(queries == 3);
             CHECK(services.size() == 1 && services[0].port == 5900 && services[0].ipv4 == "192.168.1.20");
         });
+
+        RunTest("IsLocalName spots Bonjour names", []() {
+            CHECK(Net::IsLocalName("Android_YERZVNFQ.local"));
+            CHECK(Net::IsLocalName("Mac.LOCAL."));
+            CHECK(!Net::IsLocalName("local"));
+            CHECK(!Net::IsLocalName("example.com"));
+            CHECK(!Net::IsLocalName("192.168.1.20"));
+        });
+
+        RunTest("ResolveLocalName asks for the name's address", []() {
+            Net::UdpSocket responder;
+            std::string error;
+            CHECK(responder.Bind("127.0.0.1", 0, error));
+            std::thread fake([&responder]() {
+                uint8_t buffer[512];
+                std::string from;
+                uint16_t fromPort = 0;
+                ptrdiff_t got = responder.ReceiveFrom(buffer, sizeof(buffer), 2000, &from, &fromPort);
+                if (got <= 0)
+                {
+                    return;
+                }
+                Net::Dns::Record other; // an unrelated answer first, as on a busy network
+                other.name = "Mac.local";
+                other.type = Net::Dns::kTypeA;
+                other.ipv4 = "192.168.1.165";
+                std::vector<uint8_t> first = Net::Dns::EncodeResponse(0, {other});
+                responder.SendTo(from, fromPort, first.data(), first.size());
+                Net::Dns::Record a;
+                a.name = "Android_YERZVNFQ.local";
+                a.type = Net::Dns::kTypeA;
+                a.ipv4 = "192.168.1.208";
+                std::vector<uint8_t> reply = Net::Dns::EncodeResponse(0, {a});
+                responder.SendTo(from, fromPort, reply.data(), reply.size());
+            });
+            std::string ipv4;
+            bool found = Net::ResolveLocalName("Android_YERZVNFQ.local.", 1000, ipv4, "127.0.0.1",
+                                               responder.GetLocalPort());
+            fake.join();
+            CHECK(found && ipv4 == "192.168.1.208");
+        });
+
+        RunTest("ResolveLocalName gives up when nobody answers", []() {
+            Net::UdpSocket silent;
+            std::string error;
+            CHECK(silent.Bind("127.0.0.1", 0, error));
+            std::string ipv4;
+            CHECK(!Net::ResolveLocalName("Nobody.local", 200, ipv4, "127.0.0.1", silent.GetLocalPort()));
+        });
     }
 } // namespace MarconiTest

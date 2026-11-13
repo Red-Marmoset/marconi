@@ -5,6 +5,8 @@
 
 #include "SocketPlatform.h"
 
+#include <MarconiCore/Net/Discovery.h>
+
 #include <chrono>
 #include <vector>
 
@@ -22,6 +24,10 @@ namespace Marconi
             int code = getaddrinfo(host.c_str(), nullptr, &hints, &result);
             if (code != 0 || result == nullptr)
             {
+                if (IsLocalName(host) && ResolveLocalName(host, 1500, ipv4))
+                {
+                    return true;
+                }
                 error = "Could not find an IPv4 address for '" + host + "'";
                 return false;
             }

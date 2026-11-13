@@ -5,6 +5,8 @@
 
 #include "SocketPlatform.h"
 
+#include <MarconiCore/Net/Discovery.h>
+
 #include <algorithm>
 #include <chrono>
 #include <climits>
@@ -22,6 +24,8 @@ namespace Marconi
 #else
             using NativeHandle = int;
 #endif
+
+            constexpr int kLocalNameTimeoutMs = 1500;
 
             NativeHandle Native(intptr_t handle)
             {
@@ -105,6 +109,13 @@ namespace Marconi
             int status = getaddrinfo(host.c_str(), service.c_str(), &hints, &results);
             if (status != 0 || results == nullptr)
             {
+                // The system can't always find Bonjour names (Windows fails on some, such as phones' names with
+                // an underscore): ask the network directly before giving up.
+                std::string ipv4;
+                if (IsLocalName(host) && ResolveLocalName(host, kLocalNameTimeoutMs, ipv4))
+                {
+                    return ConnectAddresses({ipv4}, port, timeoutMs, error, cancel);
+                }
                 error = "Could not resolve '" + host + "'";
 #if !defined(_WIN32)
                 error += std::string(": ") + gai_strerror(status);
