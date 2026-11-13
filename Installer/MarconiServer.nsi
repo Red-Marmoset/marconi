@@ -100,9 +100,12 @@ Var WasRunning      ; 1 when Setup closed a running ${APP_NAME} (it is started a
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchAsUser
 !define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME} now"
 
+; The MIT license, with its checkbox ticked to start with (LicenseShow), as in Marconi's own installer; unticking it
+; disables Next.
 !define MUI_LICENSEPAGE_CHECKBOX
 
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW LicenseShow
 !insertmacro MUI_PAGE_LICENSE "${STAGE_DIR}\LicensePage.txt"
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
@@ -193,6 +196,16 @@ Function .onInit
     SetRegView 64
     ; Everything is for the whole computer: the shared start menu and the shared settings folder (ProgramData).
     SetShellVarContext all
+FunctionEnd
+
+; The license page starts with "I accept" ticked. Ticking it from here doesn't go through the click that enables
+; Next, so Next is enabled here too.
+Function LicenseShow
+    FindWindow $0 "#32770" "" $HWNDPARENT
+    GetDlgItem $0 $0 1034 ; the license page's checkbox
+    SendMessage $0 ${BM_SETCHECK} ${BST_CHECKED} 0
+    GetDlgItem $0 $HWNDPARENT 1
+    EnableWindow $0 1
 FunctionEnd
 
 ; Explorer launches the program on Setup's behalf, so it runs as the signed-in user. If Explorer isn't running, or is

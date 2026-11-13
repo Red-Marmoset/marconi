@@ -579,6 +579,19 @@ namespace MarconiUI
         }
         wxSize desktop = m_canvas->GetDesktopSize();
         wxString status = wxString::Format("Connected to %s (%d x %d)", GetServerDisplayName(), desktop.x, desktop.y);
+        // Which kind of connection this is, in plain words: the three look alike on the screen.
+        if (m_wire != nullptr)
+        {
+            status += " - Marconi Server";
+        }
+        else if (m_rdp != nullptr)
+        {
+            status += " - Remote Desktop";
+        }
+        else if (m_rfb != nullptr)
+        {
+            status += " - VNC";
+        }
         // Always say whether the connection is encrypted: without encryption, the picture and every key typed can
         // be read by anyone on the network between the two computers.
         bool encrypted = m_session && m_session->IsEncrypted();

@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- The status bar says whether the connection is Marconi Server, VNC or Remote Desktop.
+- Marconi Server's installer starts with the licence accepted, as Marconi's own does.
+- Marconi Server has its own icon in Windows, no longer warns about old Windows controls, and reads the whole screen on a high-resolution display instead of its top-left part (not yet tried on Windows).
+
 - Windows folders are shown as C:\Users\Sam\Desktop, without a leading slash, and can be typed that way.
 
 - When copying files to a TightVNC computer is refused (for example into the Public Desktop), Marconi says why and asks for another folder, then tries again.
