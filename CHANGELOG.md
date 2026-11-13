@@ -5,6 +5,9 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi connections lock the other computer's screen when you disconnect, if that option is on.
+- Marconi Server can run as a Windows service, so it keeps working at the sign-in screen and through permission prompts (written, not yet tried on Windows).
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.

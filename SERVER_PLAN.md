@@ -450,6 +450,104 @@ saved connection.
 Done when: the PC restarts and Marconi reconnects by itself to its login screen; a UAC prompt and the lock screen
 can be used through Marconi.
 
+#### Phase 3 status (branch `claude/server-service`)
+
+**Written and tested on Linux** (`Tests/MarconiServerTest/ServiceTests.cpp`, 228 server tests pass):
+
+- `ServiceSupervisor` (`ServiceSupervisor.h/.cpp`): the decision logic behind `--service`, behind the interfaces
+  `ConsoleSessionSource` (the active console session id, `kNoConsoleSession` while none) and `HelperLauncher`
+  (launch in a session, is it running, terminate). `Tick(nowMs)` starts the helper in the console session, moves it
+  at once when the session changes, ends it when there is no console session, and restarts a helper that exited
+  after 1 s, 2 s, 4 s... up to 30 s (reset after it stayed up 60 s; a new session is tried at once). Tested with a
+  fake list and launcher and a driven clock.
+- The tray icon's control pipe messages (`ControlProtocol.h/.cpp`, own type numbers on the Marconi framing):
+  Hello/Welcome, Status (version, port, password set, lock on disconnect, console session, active desktop, viewers),
+  GetStatus, DisconnectViewer, SetPassword (sends the *hash*, so the password never crosses the pipe), Result. The
+  state machine (`ControlSession` for the helper, `ControlClient` for the tray icon) runs over any `Wire::Transport`
+  and is tested over an in-memory pipe: Hello first, unknown messages skipped, malformed ones end the connection,
+  pushed status, and **Set password is refused unless the pipe says the peer is an administrator** (`PeerInfo`, filled
+  by the pipe from the client's token, never by anything the client sends).
+- `Lock`: new wire message `Wire::Lock` (type 8, no fields). `Session` calls `InputSink::LockWorkstation()` (default
+  does nothing; Windows and Linux sinks call `LockThisComputer()` in `SystemLock_*.cpp`: `LockWorkStation`, or
+  `loginctl lock-session` then `xdg-screensaver lock`; none on macOS yet). New setting `Settings::lockOnDisconnect`
+  (file key `lock-on-disconnect`): a viewer that got in and then leaves (window closed, connection lost, Bye) locks
+  the screen. A server-side end (tray icon's Disconnect viewer, server stopping) does not lock. A Lock message from a
+  logged-in viewer always locks, once per viewer. Client: `RemoteSession::SendLock()` (false by default),
+  `Wire::Client` sends `Lock`, and the viewer's existing "lock the other computer on disconnect" option uses it
+  before falling back to Win+L keys. No new menu item: the plan did not call for one.
+- `Listener` now reports the connected viewer (`GetViewer`) and can end it (`DisconnectViewer`, which also shuts the
+  socket so the session really ends), and `SetPasswordHash` changes the live login check. `ListenerControlHost`
+  connects it to the control pipe.
+- `ServiceConfig`: the settings file `server.conf` (port, name, password-hash, lock-on-disconnect) plus `server.crt`
+  and `server.key` in the all-users data folder (`%ProgramData%\Marconi Server`; `--data-dir` overrides).
+- `SessionHost` (`--session <id>`): loads the settings and identity, captures and injects, listens, serves the
+  control pipe, exits cleanly on SIGINT/SIGTERM. Run on Linux with `--test-pattern --data-dir D --port N` it starts,
+  serves and stops (the control pipe is Windows only, so it logs that and goes on).
+- Server program modes: `--service`, `--session ID`, `--data-dir`, `--set-password` (password from standard input or
+  the `MARCONI_SET_PASSWORD` environment variable, never the command line; refuses an empty one), `--install-service
+  [--no-start]`, `--remove-service`, `--lock-on-disconnect` (console mode), and `--control-status`,
+  `--control-disconnect ID`, `--control-set-password`, which make the tray icon's requests from a command line.
+
+**Written for Windows, never built or run** (headers say so): `ServiceHost_Windows.cpp` (Service Control Manager
+entry point, `WTSGetActiveConsoleSessionId`, helper start with `DuplicateTokenEx` + `TokenSessionId` +
+`CreateProcessAsUser` in `winsta0\default`, kill-on-close job object, install with failure actions and the SAS
+policy, remove), `DesktopSwitch_Windows.cpp` (`OpenInputDesktop`/`SetThreadDesktop` per thread, at most every 50 ms;
+`SendSecureAttention`), `ControlPipe_Windows.cpp` (overlapped named pipe `\\.\pipe\MarconiServerControl` with
+SYSTEM/administrators full and interactive users read-write, remote clients refused, administrator check from the
+client process's token), `SystemLock_Windows.cpp`, plus edits in `SystemScreen_Windows.cpp` (follow the desktop, take
+the device contexts again after a switch) and `SystemInput_Windows.cpp` (follow the desktop, `LockWorkstation`,
+Ctrl+Alt+Del detection: Delete down with Ctrl and Alt held asks for the secure attention sequence instead of being
+injected). The manual checklist is in the README under "Testing the Windows service by hand".
+
+**Decisions made here (please check):**
+
+- Ctrl+Alt+Del: the helper sets the named event `Global\MarconiServerSAS` and the *service* calls `SendSAS(FALSE)`,
+  because `SendSAS` is documented for services; the helper falls back to calling it itself. The installer (or
+  `--install-service`) sets `SoftwareSASGeneration` = 1 (services). The meaning of the values and whether a SYSTEM
+  helper that is not a service may call it are from memory of the documentation: verify on Windows (checklist 8).
+- The administrator check reads the connecting process's token (`GetNamedPipeClientProcessId`), not
+  `ImpersonateNamedPipeClient`, which needs a message read first. A user in the Administrators group who has not
+  elevated counts as not an administrator, so Set password asks for elevation. The process id could in theory be
+  reused between connect and check: an impersonation check after the first message would close that.
+- Stopping the helper is `TerminateProcess` (viewers drop and reconnect). A gentler stop is possible later.
+- The helper is started from the service's own SYSTEM token moved to the console session; the plan's TightVNC-style
+  alternative (the winlogon token) is not used.
+- Session 0 is not special-cased: if the console session id ever is 0 the helper starts there and will probably see
+  nothing. Unverified either way.
+- The helper's settings come from the file only (`--lock-on-disconnect` applies to the console mode).
+
+**Not done:**
+
+- **The tray icon does not use the pipe yet.** `ServerUI` still runs the server itself with its per-user settings. It
+  needs: on start, `Control::ConnectToControlPipe`; if that works, run in status-only mode (menu shows the status and
+  the viewer, Disconnect viewer, Set password via `--control-set-password` elevated or by reconnecting elevated) and
+  never start a listener of its own (the port would clash with the helper's); if no helper is running and the service
+  is not installed, keep today's behaviour. Its autostart (Run key) is then replaced by the service for the server
+  and kept only for the status-only tray icon. The pipe can be tried today with the `--control-*` modes.
+- A log file for the service and helper (they log through `LOG_*`; nothing writes it to the data folder yet).
+- Everything under "Written for Windows".
+- The service's data folder permissions: the installer must restrict `%ProgramData%\Marconi Server` to SYSTEM and
+  administrators (it holds the password hash and the private key).
+
+**Installer notes** (for `Installer/MarconiServer.nsi`, which another branch creates; none of this is in the repo
+yet):
+
+- Create `$COMMONAPPDATA\Marconi Server`, lock it down: `icacls "$COMMONAPPDATA\Marconi Server" /inheritance:r /grant:r
+  "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F"`.
+- Password page: NSIS cannot feed standard input, so set the environment variable `MARCONI_SET_PASSWORD` in the
+  installer process (`System::Call 'kernel32::SetEnvironmentVariable(t "MARCONI_SET_PASSWORD", t "$Password")'`),
+  run `nsExec::Exec '"$INSTDIR\MarconiServer.exe" --set-password'`, then clear the variable. Nothing is written to disk
+  or a command line. (The Phase 2 plan's `--set-password` is this mode.)
+- Service: `"$INSTDIR\MarconiServer.exe" --install-service` (installs or updates, sets the policy, starts it; use
+  `--no-start` to start later). "Start with Windows" off: `sc config MarconiServer start= demand`. Do not use a Run
+  key for the server any more (the Phase 1 tray app that runs the server itself would also try to take port 1895).
+- Upgrade: close the tray icon, `net stop MarconiServer` (the helper dies with it, releasing the exe), replace the
+  files, `--install-service` again.
+- Uninstall: close the tray icon, `"$INSTDIR\MarconiServer.exe" --remove-service` before deleting files; remove the
+  data folder only if the person asks.
+- Firewall: a program rule, `netsh advfirewall firewall add rule name="Marconi Server" dir=in action=allow
+  program="$INSTDIR\MarconiServer.exe" enable=yes profile=any` (the helper is this same exe).
+
 ### Phase 4: video
 
 1. **Decide the Linux decoder** (section 1 point 5) and add the external dependency if needed.

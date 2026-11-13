@@ -22,6 +22,12 @@ namespace Marconi
         // helper does not notice; the tray icon's Set password changes the live one.
         int RunSetPasswordMode(const std::string& dataDirectory);
 
+        // --control-status, --control-disconnect ID (0 = everyone) and --control-set-password: the tray icon's
+        // requests from the command line, over the same control pipe, so the pipe can be tried without the tray
+        // icon. `command` is "status", "disconnect" or "set-password". Set password reads the password from standard
+        // input and needs an elevated prompt.
+        int RunControlMode(const std::string& command, unsigned viewerId);
+
         // --install-service [--no-start] and --remove-service.
         int RunInstallServiceMode(bool startNow);
         int RunRemoveServiceMode();
