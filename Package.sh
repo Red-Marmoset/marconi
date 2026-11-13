@@ -305,4 +305,5 @@ ANDROID_ARGS=()
 if [[ $CLEAN -eq 1 ]]; then
     ANDROID_ARGS+=(--clean)
 fi
-bash "$ROOT/Apps/Android/Package.sh" "${ANDROID_ARGS[@]}"
+# The ${...+...} form keeps macOS's bash 3.2 from calling an empty array unbound under set -u
+bash "$ROOT/Apps/Android/Package.sh" ${ANDROID_ARGS[@]+"${ANDROID_ARGS[@]}"}
