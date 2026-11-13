@@ -196,9 +196,10 @@ namespace Marconi
             menu->Append(ID_ChangePort, wxString::FromUTF8("Change port…"));
             menu->AppendCheckItem(ID_AllowFiles, "Let viewers copy files")->Check(m_config.GetFilesEnabled());
             menu->AppendSeparator();
-            menu->Append(ID_WhoCanConnect, m_config.GetAllowedAddresses().empty()
-                                               ? "Who can connect… (anyone with the password)"
-                                               : "Who can connect… (only some computers)");
+            menu->Append(ID_WhoCanConnect,
+                         wxString::FromUTF8(m_config.GetAllowedAddresses().empty()
+                                                ? "Who can connect… (anyone with the password)"
+                                                : "Who can connect… (only some computers)"));
             wxMenu* idleMenu = new wxMenu();
             const int idleNow = m_config.GetIdleMinutes();
             for (int i = 0; i < kIdleChoiceCount; ++i)
