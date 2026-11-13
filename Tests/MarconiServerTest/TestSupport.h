@@ -117,4 +117,5 @@ namespace MarconiServerTest
     void RunPasswordTests();
     void RunIdentityTests();
     void RunDisplayTests();
+    void RunLinuxScreenTests();
 } // namespace MarconiServerTest

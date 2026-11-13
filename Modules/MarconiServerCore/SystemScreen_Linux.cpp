@@ -16,6 +16,7 @@
 #undef Status
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -93,6 +94,11 @@ namespace Marconi
                         return false;
                     }
                     m_root = DefaultRootWindow(m_display);
+                    const int defaultScreen = DefaultScreen(m_display);
+                    m_basePxWidth = std::max(1, DisplayWidth(m_display, defaultScreen));
+                    m_basePxHeight = std::max(1, DisplayHeight(m_display, defaultScreen));
+                    m_baseMmWidth = std::max(1, DisplayWidthMM(m_display, defaultScreen));
+                    m_baseMmHeight = std::max(1, DisplayHeightMM(m_display, defaultScreen));
                     int eventBase = 0;
                     int errorBase = 0;
                     m_hasFixes = XFixesQueryExtension(m_display, &eventBase, &errorBase) != 0;
@@ -222,19 +228,19 @@ namespace Marconi
                     if (resources != nullptr)
                     {
                         XErrorTrap trap(m_display);
-                        int screenWidth = DisplayWidth(m_display, DefaultScreen(m_display));
-                        int screenHeight = DisplayHeight(m_display, DefaultScreen(m_display));
+                        Measure(); // Xlib's own DisplayWidth is cached from connecting and doesn't follow changes
                         // Grow first so the restored mode fits, set the outputs back, then the original size.
-                        SetScreenSizeClamped(std::max(screenWidth, m_originalWidth),
-                                             std::max(screenHeight, m_originalHeight), m_originalMmWidth,
-                                             m_originalMmHeight);
+                        SetScreenSizeClamped(std::max(m_width, m_originalWidth), std::max(m_height, m_originalHeight),
+                                             MmFor(std::max(m_width, m_originalWidth), true),
+                                             MmFor(std::max(m_height, m_originalHeight), false));
                         for (SavedCrtc& saved : m_saved)
                         {
                             XRRSetCrtcConfig(m_display, resources, saved.crtc, CurrentTime, saved.x, saved.y,
                                              saved.mode, saved.rotation, saved.outputs.data(),
                                              static_cast<int>(saved.outputs.size()));
                         }
-                        SetScreenSizeClamped(m_originalWidth, m_originalHeight, m_originalMmWidth, m_originalMmHeight);
+                        SetScreenSizeClamped(m_originalWidth, m_originalHeight, MmFor(m_originalWidth, true),
+                                             MmFor(m_originalHeight, false));
                         XRRFreeScreenResources(resources);
                     }
                     m_saved.clear();
@@ -440,17 +446,13 @@ namespace Marconi
                         return Status::NotListed; // would need a desktop size the server doesn't allow
                     }
 
-                    const int screen = DefaultScreen(m_display);
-                    int oldWidth = DisplayWidth(m_display, screen);
-                    int oldHeight = DisplayHeight(m_display, screen);
-                    int oldMmWidth = DisplayWidthMM(m_display, screen);
-                    int oldMmHeight = DisplayHeightMM(m_display, screen);
+                    Measure(); // the desktop's real size now (Xlib's DisplayWidth is cached from connecting)
+                    int oldWidth = m_width;
+                    int oldHeight = m_height;
                     if (m_saved.empty())
                     {
                         m_originalWidth = oldWidth;
                         m_originalHeight = oldHeight;
-                        m_originalMmWidth = oldMmWidth;
-                        m_originalMmHeight = oldMmHeight;
                     }
                     bool alreadySaved = false;
                     for (const SavedCrtc& saved : m_saved)
@@ -472,8 +474,8 @@ namespace Marconi
                     XErrorTrap trap(m_display);
                     // Grow the desktop first if the new mode needs room, switch the output, then trim the desktop to
                     // fit. The real physical size is unknown, so the millimetres keep the same dots per inch.
-                    int mmWidth = oldWidth > 0 ? oldMmWidth * newScreenWidth / oldWidth : oldMmWidth;
-                    int mmHeight = oldHeight > 0 ? oldMmHeight * newScreenHeight / oldHeight : oldMmHeight;
+                    int mmWidth = MmFor(newScreenWidth, true);
+                    int mmHeight = MmFor(newScreenHeight, false);
                     if (newScreenWidth > oldWidth || newScreenHeight > oldHeight)
                     {
                         SetScreenSizeClamped(std::max(newScreenWidth, oldWidth), std::max(newScreenHeight, oldHeight),
@@ -492,6 +494,11 @@ namespace Marconi
                     }
                     XRRFreeCrtcInfo(crtcInfo);
                     return result;
+                }
+
+                int MmFor(int pixels, bool horizontal) const
+                {
+                    return horizontal ? m_baseMmWidth * pixels / m_basePxWidth : m_baseMmHeight * pixels / m_basePxHeight;
                 }
 
                 void SetScreenSizeClamped(int width, int height, int mmWidth, int mmHeight)
@@ -605,8 +612,12 @@ namespace Marconi
                 std::vector<SavedCrtc> m_saved; // outputs we changed, in the order we changed them
                 int m_originalWidth = 0;        // the desktop's size before the first change
                 int m_originalHeight = 0;
-                int m_originalMmWidth = 0;
-                int m_originalMmHeight = 0;
+                // The desktop's size in pixels and millimetres as Xlib reported it on connecting (a matching pair, even
+                // though Xlib never updates them): the dots per inch a changed size keeps.
+                int m_basePxWidth = 1;
+                int m_basePxHeight = 1;
+                int m_baseMmWidth = 1;
+                int m_baseMmHeight = 1;
                 int m_width = 0;
                 int m_height = 0;
                 int m_previousWidth = 0;

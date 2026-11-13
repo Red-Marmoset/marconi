@@ -17,6 +17,7 @@ namespace Test
         MarconiServerTest::RunListenerTests();
         MarconiServerTest::RunEndToEndTests();
         MarconiServerTest::RunDisplayTests();
+        MarconiServerTest::RunLinuxScreenTests();
         printf("\nMarconiServerTest: %d passed, %d failed\n", MarconiServerTest::g_passed, MarconiServerTest::g_failed);
         return MarconiServerTest::g_failed;
     }
