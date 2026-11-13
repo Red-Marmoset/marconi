@@ -114,6 +114,7 @@ namespace MarconiServerTest
     void RunSessionTests();
     void RunListenerTests();
     void RunEndToEndTests();
+    void RunFileTests();
     void RunPasswordTests();
     void RunIdentityTests();
 } // namespace MarconiServerTest

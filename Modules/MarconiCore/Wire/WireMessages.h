@@ -79,6 +79,17 @@ namespace Marconi
             ClipboardOffer = 48,   // either way: what formats the clipboard now holds
             ClipboardRequest = 49, // either way: send me this format
             ClipboardData = 50,    // either way: the clipboard contents
+
+            // Files (control channel; the messages are in WireFileMessages.h)
+            FileRequest = 64,     // client -> server: home, list, stat, make folder, rename, remove
+            FileResult = 65,      // server -> client: the answer to a FileRequest or a FileClose
+            FileOpen = 66,        // client -> server: open a file to read or write
+            FileOpened = 67,      // server -> client: the handle, and the file's size
+            FileRead = 68,        // client -> server: send me this range of an open file
+            FileData = 69,        // server -> client: that range
+            FileWrite = 70,       // client -> server: write this range (no answer unless it fails)
+            FileClose = 71,       // client -> server: close the handle
+            FileWriteFailed = 72, // server -> client: an earlier FileWrite did not work
         };
 
         // One rectangle of the screen. Plain ints so the protocol layer needs nothing from the VNC code.

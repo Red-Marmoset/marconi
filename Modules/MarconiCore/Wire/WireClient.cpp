@@ -59,7 +59,8 @@ namespace Marconi
             }
         } // namespace
 
-        Client::Client(SessionListener& listener) : m_listener(listener)
+        Client::Client(SessionListener& listener)
+            : m_listener(listener), m_files([this](const Bytes& framed) { return Send(framed); })
         {
         }
 
@@ -79,6 +80,7 @@ namespace Marconi
         {
             m_stopping = true;
             m_socket.Shutdown();
+            m_files.Close();
             if (m_thread.joinable())
             {
                 if (m_thread.get_id() == std::this_thread::get_id())
@@ -183,6 +185,8 @@ namespace Marconi
                     m_tls.reset();
                     m_connected = false;
                     m_encrypted = false;
+                    m_supportsFiles = false;
+                    m_files.Close();
                     m_listener.OnDisconnected(info);
                     return;
                 }
@@ -241,7 +245,8 @@ namespace Marconi
                         break;
                     }
                     default:
-                        break; // a message this build doesn't handle yet; its length let us skip it
+                        m_files.OnMessage(type, body); // file answers; any other type is skipped by its length
+                        break;
                     }
                 }
             }
@@ -260,6 +265,8 @@ namespace Marconi
             }
             m_connected = false;
             m_encrypted = false;
+            m_supportsFiles = false;
+            m_files.Close();
             m_listener.OnDisconnected(info);
         }
 
@@ -267,7 +274,7 @@ namespace Marconi
         {
             Hello hello;
             hello.version = kProtocolVersion;
-            hello.capabilities = options.capabilities;
+            hello.capabilities = options.capabilities | (options.offerFiles ? Capability::Files : uint64_t(0));
             hello.clientName = options.clientName;
             if (!Send(hello.Encode()))
             {
@@ -309,6 +316,9 @@ namespace Marconi
                                  : "The server has no password set, so it refused the connection";
                 return false;
             }
+
+            m_supportsFiles = (welcome.capabilities & Capability::Files) != 0;
+            m_files.Reopen(); // a server that doesn't share files still answers file requests, with a refusal
 
             int width = 0;
             int height = 0;
