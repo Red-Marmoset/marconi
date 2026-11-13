@@ -81,6 +81,15 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
   whether Claude Desktop finds `server/MarconiMcp.exe` as written (the spec's own Windows example names the `.exe`);
   and on Windows the bundled copy is made before the package signs MarconiMcp.exe, so it's unsigned.
 
+- **Phase 9 written, not run** 2026-11-13: `Package.sh` puts MarconiMcp, `Apps.json` and `marconi.mcpb` in
+  `Marconi.app` and signs MarconiMcp before the bundle; nothing of it has been run on a Mac.
+
+**To ship** (as of 0.11.3): merge the engine's `claude/sweet-bell-nobab4` into its `main` (Marconi needs its
+`Process`, `AppDetect`, `Apps.json`, `Include/DetectApps.nsh` and the `PackageProject.ps1` change), then on a
+Windows PC run `Build.ps1`, MarconiCoreTest and `Package.ps1` (none of the PowerShell or MSVC builds has been run;
+the Windows code has only been compiled with MinGW and run under Wine), install the result, and try the AI tools
+page, the window, Claude Code, Codex and Claude Desktop for real. On a Mac, `Package.sh` and the same checks.
+
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
 1. **MCP is the way in.** Claude's "connectors" are MCP servers, and Claude Code, Codex and Claude Desktop all take

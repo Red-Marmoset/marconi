@@ -229,26 +229,34 @@ keeps its settings and a log in a "marconi-server" folder in your user account.
 Right now the server shows this computer's actual screen on Windows; on macOS and Linux it shows a moving test
 picture for the moment, while the screen-sharing part for those systems is finished.
 
-## Letting AI tools use another computer (in progress)
+## Letting AI tools use another computer
 
-**MarconiMcp** lets AI coding tools such as Claude Code connect to a computer through Marconi, look at its screen,
-and use its mouse, keyboard and clipboard. You can watch what it does by connecting to the same computer with
-Marconi as usual.
+AI tools such as Claude Code, Codex and Claude Desktop can use Marconi to connect to another computer, look at its
+screen, and use its mouse, keyboard and clipboard. The tool still asks before each step unless you tell it not to,
+and you can watch what it does by connecting to the same computer with Marconi as usual.
 
-The Windows installer includes it and offers to connect it to the AI tools it finds (a silent install does it with
-`/AITOOLS=all`, or a list such as `/AITOOLS=claude-code,codex`); uninstalling takes it out again. To do it yourself,
-`MarconiMcp --register claude-code` (or `codex`) adds it, `--unregister` removes it, and `--status` shows where it
-is. Elsewhere, or from a build of your own, tell your AI tool about it by hand:
+**Connecting your AI tools.** The Windows installer offers it on a page of its own, for the AI tools it finds on
+the computer. Any time later, open **Settings > AI tools** in Marconi: it lists Claude Code, Codex and Claude
+Desktop, says which can use Marconi, and adds or removes Marconi for each. For Claude Desktop, Add opens Claude so
+you can confirm the extension; to remove it, use Claude's own settings, under Extensions.
 
-    ./Build.sh Mcp/Project.json                     # macOS and Linux -> Build/MarconiMcp/Release/MarconiMcp
-    .\Build.ps1 -Project Mcp\Project.json           # Windows        -> Build\MarconiMcp\Release\MarconiMcp.exe
-    claude mcp add --scope user marconi -- /full/path/to/MarconiMcp
+**Using it.** Ask the AI tool to connect to a computer by its address, as you would type it in Marconi, and then to
+do something there. If the computer needs a password, the AI tool can be given it, or, to keep it out of the
+conversation, set it in the `MARCONI_PASSWORD` environment variable for MarconiMcp (Claude Desktop asks for it in
+the extension's settings).
 
-Then ask the AI tool to connect to a computer by its address, as you would type it in Marconi. If the computer needs
-a password, set it in the `MARCONI_PASSWORD` environment variable for the program (for Claude Code:
-`claude mcp add --scope user marconi -e MARCONI_PASSWORD=... -- /full/path/to/MarconiMcp`), so it isn't typed
-into the conversation. Start it with `--read-only` to let the AI look but not touch. It keeps a log beside
-Marconi's own.
+**By hand.** The part the AI tools start is a program called MarconiMcp (`marconi-mcp` on Linux), installed beside
+Marconi:
+
+- `MarconiMcp --register claude-code` (or `codex`, `claude-desktop`) adds it to that tool; `--unregister` removes it;
+  `--status` shows which tools are installed and which can use it.
+- `MarconiMcp --read-only` lets an AI tool look but not touch: no mouse, keyboard or clipboard changes.
+- A silent Windows install connects it with `/AITOOLS=all` or a list such as `/AITOOLS=claude-code,codex`.
+- To add it to Claude Code yourself:
+  `claude mcp add --scope user marconi -e MARCONI_PASSWORD=... -- /path/to/MarconiMcp` (leave out `-e ...` if the
+  computers need no password).
+
+It keeps a log beside Marconi's own (see "If something goes wrong").
 
 ## Keeping Marconi up to date
 
