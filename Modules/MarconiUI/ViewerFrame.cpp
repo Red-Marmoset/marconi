@@ -9,7 +9,7 @@
 #include "AppIcon.h"
 #include "Appearance.h"
 #include "Controls.h"
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 #include "FilePanel.h"
 #include "ViewerCommands.h"
 #include "VncCanvas.h"

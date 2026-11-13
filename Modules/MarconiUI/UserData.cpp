@@ -3,7 +3,7 @@
 
 #include "UserData.h"
 
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 
 #include <wx/config.h>
 #include <wx/dir.h>

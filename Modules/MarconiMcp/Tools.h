@@ -5,6 +5,7 @@
 
 #include <MarconiMcp/Connection.h>
 #include <MarconiMcp/Protocol.h>
+#include <MarconiMcp/SavedComputers.h>
 
 #include <string>
 #include <vector>
@@ -35,6 +36,7 @@ namespace Marconi
         {
             bool readOnly = false;        // offer only the tools that look
             std::string defaultPassword;  // used when connect gets none (MARCONI_PASSWORD)
+            SavedComputers* saved = nullptr; // Marconi's saved connections, when available
         };
 
         class MarconiTools : public ToolSet
@@ -50,6 +52,7 @@ namespace Marconi
 
         private:
             ToolResult Connect(const nlohmann::json& arguments);
+            ToolResult ListConnections();
             ToolResult Disconnect();
             ToolResult Status();
             ToolResult Screenshot(const nlohmann::json& arguments);

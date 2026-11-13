@@ -4,7 +4,7 @@
 #include "MarconiApp.h"
 
 #include "Appearance.h"
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 #include "ConnectionsFrame.h"
 #include "UserData.h"
 #include "ViewerFrame.h"
@@ -158,17 +158,8 @@ namespace MarconiUI
         // Settings, logs and anything else Marconi writes are private to this user.
         umask(S_IRWXG | S_IRWXO);
 #endif
-        // wxApp::OnInit's command line parser would reject our positional address argument.
-        SetAppName("marconi");
-        SetAppDisplayName("Marconi");
-        SetVendorName("Red Marmoset Studios");
-
-#if defined(__WXGTK__)
-        // ~/.config/marconi.conf and ~/.local/share/marconi rather than wx's traditional ~/.marconi.
-        wxStandardPaths::Get().SetFileLayout(wxStandardPaths::FileLayout_XDG);
-#endif
-        // wxRegConfig on Windows, wxFileConfig (XDG / ~/Library/Preferences) elsewhere.
-        wxConfigBase::Set(wxConfigBase::Create());
+        // The app's name, the settings' layout and the config object, shared with MarconiMcp.
+        UseMarconiSettings();
 #if !defined(__WINDOWS__)
         // Earlier versions created the settings file with the usual permissions; make it private now.
         wxFileName settingsFile =

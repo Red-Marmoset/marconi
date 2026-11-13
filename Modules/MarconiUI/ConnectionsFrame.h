@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 
 #include <MarconiCore/Net/Discovery.h>
 #include <MarconiCore/Net/Https.h>

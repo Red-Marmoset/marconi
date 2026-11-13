@@ -8,6 +8,8 @@
 #include <MarconiMcp/Png.h>
 #include <MarconiMcp/ToolArguments.h>
 
+#include <MarconiCore/Text.h>
+
 #include <Log/Log.h>
 
 #include <algorithm>
@@ -64,13 +66,15 @@ namespace Marconi
             connect.name = "connect";
             connect.title = "Connect to a computer";
             connect.description =
-                "Connects to a computer's desktop, ending any earlier connection. Addresses: \"host\", "
-                "\"host:display\", \"host::port\", \"vnc://host\", \"marconi://host\" (Marconi's own server) or "
-                "\"ssh://user@host\" (VNC through the computer's SSH server). If the computer's certificate or SSH "
-                "key isn't trusted, the result gives its fingerprint; connect again with trust_fingerprint set to it "
-                "to accept it.";
+                "Connects to a computer's desktop, ending any earlier connection. Give either a connection saved in "
+                "Marconi, by its name (list_connections shows them; its saved password, protocol and settings are "
+                "used), or an address: \"host\", \"host:display\", \"host::port\", \"vnc://host\", "
+                "\"marconi://host\" (Marconi's own server) or \"ssh://user@host\" (VNC through the computer's SSH "
+                "server). If the computer's certificate or SSH key isn't trusted, the result gives its fingerprint; "
+                "connect again with trust_fingerprint set to it to accept it.";
             connect.inputSchema = ObjectSchema(
-                {{"address", Property("string", "The computer's address.")},
+                {{"connection", Property("string", "The name of a connection saved in Marconi, such as \"studio\".")},
+                 {"address", Property("string", "The computer's address, when it isn't a saved connection.")},
                  {"username", Property("string", "User name, when the computer asks for an account.")},
                  {"password", Property("string", "Password. If left out, the MARCONI_PASSWORD environment "
                                                  "variable is used, when set.")},
@@ -79,10 +83,19 @@ namespace Marconi
                  {"quality", {{"type", "string"},
                               {"enum", {"best", "balanced", "low"}},
                               {"description", "Picture quality: best (no loss), balanced (default) or low "
-                                              "(for slow links)."}}}},
-                {"address"});
+                                              "(for slow links)."}}}});
             connect.readOnly = true;
             tools.push_back(connect);
+
+            ToolDefinition list;
+            list.name = "list_connections";
+            list.title = "Saved connections";
+            list.description = "The computers saved in Marconi: name, address, group and notes, and whether a "
+                               "password is saved (passwords themselves are never shown). Connect to one by its name. "
+                               "Use this when the user names a computer.";
+            list.inputSchema = ObjectSchema(nlohmann::json::object());
+            list.readOnly = true;
+            tools.push_back(list);
 
             ToolDefinition disconnect;
             disconnect.name = "disconnect";
@@ -155,6 +168,10 @@ namespace Marconi
                 {
                     out = Connect(arguments);
                 }
+                else if (name == "list_connections")
+                {
+                    out = ListConnections();
+                }
                 else if (name == "disconnect")
                 {
                     out = Disconnect();
@@ -182,12 +199,58 @@ namespace Marconi
         ToolResult MarconiTools::Connect(const nlohmann::json& arguments)
         {
             ConnectRequest request;
-            request.address = GetString(arguments, "address", true);
-            request.username = GetString(arguments, "username", false);
+            const std::string name = GetString(arguments, "connection", false);
+            request.address = GetString(arguments, "address", false);
+            if (name.empty() && request.address.empty())
+            {
+                throw ArgumentError{"connection (a saved connection's name) or address is needed."};
+            }
+
+            // A saved connection: by its name, or the one whose address this is. Its settings, and its password
+            // (fetched here, never shown to the AI), are used unless the call gives its own.
+            std::string savedPassword;
+            std::string savedName;
+            if (m_options.saved)
+            {
+                const std::vector<SavedComputer> computers = m_options.saved->List();
+                std::string error;
+                const SavedComputer* computer =
+                    FindSavedComputer(computers, name.empty() ? request.address : name, error);
+                if (!computer && !name.empty())
+                {
+                    throw ArgumentError{error};
+                }
+                if (computer)
+                {
+                    if (!AddressFor(*computer, request.address, error))
+                    {
+                        throw ArgumentError{error};
+                    }
+                    savedName = computer->DisplayName();
+                    request.username = computer->username;
+                    request.sshTunnel = computer->sshTunnel;
+                    request.trustedCertificate = HexToBytes(computer->certificate);
+                    request.trustedSshHostKey = computer->sshHostKey;
+                    request.quality = QualityFromName(computer->quality);
+                    if (computer->hasPassword)
+                    {
+                        m_options.saved->Password(computer->id, savedPassword);
+                    }
+                }
+            }
+            else if (!name.empty())
+            {
+                throw ArgumentError{"Marconi's saved connections can't be read here; give an address instead."};
+            }
+            const std::string username = GetString(arguments, "username", false);
+            if (!username.empty())
+            {
+                request.username = username;
+            }
             request.password = GetString(arguments, "password", false);
             if (request.password.empty())
             {
-                request.password = m_options.defaultPassword;
+                request.password = savedPassword.empty() ? m_options.defaultPassword : savedPassword;
             }
             request.trustFingerprint = GetString(arguments, "trust_fingerprint", false);
             const std::string quality = GetString(arguments, "quality", false);
@@ -220,8 +283,48 @@ namespace Marconi
                 return ToolResult::Error(message);
             }
             ToolResult result;
-            result.AddText("Connected to " + request.address + ". " + DescribeScreens(m_connection.GetFacts()) +
+            const std::string where = savedName.empty() ? request.address : savedName + " (" + request.address + ")";
+            result.AddText("Connected to " + where + ". " + DescribeScreens(m_connection.GetFacts()) +
                            " Take a screenshot to see it.");
+            return result;
+        }
+
+        ToolResult MarconiTools::ListConnections()
+        {
+            if (!m_options.saved)
+            {
+                return ToolResult::Error("Marconi's saved connections can't be read here.");
+            }
+            nlohmann::json list = nlohmann::json::array();
+            for (const SavedComputer& computer : m_options.saved->List())
+            {
+                nlohmann::json entry = {{"name", computer.DisplayName()}, {"address", computer.address}};
+                if (!computer.group.empty())
+                {
+                    entry["group"] = computer.group;
+                }
+                if (!computer.notes.empty())
+                {
+                    entry["notes"] = computer.notes;
+                }
+                if (!computer.username.empty())
+                {
+                    entry["user"] = computer.username;
+                }
+                if (computer.sshTunnel)
+                {
+                    entry["through_ssh"] = true;
+                }
+                if (computer.favourite)
+                {
+                    entry["favourite"] = true;
+                }
+                entry["password_saved"] = computer.hasPassword;
+                list.push_back(entry);
+            }
+            ToolResult result;
+            result.AddText(list.empty() ? std::string("No connections are saved in Marconi.")
+                                        : list.dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
             return result;
         }
 

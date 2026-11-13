@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "ConnectionStore.h"
+#include <MarconiConnections/ConnectionStore.h>
 
 #include <wx/dialog.h>
 
@@ -41,6 +41,7 @@ namespace MarconiUI
         wxCheckBox* m_lock = nullptr;
         wxCheckBox* m_sshTunnel = nullptr;
         wxCheckBox* m_favourite = nullptr;
+        wxCheckBox* m_hideFromAi = nullptr;
         wxTextCtrl* m_mac = nullptr;
         wxTextCtrl* m_notes = nullptr;
         wxComboBox* m_group = nullptr;

@@ -343,10 +343,14 @@ the computer. Any time later, open **Settings > AI tools** in Marconi: it lists 
 Desktop, says which can use Marconi, and adds or removes Marconi for each. For Claude Desktop, Add opens Claude so
 you can confirm the extension; to remove it, use Claude's own settings, under Extensions.
 
-**Using it.** Ask the AI tool to connect to a computer by its address, as you would type it in Marconi, and then to
-do something there. If the computer needs a password, the AI tool can be given it, or, to keep it out of the
-conversation, set it in the `MARCONI_PASSWORD` environment variable for MarconiMcp (Claude Desktop asks for it in
-the extension's settings).
+**Using it.** Ask the AI tool to connect to one of your saved connections by its name ("connect to studio"), or to
+any computer by its address, as you would type it in Marconi, and then to do something there. A saved connection
+brings its own settings and its remembered password, which MarconiMcp takes from the system keychain itself, so the
+AI tool never sees it. To stop that, untick "Let AI tools use the passwords saved in Marconi" in Settings > AI tools;
+to keep one computer away from AI tools altogether, tick "Hide from AI tools" in its connection settings. For a
+computer that isn't saved, the AI tool can be given the password, or, to keep it out of the conversation, set it in
+the `MARCONI_PASSWORD` environment variable for MarconiMcp (Claude Desktop asks for it in the extension's
+settings).
 
 **By hand.** The part the AI tools start is a program called MarconiMcp (`marconi-mcp` on Linux), installed beside
 Marconi:

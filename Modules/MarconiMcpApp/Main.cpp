@@ -8,6 +8,13 @@
 #include <MarconiMcp/Registration.h>
 #include <MarconiMcp/Tools.h>
 
+#include "StoreComputers.h"
+
+#include <MarconiConnections/ConnectionStore.h>
+
+#include <wx/app.h>
+#include <wx/init.h>
+
 #include <json/single_include/nlohmann/json.hpp>
 
 #include <Log/Log.h>
@@ -108,8 +115,23 @@ namespace
         // a log file beside the viewer's.
         const bool logFile = Marconi::Mcp::StartFileLogging();
 
+        // Marconi's saved connections, read the way the app reads them: wx's base library, no windows.
+        wxApp::SetInstance(new wxAppConsole());
+        wxInitializer wx;
+        MarconiMcpApp::StoreComputers saved;
+        const bool haveSaved = wx.IsOk();
+        if (haveSaved)
+        {
+            MarconiUI::UseMarconiSettings();
+        }
+        else
+        {
+            LOG_WARNING("Mcp", "Couldn't start wx, so Marconi's saved connections can't be read");
+        }
+
         Marconi::Mcp::ToolOptions toolOptions;
         toolOptions.readOnly = readOnly;
+        toolOptions.saved = haveSaved ? &saved : nullptr;
         if (const char* password = std::getenv("MARCONI_PASSWORD"))
         {
             toolOptions.defaultPassword = password;

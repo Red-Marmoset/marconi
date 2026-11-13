@@ -13,7 +13,10 @@
 
 #include <json/single_include/nlohmann/json.hpp>
 
+#include <MarconiConnections/ConnectionStore.h>
+
 #include <wx/button.h>
+#include <wx/checkbox.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 
@@ -94,6 +97,17 @@ namespace MarconiUI
             m_rows.push_back(row);
         }
         layout->Add(grid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, space);
+
+        // Saved connections are offered to the AI tools by name; their passwords are used without being shown.
+        wxCheckBox* passwords = new wxCheckBox(this, wxID_ANY, "Let AI tools use the passwords saved in Marconi");
+        passwords->SetValue(ConnectionStore::AiToolsMayUsePasswords());
+        passwords->SetToolTip("They connect to your saved computers without being told the password; it never "
+                              "appears in the conversation. To keep one computer away from them, tick \"Hide from AI "
+                              "tools\" in its connection settings.");
+        passwords->Bind(wxEVT_CHECKBOX, [passwords](wxCommandEvent&) {
+            ConnectionStore::SetAiToolsMayUsePasswords(passwords->GetValue());
+        });
+        layout->Add(passwords, 0, wxLEFT | wxRIGHT | wxBOTTOM, space);
 
         m_message = new wxStaticText(this, wxID_ANY, "");
         layout->Add(m_message, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, space);
@@ -228,7 +242,8 @@ namespace MarconiUI
         const ToolRow& row = m_rows[index];
         SetBusy(true, wxString(add ? "Adding Marconi to " : "Removing Marconi from ") + wxString::FromUTF8(row.name) +
                           "...");
-        RunInBackground({add ? "--register" : "--unregister", row.id, "--quiet"}, [this](int code, const std::string& output) {
+        RunInBackground({add ? "--register" : "--unregister", row.id, "--quiet"},
+                        [this](int code, const std::string& output) {
             const wxString message = wxString::FromUTF8(output).Trim();
             LOG_INFO("App", "AI tools: %s", output.c_str());
             m_afterRefresh = code == 0 ? message : "That didn't work: " + message;

@@ -137,6 +137,11 @@ namespace MarconiUI
                                 "reaches its VNC server from there. On a Mac, turn on Remote Login as well as Screen "
                                 "Sharing.");
         view->Add(m_sshTunnel, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
+        m_hideFromAi = new wxCheckBox(view->GetStaticBox(), wxID_ANY, "Hide from AI tools");
+        m_hideFromAi->SetValue(connection.hideFromAiTools);
+        m_hideFromAi->SetToolTip("AI tools you've connected to Marconi (Settings > AI tools) won't see this connection "
+                                 "or use its password.");
+        view->Add(m_hideFromAi, 0, wxLEFT | wxRIGHT | wxBOTTOM, gap);
         outer->Add(view, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(20));
 
         outer->Add(CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, FromDIP(20));
@@ -206,6 +211,7 @@ namespace MarconiUI
         connection.quality = Marconi::QualityName(kQualities[quality >= 0 && quality < 3 ? quality : 1]);
         connection.lockOnDisconnect = m_lock->GetValue();
         connection.sshTunnel = m_sshTunnel->GetValue();
+        connection.hideFromAiTools = m_hideFromAi->GetValue();
         connection.favourite = m_favourite->GetValue();
         Marconi::Net::MacAddress mac;
         wxString macText = m_mac->GetValue().Strip(wxString::both);

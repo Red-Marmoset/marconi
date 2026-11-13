@@ -863,8 +863,8 @@ namespace MarconiTest
             {
                 names.push_back(tool.name);
             }
-            CHECK(names == std::vector<std::string>({"connect", "disconnect", "status", "screenshot", "get_clipboard",
-                                                     "wait_for_change"}));
+            CHECK(names == std::vector<std::string>({"connect", "list_connections", "disconnect", "status",
+                                                     "screenshot", "get_clipboard", "wait_for_change"}));
             Mcp::ToolResult result;
             CHECK(!tools.CallTool("click", {{"x", 1}, {"y", 1}}, result));
             CHECK(!tools.CallTool("type_text", {{"text", "x"}}, result));

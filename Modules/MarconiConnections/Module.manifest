@@ -1,0 +1,9 @@
+{
+    "name": "MarconiConnections",
+    "version": "0.1.0",
+    "type": "Engine",
+    "description": "Saved connections: their settings (wxConfig) and passwords (the system keychain, wxSecretStore), and where Marconi keeps its settings. Used by the app and by MarconiMcp, so both read them the same way; needs wx's base library only, no windows.",
+    "dependencies": ["Log"],
+    "externalDependencies": ["wxwidgets"],
+    "platforms": ["Windows", "Linux", "macOS"]
+}

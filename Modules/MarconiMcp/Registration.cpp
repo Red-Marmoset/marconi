@@ -96,7 +96,8 @@ namespace Marconi
         }
 
         Registrar::Registrar(const AppDetect::Catalog& apps, std::string mcpPath, std::string extension, Runner runner)
-            : m_apps(apps), m_mcpPath(std::move(mcpPath)), m_extension(std::move(extension)), m_runner(std::move(runner))
+            : m_apps(apps), m_mcpPath(std::move(mcpPath)), m_extension(std::move(extension)),
+              m_runner(std::move(runner))
         {
         }
 
@@ -316,7 +317,8 @@ namespace Marconi
         {
             const std::string folder = Process::ExecutableDirectory();
             for (const std::string& candidate :
-                 {folder + "/marconi.mcpb", folder + "/../share/marconi/marconi.mcpb", folder + "/../Resources/marconi.mcpb"})
+                 {folder + "/marconi.mcpb", folder + "/../share/marconi/marconi.mcpb",
+                  folder + "/../Resources/marconi.mcpb"})
             {
                 if (Exists(candidate))
                 {

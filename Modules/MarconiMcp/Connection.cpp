@@ -71,6 +71,8 @@ namespace Marconi
             options.username = request.username;
             options.password = request.password;
             options.quality = request.quality;
+            options.trustedCertificateSha256 = request.trustedCertificate;
+            options.sshTunnel = request.sshTunnel;
             options.clientName = "Marconi for AI tools";
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
@@ -452,8 +454,10 @@ namespace Marconi
         bool Connection::OnUntrustedSshHostKey(const Net::SshHostKeyQuestion& question)
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            if (!m_request.trustFingerprint.empty() &&
-                SameFingerprint(m_request.trustFingerprint, question.fingerprint))
+            if ((!m_request.trustFingerprint.empty() &&
+                 SameFingerprint(m_request.trustFingerprint, question.fingerprint)) ||
+                (!m_request.trustedSshHostKey.empty() &&
+                 SameFingerprint(m_request.trustedSshHostKey, question.fingerprint)))
             {
                 return true;
             }

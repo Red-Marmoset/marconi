@@ -84,6 +84,16 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
 - **Phase 9 written, not run** 2026-11-13: `Package.sh` puts MarconiMcp, `Apps.json` and `marconi.mcpb` in
   `Marconi.app` and signs MarconiMcp before the bundle; nothing of it has been run on a Mac.
 
+- **Saved connections** 2026-11-13 (0.11.4, owner's request): `list_connections`, and `connect` by a saved
+  connection's name (or an address that's saved) uses its address, the protocol and port Marconi found, user name,
+  SSH tunnel, trusted certificate and SSH key, quality, and its remembered password, fetched from the keychain inside
+  MarconiMcp and never shown to the AI. Owner's choices: saved passwords on by default, turned off in Settings > AI
+  tools (`/AiTools/UseSavedPasswords`); each connection can be hidden ("Hide from AI tools", `HideFromAiTools`).
+  `ConnectionStore` moved into a new module, `MarconiConnections` (wx base only), which the app and MarconiMcp both
+  use, with `UseMarconiSettings()` pointing both at the same settings. Checked on Linux: tests with a stand-in list
+  (the password reaches the computer, never the AI), and MarconiMcp reading a real `~/.config/marconi.conf`. Not
+  checked: reading a real keychain (none here; Credential Manager on Windows).
+
 **To ship** (as of 0.11.3): merge the engine's `claude/sweet-bell-nobab4` into its `main` (Marconi needs its
 `Process`, `AppDetect`, `Apps.json`, `Include/DetectApps.nsh` and the `PackageProject.ps1` change), then on a
 Windows PC run `Build.ps1`, MarconiCoreTest and `Package.ps1` (none of the PowerShell or MSVC builds has been run;

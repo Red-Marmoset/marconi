@@ -97,6 +97,8 @@ it before working on that, follow its phases in order, and keep it current.
 
 - `MarconiCore` has no wx headers. It uses wx's bundled zlib (`#include <zlib.h>`, symbols prefixed `wx_zlib_`),
   stb_image for JPEG, and the engine's `Crypto` module.
+- Saved connections (`ConnectionStore`) live in `Modules/MarconiConnections` (wx base only), shared by the app and
+  MarconiMcp; both call `UseMarconiSettings()` first so they read the same settings and keychain.
 - `RemoteSession` (`RemoteSession.h`) is what the viewer drives; `Rfb::Client` (VNC), `Wire::Client` (the Marconi
   protocol) and `Rdp::Client` (Remote Desktop) implement it. The viewer picks one from the address's protocol or
   the probe. Each runs its protocol on a worker thread.

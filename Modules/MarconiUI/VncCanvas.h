@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <MarconiConnections/ScaleMode.h>
+
 #include "KeyMapper.h"
 
 #include <MarconiCore/LocalKeys.h>
@@ -20,12 +22,6 @@
 
 namespace MarconiUI
 {
-    enum class ScaleMode
-    {
-        Fit,   // scale the whole desktop into the window, keeping its aspect ratio
-        Fixed, // a zoom level from Marconi::Zoom::kLevels (100 = one desktop pixel per screen pixel), scroll if needed
-    };
-
     class VncCanvas : public wxScrolledCanvas
     {
     public:

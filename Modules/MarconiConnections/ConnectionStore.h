@@ -3,9 +3,10 @@
 
 #pragma once
 
-#include "VncCanvas.h"
+#include <MarconiConnections/ScaleMode.h>
 
 #include <wx/datetime.h>
+#include <wx/gdicmn.h>
 #include <wx/string.h>
 
 #include <vector>
@@ -37,11 +38,17 @@ namespace MarconiUI
         wxString notes;                 // anything worth remembering about the computer
         wxString group;                 // optional, e.g. "Studio": the list keeps a group's connections together
         wxString macAddress;            // hardware address, for waking it up (Wake-on-LAN)
+        bool hideFromAiTools = false;   // AI tools (MarconiMcp) don't see or use this connection
         wxRect windowRect;              // where the viewer window was; empty = not remembered
         wxDateTime lastUsed;
 
         wxString GetDisplayName() const { return name.empty() ? address : name; }
     };
+
+    // Points wx at Marconi's settings: the app's name and vendor, the XDG layout on Linux, and the config object
+    // (the registry on Windows, a file elsewhere). The app and MarconiMcp both call it first, so they read the same
+    // saved connections. Needs wxTheApp.
+    void UseMarconiSettings();
 
     class ConnectionStore
     {
@@ -61,6 +68,10 @@ namespace MarconiUI
         bool LoadPassword(const wxString& id, wxString& password) const;
         bool SavePassword(const wxString& id, const wxString& username, const wxString& password);
         void DeletePassword(const wxString& id);
+
+        // Whether AI tools (MarconiMcp) may use the passwords saved here. On unless turned off in Settings > AI tools.
+        static bool AiToolsMayUsePasswords();
+        static void SetAiToolsMayUsePasswords(bool allowed);
 
         // Marconi used to be called rmvnc. Copies rmvnc's saved connections and passwords once, leaving the originals.
         static void MigrateFromRmvnc();

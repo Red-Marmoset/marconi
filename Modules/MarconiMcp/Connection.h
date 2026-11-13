@@ -24,6 +24,9 @@ namespace Marconi
             std::string username;
             std::string password;         // empty: none (the caller may fill it from MARCONI_PASSWORD)
             std::string trustFingerprint; // accept a certificate or SSH host key with this fingerprint
+            std::vector<uint8_t> trustedCertificate; // a certificate trusted before (a saved connection's)
+            std::string trustedSshHostKey;           // an SSH host key trusted before (a saved connection's)
+            bool sshTunnel = false;                  // VNC through the computer's SSH server
             PictureQuality quality = PictureQuality::Balanced;
             std::chrono::milliseconds timeout{20000};
         };
