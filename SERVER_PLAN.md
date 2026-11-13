@@ -93,21 +93,17 @@ Phase 1 is written but not finished:
 - **Building here:** needs the engine submodules pinned to the engine's recorded commits, plus `libgtk-3-dev`,
   `libsecret-1-dev`, `libxxf86vm-dev`, `libsm-dev`, `libxkbcommon-dev`, `libxtst-dev`, `libxfixes-dev`. Headless client
   runs refuse an untrusted certificate: save a connection with the server's fingerprint and use `--saved`.
-- **Not yet run on Windows.** `SystemScreen_Windows.cpp` (GDI grab) and `SystemInput_Windows.cpp` (`SendInput`)
-  exist but have never been built or run on a Windows machine; the `_Posix` versions are empty stubs, so on macOS
-  and Linux the server shows the test pattern. Phase 1's "done when" (two machines, `marconi://pc` shows the
-  desktop, typing and clicking work) has not been checked. The tray app has only been run under a virtual display
-  on Linux in test-pattern mode.
-- **Not in the server yet:** clipboard, several displays, screen resizing, cursor shape (all
-  Phase 6), and the settings kept in `ProgramData` or the registry (it uses a per-user folder).
-- **Phase 2 is written but not run on Windows** (see its status under Phase 2). Phases 3 to 8 have not been started:
-  no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
-- **Not in the server yet:** clipboard, file transfer (Phase 6; several displays, screen resizing and cursor shape are
-  done on the displays branch, see Phase 6), and the settings kept in `ProgramData` or the registry (it uses a per-user folder).
-- **Phases 2 to 8 have not been started.** There is no server installer (`Installer/` holds only the client's
-  `Marconi.nsi`), no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
-- **Nothing measured yet:** the table in section 8 is empty.
-- **Next step:** run 1.6 and 1.7 on a Windows machine and fix what it shows, then Phase 2.
+- **Not yet run on Windows or macOS.** Everything under `_Windows` and `_Mac` files (GDI capture, SendInput, the
+  service, clipboard, display listing and resizing, cursor capture, CGEvent and CGDisplay, the installer scripts) has
+  been written but never compiled or run. Phase 1's "done when" (two machines, `marconi://pc` shows the desktop,
+  typing and clicking work) has not been checked on Windows.
+- **Integration branch `claude/server-integration`** merges the six blitz branches (installer, macOS, files,
+  clipboard, displays, service). On Linux it builds and `MarconiServerTest` passes (822 checks, including X11 capture,
+  input, displays and clipboard against Xvfb); `MarconiCoreTest` has two connect-timeout failures that look like the
+  sandbox's network. See each phase below for what is done and untested.
+- **Still to do:** the tray app is not connected to the service's control pipe (Phase 3); video, UDP and gamepads
+  (Phases 4, 5 and 7) are not started; Wayland capture; the measurements table in section 8 is empty.
+- **Next step:** build and run the server and tray on a Windows machine and fix what it shows.
 
 ## 1. Decisions needed from the owner
 
