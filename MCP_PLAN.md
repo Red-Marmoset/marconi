@@ -12,6 +12,16 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
 - Keep this file current: decisions, findings, finished steps. Anything still undecided is in section 7; nothing
   that depends on an undecided point is built until it's decided.
 
+## Progress
+
+- **Phase 0** done 2026-11-13.
+- **Phase 1** done 2026-11-13 on `claude/sweet-bell-nobab4`, built and tested on Linux against the real engine:
+  `Modules/MarconiMcp` (messages for both MCP revisions, PNG writer, scaler, the connection, `connect`,
+  `disconnect`, `status`, `screenshot`), `Modules/MarconiMcpApp` (the program, standard output kept for messages),
+  `Mcp/Project.json`, and `Tests/MarconiCoreTest/McpTests.cpp` (all pass). Checked by hand: Claude Code 2.1.323,
+  given MarconiMcp with `--mcp-config`, connected to `Tools/fake_vnc_server.py`, took a screenshot and described it
+  correctly. Not yet built on Windows. Logging to a file (section 3.3) moved to Phase 2.
+
 ## 1. Decisions (owner, agreed in chat 2026-11-13)
 
 1. **MCP is the way in.** Claude's "connectors" are MCP servers, and Claude Code, Codex and Claude Desktop all take
@@ -87,16 +97,23 @@ Checked against `main` at 0.9.7 (757f76f) and the engine at b5a405e.
 
 ### 3.2 Talking MCP
 
-- Messages are JSON-RPC 2.0, one per line, on standard input and output (MCP's stdio transport).
-- Protocol version: the current published revision is **2025-11-25** (finding 8). The server answers
-  `initialize` with the version the client asked for when it supports it, otherwise its own newest.
-- Handled: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`, and
-  `notifications/cancelled` (a cancelled wait stops early). Anything else gets JSON-RPC "method not found".
+- Messages are JSON-RPC 2.0, one per line, on standard input and output (MCP's stdio transport, the same in both
+  revisions below).
+- Two protocol revisions at once (finding 8), chosen per request:
+  - **2026-07-28** (current): no handshake. Each request carries `io.modelcontextprotocol/protocolVersion` and
+    `io.modelcontextprotocol/clientCapabilities` in `params._meta`. An unsupported version gets error -32022 with
+    `data.supported` and `data.requested`; missing capabilities get -32602. Results carry `resultType: "complete"`
+    and our `io.modelcontextprotocol/serverInfo` in `_meta`. `server/discover` answers with the supported
+    versions, capabilities and instructions. `ping` and `initialize` are gone in this revision.
+  - **2025-11-25, 2025-06-18, 2025-03-26** (older clients): `initialize` first; the answer is the client's version
+    if it's one of these, otherwise 2025-11-25. `ping` answers `{}`.
+- Handled in both: `tools/list`, `tools/call`. Notifications (`initialized`, `cancelled`) need no answer; calls are
+  handled one at a time and finish on their own. Anything else gets -32601.
 - Tool failures (no connection, bad arguments, connection lost) come back as a normal result with `isError: true`
-  and a plain sentence, as the spec asks, not as protocol errors.
+  and a plain sentence, as the spec asks, not as protocol errors. An unknown tool is -32602.
 - Images come back as `{"type": "image", "data": <base64 PNG>, "mimeType": "image/png"}`, followed by a text item
   with the facts the AI needs (size, scale, which area).
-- Requests are handled one at a time on the main thread; waits are bounded (section 3.5) so nothing hangs.
+- Claude Code 2.1.323 uses 2026-07-28 (finding 8). Still to check: Codex and Claude Desktop.
 
 ### 3.3 Keeping standard output clean
 
@@ -140,8 +157,8 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
 - **Scaling:** by default a screenshot fits within 1568 pixels on each side and 1.15 megapixels, which every current
   Claude model takes as it is; `max_size` allows up to 2576 for models that take more (finding 4). Scaling is an
   area average (sharper text than nearest-pixel). The scale is kept so the input tools convert back.
-- **Settling:** before taking the picture, wait until no update has arrived for `settle_ms` (default 300), up to 5
-  seconds; the text item says if it gave up waiting.
+- **Settling:** before taking the picture, wait until no update has arrived for `settle_ms` (default 300), up to 2
+  seconds (or twice `settle_ms`); the text item says if it gave up waiting.
 - **Cursor:** drawn into the screenshot from the last `OnCursorShape` and the last pointer position we sent.
 - **PNG:** 8-bit RGB, zlib `deflate` at a fast level, row filter "sub"; tested by decoding with stb_image.
 - **Mouse:** the VNC button mask: 1 left, 2 middle, 4 right, 8/16 wheel up/down, 32/64 wheel left/right. A click
@@ -254,7 +271,8 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
 
 1. Mouse tools with coordinate conversion; tests on the button masks sent.
 2. Key-name table, `key`, `type_text`; tests on the keysyms sent.
-3. Clipboard tools, `wait_for_change`, `--read-only`.
+3. Clipboard tools, `wait_for_change`, `--read-only` checked against the full tool list.
+4. Logging to a file beside the viewer's logs (section 3.3); until then the log goes to standard error only.
 - Done when: the fake server logs the clicks and keys Claude sends, and Claude completes a small task on a real VNC
   server while a viewer watches.
 - README section on using it by hand. No version bump: not shipped yet.
@@ -344,14 +362,19 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
    ID certificate itself when there's one; MarconiMcp must be signed with the same identity before the app.
 7. **Marconi's own server takes one viewer at a time** (`Listener::ServeOne`). A second connection waits unanswered
    until the first ends, so watching alongside works for VNC only until `SERVER_PLAN.md` phase 6 step 7.
-8. **MCP version.** The spec site gives 2025-11-25 as the current revision. A 2026-07-28 release candidate exists
-   (a stateless protocol); whether it became final wasn't confirmed. Recheck when starting Phase 1.
+8. **MCP version.** 2026-07-28 is final and current (MCP blog and versioning page, checked 2026-11-13). It drops
+   the `initialize` handshake: every request names its revision and the client's capabilities in `_meta`, servers
+   must answer `server/discover`, `ping` is removed, results carry `resultType`, and a "dual-era" server picks the
+   older rules when a client opens with `initialize`. stdio framing is unchanged (one JSON message per line;
+   standard error is for logs). MarconiMcp speaks both. Claude Code 2.1.323 uses 2026-07-28: it opens with
+   `server/discover` and sends the revision, client info and capabilities in every request's `_meta` (seen
+   2026-11-13 by logging what it sent); our `server/discover` answer without `ttlMs`/`cacheScope` was accepted.
 9. **The engine's packaging signs only the main program** (`PackageProject.ps1` signs `<name>.exe`, then the
    uninstaller and Setup). A second program would ship unsigned, so Phase 5 starts with an engine change.
 
 Still open (none blocks Phase 1): what Claude Code does with an oversized image from an MCP server; whether the
-Codex desktop app brings a `codex` command; the exact file npm installs for each tool on Windows; whether the MCP
-2026-07-28 revision is final; where Claude Desktop installs on Windows.
+Codex desktop app brings a `codex` command; the exact file npm installs for each tool on Windows; which MCP
+revision Codex and Claude Desktop use; where Claude Desktop installs on Windows.
 
 ## 7. Decisions needed from the owner
 
