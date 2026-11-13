@@ -5,6 +5,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server shares its files: browse, copy both ways and drop files on the screen (turn it off with --no-files).
+
 ## 0.9.7
 
 - The package scripts build the Android app only when its release key is set.

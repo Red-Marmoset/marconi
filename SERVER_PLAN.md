@@ -91,7 +91,7 @@ Phase 1 is written but not finished:
   and Linux the server shows the test pattern. Phase 1's "done when" (two machines, `marconi://pc` shows the
   desktop, typing and clicking work) has not been checked. The tray app has only been run under a virtual display
   on Linux in test-pattern mode.
-- **Not in the server yet:** clipboard, file transfer, several displays, screen resizing, cursor shape (all
+- **Not in the server yet:** clipboard, several displays, screen resizing, cursor shape (all
   Phase 6), and the settings kept in `ProgramData` or the registry (it uses a per-user folder).
 - **Phases 2 to 8 have not been started.** There is no server installer (`Installer/` holds only the client's
   `Marconi.nsi`), no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
@@ -494,6 +494,31 @@ tester needs them.
 1. Clipboard text (UTF-8) and images (PNG on the wire; DIB on Windows), the Send and Get menu actions.
 2. File transfer: `Files::MarconiFiles` on the client, `LocalFiles` on the server, drops onto the screen go to the
    Desktop, the file panel works as with a Mac.
+   **Step 2 is written (branch `claude/server-files`), run only on Linux over loopback.**
+   - Messages: `FileRequest` 64, `FileResult` 65, `FileOpen` 66, `FileOpened` 67, `FileRead` 68, `FileData` 69,
+     `FileWrite` 70, `FileClose` 71, `FileWriteFailed` 72 (`Wire/WireFileMessages.*`). Metadata calls are one
+     request and one answer carrying an id (so the panel and the queue can work at once); contents move in ranges of
+     at most 1 MiB. Reads keep two 256 KiB ranges in flight; writes are not answered, a failure comes back as
+     `FileWriteFailed` and again at close. Resume: `FileOpen` mode Resume keeps the first N bytes and carries on
+     (`MarconiFiles::OpenWriteResume`, `OpenReadAt`); `TransferQueue` does not use them yet, so nothing resumes by
+     itself. Extra operation `Desktop` tells the viewer where dropped files go (the Desktop folder of the user the
+     server runs as, else their home), so the viewer never guesses.
+   - Server: `FileService` (one thread per viewer, so disk work never holds up the picture or keys),
+     `GuardedFiles` over the existing `Files::LocalFiles`, and `FilePaths` (clean absolute paths only: no `..`
+     above the top, no backslashes, control characters, bad UTF-8, over-long names, Windows device names and
+     `C:` oddities). `Settings::filesEnabled` (default on; `--no-files`) and `Settings::fileRoot` (default none:
+     the whole computer; `--file-root PATH` confines viewers to one folder, with links that point out refused).
+     Only plain files open (a named pipe or device is refused), 32 open files at most, writes must arrive in
+     order (no holes), a listing is capped at 200,000 items.
+   - Viewer: `Wire::Client::GetFiles()` and `SupportsFiles()`, and the F10 panel's `SetMarconiFiles`, so the panel
+     and drops onto the screen use it without a second login. The desktop app compiles with this; the panel has
+     **not been clicked through**.
+   - **Untested:** anything on Windows or macOS (drive listing in `GuardedFiles.cpp`, Windows path rules beyond the
+     parser's unit tests, the Desktop folder under a service account); the F10 panel against a real server; a disk
+     that fills; very slow links (the 120 second answer timeout); the symbolic-link checks have a race between the
+     check and the open; folder drops copying many files (that is `TransferQueue`'s, as with other servers).
+     Measured on this Linux box: 24 MiB up in about 1.0 s and down in about 1.1 s over loopback with TLS in a Debug
+     build.
 3. Several displays: `Displays`, the Display menu, capture of one display.
 4. **Match the other computer's screen to this window**: `SetDisplayMode` changes the chosen display's mode and
    restores it on disconnect.

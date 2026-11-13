@@ -266,6 +266,29 @@ namespace MarconiUI
 
     void FilePanel::Activate()
     {
+        if (m_marconi != nullptr)
+        {
+            if (m_state != State::Connected && m_state != State::Connecting)
+            {
+                // Asking for the home folder is a round trip: do it off the interface thread.
+                m_state = State::Connecting;
+                JoinWorker();
+                Marconi::Files::MarconiFiles* files = m_marconi;
+                m_worker = std::thread([this, files]() {
+                    std::string home = files->GetHome();
+                    if (!m_closing)
+                    {
+                        CallAfter([this, files, home]() {
+                            if (m_marconi == files)
+                            {
+                                ShowRemote(files, home);
+                            }
+                        });
+                    }
+                });
+            }
+            return;
+        }
         if (m_tight != nullptr)
         {
             if (m_state != State::Connected)
@@ -307,11 +330,42 @@ namespace MarconiUI
         }
     }
 
+    void FilePanel::SetMarconiFiles(Marconi::Files::MarconiFiles* files, const wxString& displayName)
+    {
+        if (files == m_marconi && (files == nullptr || m_state == State::Connected))
+        {
+            return;
+        }
+        m_marconi = files;
+        m_remote.displayName = displayName;
+        m_remotePane->SetHeading(displayName);
+        if (files == nullptr)
+        {
+            if (!m_sftp || !m_sftp->IsLoggedIn())
+            {
+                m_state = State::Idle;
+                m_remotePane->SetSource(nullptr, "", {});
+                m_upload->Enable(false);
+                m_download->Enable(false);
+            }
+            return;
+        }
+        m_state = State::Idle;
+        if (IsShownOnScreen())
+        {
+            Activate();
+        }
+    }
+
     Marconi::Files::FileSource* FilePanel::GetRemote()
     {
         if (m_tight != nullptr)
         {
             return m_tight;
+        }
+        if (m_marconi != nullptr)
+        {
+            return m_marconi;
         }
         return m_sftp && m_sftp->IsLoggedIn() ? m_sftp.get() : nullptr;
     }
@@ -325,6 +379,11 @@ namespace MarconiUI
         if (source == m_tight)
         {
             roots.push_back({"Drives", "/"}); // TightVNC lists the drives at "/"
+        }
+        else if (source == m_marconi)
+        {
+            roots.push_back({"Home", folder});
+            roots.push_back({"Computer", "/"}); // the top: the drives on Windows, the root folder elsewhere
         }
         else
         {
@@ -549,7 +608,11 @@ namespace MarconiUI
             return;
         }
         std::string desktop;
-        if (m_tight != nullptr)
+        if (m_marconi != nullptr)
+        {
+            desktop = m_marconi->GetDesktop(); // a quick question to the server, which knows whose Desktop it is
+        }
+        else if (m_tight != nullptr)
         {
             // TightVNC doesn't say which Windows user is logged in: ask once, and remember.
             if (m_remote.dropFolder.empty())

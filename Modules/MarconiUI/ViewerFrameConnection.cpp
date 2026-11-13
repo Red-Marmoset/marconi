@@ -518,6 +518,11 @@ namespace MarconiUI
         SetTitle(GetServerDisplayName() + " - Marconi");
         m_connected = true;
         m_fallbacks.clear(); // this protocol works: reconnects stay with it
+        if (m_wire != nullptr && m_wire->SupportsFiles())
+        {
+            // The Marconi protocol carries files on this connection, with no second login.
+            m_files->SetMarconiFiles(m_wire->GetFiles(), GetServerDisplayName());
+        }
         if (m_rfb != nullptr && m_rfb->HasFileTransfer())
         {
             // TightVNC: files travel on this connection, with no second login.
@@ -637,6 +642,7 @@ namespace MarconiUI
             m_tightFiles->Close();
             m_files->SetTightFiles(nullptr, GetServerDisplayName());
         }
+        m_files->SetMarconiFiles(nullptr, GetServerDisplayName());
         if (info.encryptionUnusable && m_allowEncryption)
         {
             // Typically a server offering only anonymous TLS, which this computer's TLS library can't make: connect
