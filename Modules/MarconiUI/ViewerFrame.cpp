@@ -386,6 +386,11 @@ namespace MarconiUI
         {
             m_canvas->SetViewport(viewport);
         }
+        if (m_session)
+        {
+            // A server that can stream one display at a time then sends only the one on show (others ignore this).
+            m_session->SelectDisplay(viewport.IsEmpty() ? 0 : static_cast<uint32_t>(m_displayId));
+        }
         UpdateStatus();
     }
 

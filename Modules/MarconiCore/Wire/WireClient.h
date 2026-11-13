@@ -30,7 +30,9 @@ namespace Marconi
             std::string clientName; // shown in the server's log and its "someone connected" notice
             int connectTimeoutMs = 10000;
             bool offerFiles = true; // also offer file transfer (the Files capability)
-            uint64_t capabilities = Capability::MultipleDisplays | Capability::Clipboard; // what this client offers; grows with each phase
+            // What this client offers; grows with each phase.
+            uint64_t capabilities =
+                Capability::MultipleDisplays | Capability::ResizeDisplay | Capability::Clipboard;
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
@@ -68,6 +70,7 @@ namespace Marconi
             std::vector<Rfb::Screen> GetScreens() const override;
             bool SupportsDesktopResize() const override { return m_supportsResize.load(); }
             void RequestDesktopSize(int width, int height) override;
+            void SelectDisplay(uint32_t displayId) override;
             void SetQuality(int compressLevel, int qualityLevel) override;
             std::chrono::steady_clock::duration GetTimeSinceInput() const override;
             TrafficStats TakeTrafficStats() override;
@@ -116,6 +119,7 @@ namespace Marconi
             bool m_awaitText = false;
             bool m_awaitImage = false;
             Rfb::ClipboardContent m_incoming;
+            std::atomic<uint32_t> m_selectedDisplay{0}; // the display being streamed, 0 for the whole desktop
 
             std::vector<Rfb::Rect> m_frameRects; // changed rects collected between FrameBegin and FrameEnd
             mutable std::mutex m_infoMutex;

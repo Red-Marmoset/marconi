@@ -231,6 +231,25 @@ namespace Marconi
                         m_listener.OnCursorShape(cursor);
                         break;
                     }
+                    case Type::CursorPosition:
+                    {
+                        CursorPosition position = CursorPosition::Decode(body);
+                        m_listener.OnCursorPosition(position.x, position.y);
+                        break;
+                    }
+                    case Type::DisplayModeResult:
+                    {
+                        DisplayModeResult result = DisplayModeResult::Decode(body);
+                        if (result.status != DisplayModeResult::Status::Ok)
+                        {
+                            // The same numbers VNC's resize refusals use: 1 not allowed, 2 couldn't, 3 bad size.
+                            int status = result.status == DisplayModeResult::Status::NotAllowed ? 1
+                                         : result.status == DisplayModeResult::Status::NotListed ? 3
+                                                                                                  : 2;
+                            m_listener.OnDesktopResizeRefused(status);
+                        }
+                        break;
+                    }
                     case Type::Displays:
                         ApplyDisplays(Displays::Decode(body).displays, false);
                         break;
@@ -339,6 +358,8 @@ namespace Marconi
             }
             m_clipboardGranted = (welcome.capabilities & options.capabilities & Capability::Clipboard) != 0;
 
+            m_supportsResize = (welcome.capabilities & Capability::ResizeDisplay) != 0;
+            m_selectedDisplay = 0;
             int width = 0;
             int height = 0;
             DesktopSize(welcome.displays, width, height);
@@ -363,7 +384,12 @@ namespace Marconi
                 std::lock_guard<std::mutex> lock(m_infoMutex);
                 m_screens = screens;
             }
-            m_supportsResize = false; // set when the server says it can resize (ResizeDisplay capability), later
+            if (m_selectedDisplay.load() != 0 &&
+                std::none_of(displays.begin(), displays.end(),
+                             [this](const Display& d) { return d.id == m_selectedDisplay.load(); }))
+            {
+                m_selectedDisplay = 0; // the server went back to sending the whole desktop
+            }
             if (!initial)
             {
                 int width = 0;
@@ -618,10 +644,22 @@ namespace Marconi
                 return;
             }
             SetDisplayMode mode;
-            mode.displayId = 0;
+            mode.displayId = m_selectedDisplay.load(); // 0 lets the server pick the display being watched
             mode.width = width;
             mode.height = height;
             Send(mode.Encode());
+        }
+
+        void Client::SelectDisplay(uint32_t displayId)
+        {
+            if (!m_connected.load() || displayId == m_selectedDisplay.load())
+            {
+                return;
+            }
+            m_selectedDisplay = displayId;
+            Wire::SelectDisplay message;
+            message.displayId = displayId;
+            Send(message.Encode());
         }
 
         void Client::SetQuality(int /*compressLevel*/, int /*qualityLevel*/)

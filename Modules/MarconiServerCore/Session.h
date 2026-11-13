@@ -15,6 +15,8 @@
 
 #include <atomic>
 #include <memory>
+#include <chrono>
+#include <climits>
 #include <cstdint>
 #include <mutex>
 #include <thread>
@@ -63,6 +65,9 @@ namespace Marconi
             void HandleClipboardData(Wire::ClipboardData&& data);
             // False if `contents` is what was last exchanged. `alsoKnown` adds another form of that content instead.
             bool RememberClipboard(const ClipboardContents& contents, bool alsoKnown = false);
+            void ApplyPendingRequests();                 // frame thread: display choice and size change from the viewer
+            bool CheckLayout(bool force);                // frame thread: sends Displays if the layout changed
+            void SendCursor();                           // frame thread: cursor shape (when new) and position (when moved)
 
             Wire::Transport& m_transport;
             ScreenSource& m_screen;
@@ -70,6 +75,7 @@ namespace Marconi
             Settings m_settings;
             Auth* m_auth = nullptr;
             uint64_t m_clientCapabilities = 0; // what the viewer offered in Hello
+            uint64_t m_grantedCapabilities = 0; // what this connection uses
             uint64_t m_frameId = 0;
             int m_frameIntervalMs = 16;
             std::mutex m_writeMutex;
@@ -87,6 +93,21 @@ namespace Marconi
             ClipboardContents m_incoming;
             bool m_awaitText = false;
             bool m_awaitImage = false;
+
+            // The viewer's display requests, set on the input thread and applied on the frame thread (the screen
+            // source is only called from the frame thread).
+            std::mutex m_requestMutex;
+            bool m_selectionPending = false;
+            uint32_t m_requestedDisplay = 0;
+            bool m_modePending = false;
+            Wire::SetDisplayMode m_requestedMode;
+            // Frame thread only.
+            std::vector<Wire::Display> m_displays; // the layout last sent
+            uint32_t m_selectedDisplay = 0;        // 0 = the whole desktop
+            bool m_needFull = false;               // the next frame must be a full picture of the selection
+            int32_t m_lastCursorX = INT32_MIN;
+            int32_t m_lastCursorY = INT32_MIN;
+            std::chrono::steady_clock::time_point m_lastLayoutCheck;
             std::atomic<bool> m_stop{false};
         };
     } // namespace Server

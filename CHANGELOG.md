@@ -14,6 +14,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi Server on Linux no longer closes when the screen size changes, and types characters that have no key.
 - Marconi Server shares its files: browse, copy both ways and drop files on the screen (turn it off with --no-files).
 - Marconi Server shares the clipboard (text and pictures) with the viewer, both ways.
+- Marconi Server: shows each of the computer's screens separately, sends only the one you choose, and can change its screen size to fit your window and put it back when you leave.
+- Marconi Server: sends the mouse pointer's shape and position as they change.
 
 ## 0.9.7
 

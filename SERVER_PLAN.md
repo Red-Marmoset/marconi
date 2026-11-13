@@ -102,6 +102,10 @@ Phase 1 is written but not finished:
   Phase 6), and the settings kept in `ProgramData` or the registry (it uses a per-user folder).
 - **Phase 2 is written but not run on Windows** (see its status under Phase 2). Phases 3 to 8 have not been started:
   no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
+- **Not in the server yet:** clipboard, file transfer (Phase 6; several displays, screen resizing and cursor shape are
+  done on the displays branch, see Phase 6), and the settings kept in `ProgramData` or the registry (it uses a per-user folder).
+- **Phases 2 to 8 have not been started.** There is no server installer (`Installer/` holds only the client's
+  `Marconi.nsi`), no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
 - **Nothing measured yet:** the table in section 8 is empty.
 - **Next step:** run 1.6 and 1.7 on a Windows machine and fix what it shows, then Phase 2.
 
@@ -588,9 +592,27 @@ tester needs them.
      Measured on this Linux box: 24 MiB up in about 1.0 s and down in about 1.1 s over loopback with TLS in a Debug
      build.
 3. Several displays: `Displays`, the Display menu, capture of one display.
+3. Several displays: `Displays`, the Display menu, capture of one display. **Done (branch `claude/server-displays`).**
+   `ScreenSource::GetDisplays` reports the layout (Linux: RandR 1.5 monitors, primary first, id = the monitor's name
+   atom; Windows: `EnumDisplayMonitors`, id = the number in `\\.\DISPLAYn`). The viewer's choice goes through
+   `RemoteSession::SelectDisplay` to `SelectDisplay`: the server then sends only that display's pictures (clipped,
+   still in desktop coordinates, so the pointer and the viewport need no change) and the whole display again at once;
+   0 is the whole desktop. The server sends a new `Displays` when the layout changes. Tested: loopback tests with a
+   scripted fake screen, and on Linux under Xvfb with two virtual monitors made by `XRRSetMonitor`.
 4. **Match the other computer's screen to this window**: `SetDisplayMode` changes the chosen display's mode and
-   restores it on disconnect.
-5. Cursor shape and position from the capture, so the pointer never lags.
+   restores it on disconnect. **Done on Linux; Windows written, not built.** `Capability::ResizeDisplay` is granted
+   only when the source can do it; the answer to a `SetDisplayMode` is the new message `DisplayModeResult` (type 26)
+   and, on success, `Displays`. Linux changes the monitor's first output to the *listed* mode nearest the request
+   (never invents one), resizes the X screen to hold every active output, and puts the CRTCs and the screen size back
+   when the viewer leaves (a crashed server leaves the changed mode in place). Display id 0 means the display being
+   watched, else the first. Windows uses `ChangeDisplaySettingsEx` without saving to the registry and restores with a
+   null mode. Not done: rotated outputs are refused; a virtual monitor without an output can't change.
+5. Cursor shape and position from the capture, so the pointer never lags. **Done on Linux; Windows written, not
+   built.** `ScreenSource::GetCursor` now returns true only when the image is new (XFixes cursor-change events on
+   Linux; the cursor handle on Windows, drawn on black and white to get the alpha); the new `CursorPosition` message
+   (type 25, control channel until Phase 5) carries the position when it moves. The client forwards the shape through
+   the existing `OnCursorShape` and the position through the new `SessionListener::OnCursorPosition`; the viewer does
+   not draw a remote pointer from the position yet (its own pointer, with the server's shape, never lags).
 6. The server's tray settings: who may connect (allow list of addresses), idle disconnect, a notice to the person at
    the computer when someone connects.
 7. Several viewers at once (shared), as VNC allows, or one at a time with "take over": owner's choice, asked then.

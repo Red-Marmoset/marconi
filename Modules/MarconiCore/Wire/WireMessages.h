@@ -69,6 +69,8 @@ namespace Marconi
             FrameBegin = 22,     // server -> client: a picture update starts (frame id, display)
             FrameEnd = 23,       // server -> client: the update is complete
             CursorShape = 24,    // server -> client: the pointer image, or hidden
+            CursorPosition = 25, // server -> client: where the pointer is (desktop coordinates), or hidden
+            DisplayModeResult = 26, // server -> client: the answer to a SetDisplayMode
 
             // Input (control channel for keys; pointer moves to datagrams in Phase 5)
             Key = 32,     // client -> server: a key by scancode and keysym, down or up
@@ -300,6 +302,33 @@ namespace Marconi
 
             Bytes Encode() const;
             static CursorShape Decode(Reader& reader);
+        };
+
+        struct CursorPosition
+        {
+            int32_t x = 0; // whole-desktop coordinates
+            int32_t y = 0;
+
+            Bytes Encode() const;
+            static CursorPosition Decode(Reader& reader);
+        };
+
+        // The server's answer to a SetDisplayMode. On success the new layout follows as a Displays message.
+        struct DisplayModeResult
+        {
+            enum class Status : uint8_t
+            {
+                Ok = 0,
+                NotAllowed = 1,    // this server doesn't change screen sizes
+                NoSuchDisplay = 2, // the display id isn't one of the server's
+                NotListed = 3,     // the size isn't one the display offers (nothing was changed)
+                Failed = 4         // the computer refused or couldn't do it
+            };
+            uint32_t displayId = 0;
+            Status status = Status::Ok;
+
+            Bytes Encode() const;
+            static DisplayModeResult Decode(Reader& reader);
         };
 
         struct Key
