@@ -16,6 +16,12 @@
 // #define MARCONI_VIDEO_WINDOWS 1
 // #define MARCONI_VIDEO_VIDEOTOOLBOX 1
 
+// FFmpeg decoding: on where the engine's ffmpeg external is part of the build (Linux and macOS, defined as
+// UNA_HAVE_FFMPEG by its manifest). It decodes in software, so it is the way to video on Linux.
+#if defined(UNA_HAVE_FFMPEG)
+#define MARCONI_VIDEO_FFMPEG 1
+#endif
+
 #if defined(_WIN32) && defined(MARCONI_VIDEO_WINDOWS)
 #define MARCONI_VIDEO_USE_MEDIA_FOUNDATION 1
 #endif
