@@ -24,8 +24,9 @@ BuildTool bootstrapped (the engine and BuildTool revisions this app was made wit
    The script goes through `Build.sh`, which writes the version header the core needs, then runs
    `BuildTool --generate-xcode --platform iOS Apps/iPad/Project.json`. Rerun it after a source, manifest or version
    change; it resets signing settings, so choose your team again afterwards.
-3. In Xcode, select the **Marconi** target, then **Signing & Capabilities**, and choose your development team (a
-   personal Apple ID installs on your own device). Change the bundle identifier if yours must be unique.
+3. The project carries the Red Marmoset development team, as the Semiprimes helper does, so Xcode can sign it
+   straight away. Building under another team: change `developmentTeam` in `Project.json` (or pick the team under
+   **Signing & Capabilities** after each generation) and the bundle identifier if yours must be unique.
 4. Connect the iPad or iPhone, trust the Mac on it, turn on Developer Mode if asked, select it as the run
    destination and press Run. Use the Release configuration for a smooth picture.
 

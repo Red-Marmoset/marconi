@@ -9,6 +9,7 @@
     "xcode": {
         "infoPlist": "Info.plist",
         "bundleIdentifier": "com.redmarmoset.Marconi.iOS",
+        "developmentTeam": "RHL5BSNMJW",
         "deploymentTarget": "15.0",
         "deviceFamily": "1,2",
         "objcArc": true,
