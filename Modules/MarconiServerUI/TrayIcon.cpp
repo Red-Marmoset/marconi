@@ -5,6 +5,9 @@
 
 #include "ServerConfig.h"
 #include "ServerController.h"
+#include "TrayNotifier.h"
+
+#include <MarconiServerCore/AllowList.h>
 
 #include <MarconiServerCore/PasswordHash.h>
 
@@ -14,6 +17,7 @@
 #include <wx/clipbrd.h>
 #include <wx/dataobj.h>
 #include <wx/menu.h>
+#include <wx/notifmsg.h>
 #include <wx/msgdlg.h>
 #include <wx/numdlg.h>
 #include <wx/textdlg.h>
@@ -30,18 +34,35 @@ namespace Marconi
                 ID_SetPassword = wxID_HIGHEST + 1,
                 ID_ChangePort,
                 ID_AllowFiles,
+                ID_Notify,
+                ID_WhoCanConnect,
+                ID_IdleFirst,
+                ID_IdleLast = ID_IdleFirst + 15,
                 ID_CopyFingerprint,
                 ID_ShowProblem,
                 ID_CheckAgain,
                 ID_OpenScreenSettings,
                 ID_OpenControlSettings,
             };
+
+            // The choices in "Disconnect idle viewers after": minutes, 0 meaning never.
+            struct IdleChoice
+            {
+                int minutes;
+                const char* label;
+            };
+            const IdleChoice kIdleChoices[] = {{0, "Never"},        {5, "5 minutes"},  {15, "15 minutes"},
+                                               {30, "30 minutes"},  {60, "1 hour"},    {240, "4 hours"}};
+            const int kIdleChoiceCount = static_cast<int>(sizeof(kIdleChoices) / sizeof(kIdleChoices[0]));
         } // namespace
 
         wxBEGIN_EVENT_TABLE(TrayIcon, wxTaskBarIcon)
             EVT_MENU(ID_SetPassword, TrayIcon::OnSetPassword)
             EVT_MENU(ID_ChangePort, TrayIcon::OnChangePort)
             EVT_MENU(ID_AllowFiles, TrayIcon::OnAllowFiles)
+            EVT_MENU(ID_Notify, TrayIcon::OnNotify)
+            EVT_MENU(ID_WhoCanConnect, TrayIcon::OnWhoCanConnect)
+            EVT_MENU_RANGE(ID_IdleFirst, ID_IdleLast, TrayIcon::OnIdleChoice)
             EVT_MENU(ID_CopyFingerprint, TrayIcon::OnCopyFingerprint)
             EVT_MENU(ID_ShowProblem, TrayIcon::OnShowProblem)
             EVT_MENU(ID_CheckAgain, TrayIcon::OnCheckAgain)
@@ -50,9 +71,14 @@ namespace Marconi
             EVT_MENU(wxID_EXIT, TrayIcon::OnQuit)
         wxEND_EVENT_TABLE()
 
-        TrayIcon::TrayIcon(ServerController& controller, ServerConfig& config)
-            : m_controller(controller), m_config(config)
+        TrayIcon::TrayIcon(ServerController& controller, ServerConfig& config, TrayNotifier& notifier)
+            : m_controller(controller), m_config(config), m_notifier(notifier)
         {
+#ifdef __WXMSW__
+            // Windows shows the notification as a balloon from this icon instead of adding a second one. (Compiled
+            // only on Windows, not yet built there.)
+            wxNotificationMessage::UseTaskBarIcon(this);
+#endif
         }
 
         wxMenu* TrayIcon::CreatePopupMenu()
@@ -95,6 +121,18 @@ namespace Marconi
             menu->Append(ID_SetPassword, hasPassword ? "Change password…" : "Set password…");
             menu->Append(ID_ChangePort, "Change port…");
             menu->AppendCheckItem(ID_AllowFiles, "Let viewers copy files")->Check(m_config.GetFilesEnabled());
+            menu->AppendSeparator();
+            menu->Append(ID_WhoCanConnect, m_config.GetAllowedAddresses().empty()
+                                               ? "Who can connect… (anyone with the password)"
+                                               : "Who can connect… (only some computers)");
+            wxMenu* idleMenu = new wxMenu();
+            const int idleNow = m_config.GetIdleMinutes();
+            for (int i = 0; i < kIdleChoiceCount; ++i)
+            {
+                idleMenu->AppendRadioItem(ID_IdleFirst + i, kIdleChoices[i].label)->Check(kIdleChoices[i].minutes == idleNow);
+            }
+            menu->AppendSubMenu(idleMenu, "Disconnect idle viewers after");
+            menu->AppendCheckItem(ID_Notify, "Tell me when someone connects")->Check(m_notifier.IsEnabled());
             menu->AppendSeparator();
             menu->Append(wxID_EXIT, "Quit Marconi Server");
             return menu;
@@ -181,6 +219,59 @@ namespace Marconi
                 return;
             }
             m_config.SetPort(static_cast<uint16_t>(port));
+        }
+
+        void TrayIcon::OnNotify(wxCommandEvent&)
+        {
+            const bool enable = !m_notifier.IsEnabled();
+            m_notifier.SetEnabled(enable);
+            m_config.SetNotifyEnabled(enable);
+        }
+
+        void TrayIcon::OnWhoCanConnect(wxCommandEvent&)
+        {
+            wxString current;
+            for (const std::string& entry : m_config.GetAllowedAddresses())
+            {
+                current += wxString::FromUTF8(entry.c_str()) + "\n";
+            }
+            wxTextEntryDialog dialog(nullptr,
+                                     "Only computers at these addresses may connect. Type one address or network on "
+                                     "each line, for example\n192.168.1.20   or   192.168.1.0/24   (everything on "
+                                     "that home network).\n\nLeave it empty to let anyone who can reach this "
+                                     "computer try to connect. They still need the password either way.",
+                                     "Who can connect", current, wxOK | wxCANCEL | wxTE_MULTILINE);
+            dialog.SetSize(wxSize(520, 340));
+            if (dialog.ShowModal() != wxID_OK)
+            {
+                return;
+            }
+            std::vector<std::string> entries = Server::SplitAllowEntries(dialog.GetValue().utf8_string());
+            std::string error;
+            if (!m_controller.ChangeAllowedAddresses(entries, error))
+            {
+                wxMessageBox(wxString::FromUTF8(error.c_str()) + "\n\nThe list was not changed.", "Marconi Server",
+                             wxOK | wxICON_ERROR);
+                return;
+            }
+            m_config.SetAllowedAddresses(entries);
+            if (!entries.empty())
+            {
+                wxMessageBox("Only the listed addresses can connect from now on. A viewer that is already connected "
+                             "stays connected.",
+                             "Marconi Server", wxOK | wxICON_INFORMATION);
+            }
+        }
+
+        void TrayIcon::OnIdleChoice(wxCommandEvent& event)
+        {
+            const int index = event.GetId() - ID_IdleFirst;
+            if (index < 0 || index >= kIdleChoiceCount)
+            {
+                return;
+            }
+            m_controller.ChangeIdleMinutes(kIdleChoices[index].minutes);
+            m_config.SetIdleMinutes(kIdleChoices[index].minutes);
         }
 
         void TrayIcon::OnCopyFingerprint(wxCommandEvent&)

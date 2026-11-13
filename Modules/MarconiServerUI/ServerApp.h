@@ -16,6 +16,7 @@ namespace Marconi
         class ServerConfig;
         class ServerController;
         class TrayIcon;
+        class TrayNotifier;
 
         class ServerApp : public wxApp
         {
@@ -33,6 +34,7 @@ namespace Marconi
             int m_commandResult = 0;
             std::unique_ptr<ServerConfig> m_config;
             Server::ServerLogFile m_logFile; // one file per run in <data folder>/logs
+            std::unique_ptr<TrayNotifier> m_notifier; // declared before the controller so it outlives it
             std::unique_ptr<ServerController> m_controller;
             TrayIcon* m_tray = nullptr; // owned by wx once created; removed in OnExit
         };

@@ -40,6 +40,8 @@ namespace Marconi
             bool Listen(const std::string& bindAddress, uint16_t port, std::string& error);
             bool Accept(Socket& outClient, int timeoutMs, std::string& error);
             uint16_t GetLocalPort() const;
+            // The numeric address of the other end of a connection returned by Accept ("" if unknown or not accepted).
+            const std::string& GetPeerAddress() const { return m_peerAddress; }
 
             // Blocks until every byte is sent. Returns false if the connection failed.
             bool SendAll(const void* data, size_t length);
@@ -76,6 +78,7 @@ namespace Marconi
             std::atomic<bool> m_shutdown{false};
             std::atomic<int> m_receiveTimeoutMs{0};
             std::atomic<bool> m_timedOut{false};
+            std::string m_peerAddress;
         };
     } // namespace Net
 } // namespace Marconi

@@ -8,6 +8,9 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi Server keeps a log file for each run (tray, service and helper), the newest 20 kept, with no passwords in it.
 - Marconi Server on Linux: a package (`PackageServerLinux.sh`) that installs it in the applications menu and can start it when you sign in.
 - Marconi Server no longer writes what a viewer types to its log when it has no screen to control.
+- Marconi Server: the tray menu has "Who can connect..." to let in only some computers (by address or network), and it cuts off any other without telling it why.
+- Marconi Server: the tray menu can disconnect a viewer that has done nothing for 5 minutes to 4 hours, and tells the viewer why.
+- Marconi Server shows a message on its own computer when a viewer connects or disconnects (on by default, can be turned off in the tray menu).
 
 - Marconi Server's tray icon now has Marconi's own "M" on a blue circle.
 

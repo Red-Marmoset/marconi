@@ -7,6 +7,8 @@
 #include "Auth.h"
 #include "FileService.h"
 #include "ClipboardAccess.h"
+#include "ConnectionNotifier.h"
+#include "IdleWatch.h"
 #include "InputSink.h"
 #include "ScreenSource.h"
 #include "Settings.h"
@@ -18,6 +20,7 @@
 #include <chrono>
 #include <climits>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -53,6 +56,20 @@ namespace Marconi
             // Shares this computer's clipboard with the viewer (text and images, both ways). Null, the default,
             // leaves clipboard sharing off: the Welcome then doesn't grant it. Call before Run().
             void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
+            // Tells `notifier` (null = nobody) when this viewer connects (after the login) and when it goes away.
+            // `address` is where it connected from, for the notice. Call before Run().
+            void SetNotifier(ConnectionNotifier* notifier, const std::string& address)
+            {
+                m_notifier = notifier;
+                m_peerAddress = address;
+            }
+            // Ends the session when the viewer sends nothing for the settings' idleMinutes (0 = never). The limit can
+            // be changed while it runs; `clock` replaces the steady clock, for tests.
+            void SetIdleMinutes(int minutes) { m_idle.SetLimitMinutes(minutes); }
+            void SetIdleClock(IdleClock clock) { m_idle.SetClock(std::move(clock)); }
+            // Called when the server ends the session itself (for being idle) so the owner of the connection can
+            // shut it down and wake the thread waiting to read from the viewer. Call before Run().
+            void SetEndHandler(std::function<void()> handler) { m_endHandler = std::move(handler); }
             // The viewer's name from its Hello (empty before that), for the tray icon's status. Thread-safe.
             std::string GetViewerName() const;
             // True once the viewer has passed the login.
@@ -74,6 +91,7 @@ namespace Marconi
             void ApplyPendingRequests();                 // frame thread: display choice and size change from the viewer
             bool CheckLayout(bool force);                // frame thread: sends Displays if the layout changed
             void SendCursor();                           // frame thread: cursor shape (when new) and position (when moved)
+            void EndIdleViewer();                        // frame thread: says why, then ends the session
             void LockComputer(); // locks the screen through the input sink, once per viewer
 
             Wire::Transport& m_transport;
@@ -115,6 +133,11 @@ namespace Marconi
             int32_t m_lastCursorX = INT32_MIN;
             int32_t m_lastCursorY = INT32_MIN;
             std::chrono::steady_clock::time_point m_lastLayoutCheck;
+            IdleWatch m_idle;
+            ConnectionNotifier* m_notifier = nullptr;
+            std::string m_peerAddress;
+            std::function<void()> m_endHandler;
+            std::atomic<bool> m_endedIdle{false};
             std::atomic<bool> m_stop{false};
             std::atomic<bool> m_stoppedByServer{false}; // Stop() was called, as opposed to the viewer leaving
             std::atomic<bool> m_loggedIn{false};

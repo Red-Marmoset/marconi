@@ -5,6 +5,7 @@
 
 #include "ServerConfig.h"
 #include "ServerController.h"
+#include "TrayNotifier.h"
 #include "TrayIcon.h"
 
 #include <MarconiCore/Version.h>
@@ -167,6 +168,8 @@ namespace Marconi
             settings.port = m_config->GetPort();
             settings.passwordHash = m_config->GetPasswordHash().utf8_string();
             settings.filesEnabled = m_config->GetFilesEnabled();
+            settings.allowedAddresses = m_config->GetAllowedAddresses();
+            settings.idleMinutes = m_config->GetIdleMinutes();
 
             std::string identityError;
             if (!Server::LoadOrCreateIdentity(m_config->GetCertificatePath().utf8_string(),
@@ -197,7 +200,9 @@ namespace Marconi
                 }
             }
 
+            m_notifier = std::make_unique<TrayNotifier>(m_config->GetNotifyEnabled());
             m_controller = std::make_unique<ServerController>(settings);
+            m_controller->SetNotifier(m_notifier.get());
             std::string startError;
             if (!m_controller->Start(startError))
             {
@@ -208,7 +213,7 @@ namespace Marconi
                              "Marconi Server", wxOK | wxICON_WARNING);
             }
 
-            m_tray = new TrayIcon(*m_controller, *m_config);
+            m_tray = new TrayIcon(*m_controller, *m_config, *m_notifier);
             if (!m_tray->SetIcon(MakeTrayIcon(), "Marconi Server"))
             {
                 LOG_WARNING("Server", "Could not put the icon in the system tray");

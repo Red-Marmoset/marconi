@@ -153,4 +153,5 @@ namespace MarconiServerTest
     void RunLinuxScreenTests();
     void RunLogTests();
     void RunServiceTests();
+    void RunRuleTests();
 } // namespace MarconiServerTest

@@ -3,6 +3,7 @@
 
 #include "ServerController.h"
 
+#include <MarconiServerCore/AllowList.h>
 #include <MarconiServerCore/LoggingInputSink.h>
 #include <MarconiServerCore/SystemInput.h>
 #include <MarconiServerCore/SystemScreen.h>
@@ -72,6 +73,7 @@ namespace Marconi
                 m_clipboard = Server::CreateSystemClipboard(); // the test pattern stands in for a computer that isn't there
             }
             m_listener->SetClipboard(m_clipboard.get());
+            m_listener->SetNotifier(m_notifier);
             if (!m_listener->Start(error))
             {
                 m_listener.reset();
@@ -176,6 +178,38 @@ namespace Marconi
             StopLocked();
             m_settings.filesEnabled = enabled;
             return StartLocked(error);
+        }
+
+        bool ServerController::ChangeAllowedAddresses(const std::vector<std::string>& entries, std::string& error)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            Server::AllowList check;
+            if (!check.Set(entries, error))
+            {
+                return false;
+            }
+            m_settings.allowedAddresses = entries;
+            if (m_listener)
+            {
+                return m_listener->SetAllowedAddresses(entries, error);
+            }
+            return true;
+        }
+
+        void ServerController::ChangeIdleMinutes(int minutes)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_settings.idleMinutes = minutes < 0 ? 0 : minutes;
+            if (m_listener)
+            {
+                m_listener->SetIdleMinutes(m_settings.idleMinutes);
+            }
+        }
+
+        void ServerController::SetNotifier(Server::ConnectionNotifier* notifier)
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_notifier = notifier;
         }
 
         bool ServerController::ChangePasswordHash(const std::string& passwordHash, std::string& error)

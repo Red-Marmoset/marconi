@@ -4,6 +4,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include <wx/string.h>
 
@@ -38,6 +40,18 @@ namespace Marconi
             // Whether viewers may browse and copy this computer's files. Off until someone turns it on.
             bool GetFilesEnabled() const;
             void SetFilesEnabled(bool enabled);
+
+            // Who may connect: addresses and networks (Settings::allowedAddresses). Empty means anyone.
+            std::vector<std::string> GetAllowedAddresses() const;
+            void SetAllowedAddresses(const std::vector<std::string>& entries);
+
+            // Minutes without any input after which a viewer is disconnected; 0 (the default) means never.
+            int GetIdleMinutes() const;
+            void SetIdleMinutes(int minutes);
+
+            // Whether to show a notification here when a viewer connects or disconnects. On unless turned off.
+            bool GetNotifyEnabled() const;
+            void SetNotifyEnabled(bool enabled);
 
             // True until a password has been set (or deliberately left empty) once, so the tray app can prompt on
             // first run.

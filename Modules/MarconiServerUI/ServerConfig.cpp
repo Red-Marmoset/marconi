@@ -3,6 +3,8 @@
 
 #include "ServerConfig.h"
 
+#include <MarconiServerCore/AllowList.h>
+
 #include <wx/file.h>
 #include <wx/filename.h>
 #include <wx/fileconf.h>
@@ -19,6 +21,9 @@ namespace Marconi
             const char* kPortKey = "/Server/Port";
             const char* kPasswordHashKey = "/Server/PasswordHash";
             const char* kFilesEnabledKey = "/Server/FilesEnabled";
+            const char* kAllowedKey = "/Server/AllowedAddresses";
+            const char* kIdleMinutesKey = "/Server/IdleMinutes";
+            const char* kNotifyKey = "/Server/NotifyOnConnect";
             const char* kConfiguredKey = "/Server/Configured";
             const uint16_t kDefaultPort = 1895;
 
@@ -147,6 +152,51 @@ namespace Marconi
         {
             wxFileConfig config = MakeConfig(m_dataDir);
             config.Write(kFilesEnabledKey, enabled);
+            config.Flush();
+        }
+
+        std::vector<std::string> ServerConfig::GetAllowedAddresses() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return Server::SplitAllowEntries(config.Read(kAllowedKey, wxEmptyString).utf8_string());
+        }
+
+        void ServerConfig::SetAllowedAddresses(const std::vector<std::string>& entries)
+        {
+            std::string joined;
+            for (const std::string& entry : entries)
+            {
+                joined += (joined.empty() ? "" : ";") + entry; // entries never hold a semicolon or a space
+            }
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kAllowedKey, wxString::FromUTF8(joined.c_str()));
+            config.Flush();
+        }
+
+        int ServerConfig::GetIdleMinutes() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            long minutes = config.ReadLong(kIdleMinutesKey, 0);
+            return (minutes < 0 || minutes > 100000) ? 0 : static_cast<int>(minutes);
+        }
+
+        void ServerConfig::SetIdleMinutes(int minutes)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kIdleMinutesKey, static_cast<long>(minutes < 0 ? 0 : minutes));
+            config.Flush();
+        }
+
+        bool ServerConfig::GetNotifyEnabled() const
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            return config.ReadBool(kNotifyKey, true);
+        }
+
+        void ServerConfig::SetNotifyEnabled(bool enabled)
+        {
+            wxFileConfig config = MakeConfig(m_dataDir);
+            config.Write(kNotifyKey, enabled);
             config.Flush();
         }
 

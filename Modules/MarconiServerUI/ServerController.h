@@ -5,6 +5,7 @@
 #pragma once
 
 #include <MarconiServerCore/ClipboardAccess.h>
+#include <MarconiServerCore/ConnectionNotifier.h>
 #include <MarconiServerCore/InputSink.h>
 #include <MarconiServerCore/Listener.h>
 #include <MarconiServerCore/ScreenSource.h>
@@ -16,6 +17,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace Marconi
 {
@@ -70,6 +72,16 @@ namespace Marconi
             // Changes the access password (already hashed) and restarts so logins are checked against it.
             bool ChangePasswordHash(const std::string& passwordHash, std::string& error);
 
+            // Who may connect (Settings::allowedAddresses), applied at once to the running server without a restart.
+            // False (with `error`, in plain words) if an entry can't be read; nothing then changes.
+            bool ChangeAllowedAddresses(const std::vector<std::string>& entries, std::string& error);
+
+            // Disconnect a viewer after this many minutes of no input (0 = never), also for the one connected now.
+            void ChangeIdleMinutes(int minutes);
+
+            // Where connection notices go (null = nowhere). It must outlive the controller. Call before Start.
+            void SetNotifier(Server::ConnectionNotifier* notifier);
+
             const Server::Settings& GetSettings() const { return m_settings; }
 
         private:
@@ -90,6 +102,7 @@ namespace Marconi
             Server::InputSink* m_input = nullptr;
             std::string m_servedDescription;
             std::string m_problem;
+            Server::ConnectionNotifier* m_notifier = nullptr;
 
             std::unique_ptr<Server::Listener> m_listener;
             std::thread m_thread;
