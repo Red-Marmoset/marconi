@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.3
+
+- Fixed the Android app closing as soon as it opened.
+
 ## 0.9.2
 
 - The Android app now has the desktop's start screen and choices: quick connect, saved connections with favourites, groups, notes, remembered passwords and search, computers found on the network, wake-up calls, and the viewer's menu with zoom, displays, picture quality, view only, the clipboard both ways, sent keys and screenshots.

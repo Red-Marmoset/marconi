@@ -26,7 +26,8 @@ class Discovery(context: Context, private val onChange: (List<NativeSession.Foun
             val lock = wifi?.createMulticastLock("marconi-discovery")?.apply { setReferenceCounted(false); acquire() }
             try {
                 while (running) {
-                    val found = try { NativeSession.discover(1500) } catch (e: Exception) { emptyList() }
+                    // A native problem must never take the app down with it: the list just stays empty
+                    val found = try { NativeSession.discover(1500) } catch (e: Throwable) { emptyList() }
                     if (!running) break
                     main.post { merge(found) }
                     try { Thread.sleep(8500) } catch (e: InterruptedException) { break }

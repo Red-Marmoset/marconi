@@ -630,7 +630,7 @@ extern "C"
 
     // Computers advertising screen sharing, Remote Desktop or SSH on this network, one string each:
     // "name\thost\taddress\tport\tprotocol". Listens for listenMs; this blocks, so call it off the main thread.
-    JNIEXPORT jobjectArray JNICALL Java_com_redmarmoset_marconi_NativeSession_discover(JNIEnv* env, jclass, jint listenMs)
+    JNIEXPORT jobjectArray JNICALL Java_com_redmarmoset_marconi_NativeSession_discoverNative(JNIEnv* env, jclass, jint listenMs)
     {
         const std::vector<Marconi::Net::DiscoveredService> services = Marconi::Net::Discover(listenMs);
         jclass stringClass = env->FindClass("java/lang/String");

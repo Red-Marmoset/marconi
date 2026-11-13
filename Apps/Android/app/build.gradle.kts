@@ -52,7 +52,36 @@ val buildMarconiNative = tasks.register<Copy>("buildMarconiNative") {
     }
     into(jniLibsDir)
 }
-tasks.named("preBuild") { dependsOn(buildMarconiNative) }
+// Every native function NativeSession.kt declares must exist in the library under its JNI name, or the app dies
+// the first time it is called. Checked here, with the NDK's llvm-nm, rather than on a phone.
+val checkMarconiNative = tasks.register("checkMarconiNative") {
+    description = "Checks that libMarconi.so exports every native function NativeSession.kt declares"
+    dependsOn(buildMarconiNative)
+    doLast {
+        val ndk = listOfNotNull(System.getenv("ANDROID_NDK_HOME"), System.getenv("ANDROID_NDK_ROOT"), System.getenv("ANDROID_NDK"))
+            .map { File(it) }.firstOrNull { it.isDirectory }
+            ?: listOfNotNull(System.getenv("ANDROID_HOME"), System.getenv("ANDROID_SDK_ROOT")).map { File(it, "ndk") }
+                .filter { it.isDirectory }.flatMap { it.listFiles()?.toList() ?: emptyList() }.maxByOrNull { it.name }
+        val prebuilt = ndk?.let { File(it, "toolchains/llvm/prebuilt").listFiles()?.firstOrNull() }
+        val nm = prebuilt?.let { File(it, if (isWindows) "bin/llvm-nm.exe" else "bin/llvm-nm") }
+        if (nm == null || !nm.exists()) {
+            logger.warn("checkMarconiNative: llvm-nm not found, skipping the native name check")
+            return@doLast
+        }
+        val declared = Regex("external fun ([A-Za-z0-9_]+)").findAll(File(projectDir, "src/main/java/com/redmarmoset/marconi/NativeSession.kt").readText())
+            .map { it.groupValues[1] }.toSet()
+        for (abi in marconiAbis) {
+            val library = File(jniLibsDir, "$abi/libMarconi.so")
+            val output = ByteArrayOutputStream()
+            project.exec { commandLine(nm.absolutePath, "-D", library.absolutePath); standardOutput = output }
+            val exported = Regex("Java_com_redmarmoset_marconi_NativeSession_([A-Za-z0-9_]+)").findAll(output.toString())
+                .map { it.groupValues[1] }.toSet()
+            val missing = declared - exported
+            if (missing.isNotEmpty()) throw GradleException("libMarconi.so ($abi) lacks native functions NativeSession.kt declares: $missing")
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(checkMarconiNative) }
 
 android {
     namespace = "com.redmarmoset.marconi"
