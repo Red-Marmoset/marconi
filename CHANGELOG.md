@@ -13,6 +13,7 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi Server says in plain words when it can't share the screen or can't be controlled, for example on a Wayland desktop or before a Mac permission is given.
 - Marconi Server on Linux no longer closes when the screen size changes, and types characters that have no key.
 - Marconi Server shares its files: browse, copy both ways and drop files on the screen (turn it off with --no-files).
+- Marconi Server shares the clipboard (text and pictures) with the viewer, both ways.
 
 ## 0.9.7
 

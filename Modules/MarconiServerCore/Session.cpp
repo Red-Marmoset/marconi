@@ -82,9 +82,11 @@ namespace Marconi
 
             Wire::Welcome welcome;
             welcome.version = Wire::kProtocolVersion;
-            welcome.capabilities =
-                hello.capabilities &
-                (kServerCapabilities | (m_settings.filesEnabled ? Wire::Capability::Files : uint64_t(0)));
+            const uint64_t granted = kServerCapabilities |
+                                     (m_settings.filesEnabled ? Wire::Capability::Files : uint64_t(0)) |
+                                     (m_clipboard != nullptr ? Wire::Capability::Clipboard : uint64_t(0));
+            welcome.capabilities = hello.capabilities & granted;
+            m_clipboardActive = (welcome.capabilities & Wire::Capability::Clipboard) != 0;
             welcome.serverName = m_settings.serverName;
             welcome.serverVersion = m_settings.serverVersion;
             welcome.displays = m_screen.GetDisplays();
@@ -169,6 +171,24 @@ namespace Marconi
                         Send(pong.Encode());
                         break;
                     }
+                    case Wire::Type::ClipboardOffer:
+                        if (m_clipboardActive)
+                        {
+                            HandleClipboardOffer(Wire::ClipboardOffer::Decode(body));
+                        }
+                        break;
+                    case Wire::Type::ClipboardRequest:
+                        if (m_clipboardActive)
+                        {
+                            HandleClipboardRequest(Wire::ClipboardRequest::Decode(body));
+                        }
+                        break;
+                    case Wire::Type::ClipboardData:
+                        if (m_clipboardActive)
+                        {
+                            HandleClipboardData(Wire::ClipboardData::Decode(body));
+                        }
+                        break;
                     case Wire::Type::Bye:
                         m_stop = true;
                         break;
@@ -186,6 +206,165 @@ namespace Marconi
                 }
             }
             m_stop = true;
+        }
+
+        namespace
+        {
+            uint64_t HashClipboard(const ClipboardContents& contents)
+            {
+                uint64_t hash = 1469598103934665603ull; // FNV-1a
+                auto mix = [&hash](const uint8_t* data, size_t length) {
+                    for (size_t i = 0; i < length; ++i)
+                    {
+                        hash = (hash ^ data[i]) * 1099511628211ull;
+                    }
+                };
+                mix(reinterpret_cast<const uint8_t*>(contents.text.data()), contents.text.size());
+                const uint8_t separator = 0xFF;
+                mix(&separator, 1);
+                mix(contents.png.data(), contents.png.size());
+                return hash;
+            }
+
+            // Drops what is too big to carry, so an oversize clipboard is simply not shared.
+            void LimitClipboard(ClipboardContents& contents)
+            {
+                if (contents.text.size() > Wire::kMaxClipboardTextBytes)
+                {
+                    contents.text.clear();
+                }
+                if (contents.png.size() > Wire::kMaxClipboardImageBytes)
+                {
+                    contents.png.clear();
+                }
+            }
+        } // namespace
+
+        bool Session::RememberClipboard(const ClipboardContents& contents, bool alsoKnown)
+        {
+            uint64_t hash = HashClipboard(contents);
+            std::lock_guard<std::mutex> lock(m_clipboardMutex);
+            if (alsoKnown)
+            {
+                m_recentHashes.push_back(hash); // another form of what is already known
+                return true;
+            }
+            for (uint64_t known : m_recentHashes)
+            {
+                if (known == hash)
+                {
+                    return false;
+                }
+            }
+            m_recentHashes.assign(1, hash); // a new content: only it counts as already exchanged now
+            return true;
+        }
+
+        void Session::CheckClipboard()
+        {
+            ClipboardContents contents;
+            if (!m_clipboard->Read(contents))
+            {
+                return;
+            }
+            LimitClipboard(contents);
+            if (contents.IsEmpty() || !RememberClipboard(contents))
+            {
+                return; // nothing to share, or the content we just wrote ourselves (or already offered)
+            }
+            Wire::ClipboardOffer offer;
+            offer.hasText = !contents.text.empty();
+            offer.hasImage = !contents.png.empty();
+            if (!Send(offer.Encode()))
+            {
+                m_stop = true;
+            }
+        }
+
+        void Session::HandleClipboardOffer(const Wire::ClipboardOffer& offer)
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                m_incoming = ClipboardContents();
+                m_awaitText = offer.hasText;
+                m_awaitImage = offer.hasImage;
+            }
+            // Ask for what is offered. The viewer answers each request with its data.
+            if (offer.hasText)
+            {
+                Wire::ClipboardRequest request;
+                request.format = Wire::ClipboardRequest::Format::Text;
+                Send(request.Encode());
+            }
+            if (offer.hasImage)
+            {
+                Wire::ClipboardRequest request;
+                request.format = Wire::ClipboardRequest::Format::Image;
+                Send(request.Encode());
+            }
+        }
+
+        void Session::HandleClipboardRequest(const Wire::ClipboardRequest& request)
+        {
+            // Always answer, with nothing when there is nothing (or it is too big), so the viewer isn't left waiting.
+            ClipboardContents contents;
+            m_clipboard->Read(contents);
+            LimitClipboard(contents);
+            RememberClipboard(contents); // the viewer now has it: no offer for it later
+            Wire::ClipboardData data;
+            data.format = request.format;
+            data.data = request.format == Wire::ClipboardRequest::Format::Text
+                            ? Wire::Bytes(contents.text.begin(), contents.text.end())
+                            : contents.png;
+            if (!Send(data.Encode()))
+            {
+                m_stop = true;
+            }
+        }
+
+        void Session::HandleClipboardData(Wire::ClipboardData&& data)
+        {
+            ClipboardContents ready;
+            {
+                std::lock_guard<std::mutex> lock(m_clipboardMutex);
+                const bool isText = data.format == Wire::ClipboardRequest::Format::Text;
+                bool& awaited = isText ? m_awaitText : m_awaitImage;
+                if (!awaited)
+                {
+                    return; // nothing was asked for: ignore it
+                }
+                awaited = false;
+                if (isText && data.data.size() <= Wire::kMaxClipboardTextBytes)
+                {
+                    m_incoming.text.assign(data.data.begin(), data.data.end());
+                }
+                else if (!isText && data.data.size() <= Wire::kMaxClipboardImageBytes)
+                {
+                    m_incoming.png = std::move(data.data);
+                }
+                if (m_awaitText || m_awaitImage)
+                {
+                    return; // the other format is still on its way
+                }
+                ready = std::move(m_incoming);
+                m_incoming = ClipboardContents();
+            }
+            if (ready.IsEmpty())
+            {
+                return;
+            }
+            // Remember it before writing, so the change this causes is recognised as ours.
+            RememberClipboard(ready);
+            if (!m_clipboard->Write(ready))
+            {
+                LOG_INFO("Server", "Could not set this computer's clipboard from the viewer");
+                return;
+            }
+            ClipboardContents back; // what the platform now reports (it may differ in form from what we wrote)
+            if (m_clipboard->Read(back))
+            {
+                RememberClipboard(back, true);
+            }
         }
 
         void Session::SendFrame(const Capture& capture, bool full)
@@ -242,6 +421,10 @@ namespace Marconi
             bool first = true;
             while (!m_stop)
             {
+                if (m_clipboardActive && m_clipboardChanged.exchange(false))
+                {
+                    CheckClipboard();
+                }
                 Capture capture;
                 if (m_screen.Grab(capture))
                 {
@@ -279,9 +462,17 @@ namespace Marconi
 
             m_files = std::make_unique<FileService>(m_settings.filesEnabled, m_settings.fileRoot,
                                                     [this](const Wire::Bytes& framed) { return Send(framed); });
+            if (m_clipboardActive)
+            {
+                m_clipboard->SetChangeHandler([this]() { m_clipboardChanged = true; });
+            }
             std::thread input([this, &reader]() { RunInputLoop(reader); });
             RunFrameLoop();
             m_stop = true;
+            if (m_clipboardActive)
+            {
+                m_clipboard->SetChangeHandler(nullptr); // returns once no call to the handler is running
+            }
             input.join();
             m_files->Stop();
         }
