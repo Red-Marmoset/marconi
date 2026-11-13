@@ -20,5 +20,5 @@ on port 1895 unless you change it from the tray icon.
 marconi-server-console is the same server without the tray icon, for trying it from a terminal
 (marconi-server-console --help lists its options).
 
-Settings, the server's certificate and its log files are in ~/.local/share/marconi-server (the logs in its "logs"
+Settings, the server's certificate and its log files are in ~/.marconi-server (the logs in its "logs"
 folder: one file per run, the newest 20 are kept). Nothing secret is written to the logs.

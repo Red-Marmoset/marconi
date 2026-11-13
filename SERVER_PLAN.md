@@ -573,7 +573,7 @@ injected). The manual checklist is in the README under "Testing the Windows serv
   never start a listener of its own (the port would clash with the helper's); if no helper is running and the service
   is not installed, keep today's behaviour. Its autostart (Run key) is then replaced by the service for the server
   and kept only for the status-only tray icon. The pipe can be tried today with the `--control-*` modes.
-- A log file for the service and helper (they log through `LOG_*`; nothing writes it to the data folder yet).
+- ~~A log file for the service and helper~~ done, see "Log files and the Linux package" below.
 - Everything under "Written for Windows".
 - The service's data folder permissions: the installer must restrict `%ProgramData%\Marconi Server` to SYSTEM and
   administrators (it holds the password hash and the private key).
@@ -867,3 +867,27 @@ glass.
   viewers can't connect" until one is set, and the server installer no longer has a password page (the owner prefers
   setting the password in the tray). `--set-password-file` stays in the tray program but nothing in the installer
   uses it now.
+
+### Log files and the Linux package (branch `claude/server-logs-linux`)
+
+**Log files (built and tested on Linux; the Windows service and helper paths are not run on Windows).**
+`ServerLog.h/.cpp` in `MarconiServerCore` opens one `<program>_<date>_<time>.log` per run in `<data folder>/logs`
+through the engine's `Log::InitializeFileLogging`, flushes after every line (a `Log` callback), keeps the newest 20
+per program and says nothing if the folder can't be written. Programs and file names: tray `MarconiServerTray` (and
+`MarconiServerSetPassword` for the installer's `--set-password-file` runs, so they don't push real logs out), console
+`MarconiServerConsole` (only with `--log-file PATH`, which takes a folder), `--service` `MarconiServerService`
+(`<default data folder>/logs`, opened in `ServerModes.cpp`), `--session` `MarconiServerSession` (in `SessionHost.cpp`,
+`<data dir>/logs`). The helper also logs why it gives up (settings, certificate, capture, listen failures).
+Audit: `LoggingInputSink` logged every key, typed text and pointer position (a password typed into a test-pattern
+server would have been logged): it now only says once that input is being ignored. A viewer's name is cut and stripped
+of control characters before it is logged (it arrives before the login). No password or hash is logged anywhere else;
+no `LOG_ERROR` is used. Limits: the engine's file format shows a level only for warnings and errors (information
+lines have no label); `ServiceHost_Windows.cpp` was not touched (its two `LOG_INFO` lines are harmless).
+
+**Linux package (`PackageServerLinux.sh`).** Builds Release of `ServerUI` and `Server` and makes
+`Build/Installer/MarconiServer-<version>-linux-<arch>.deb` (tray as `/usr/bin/marconi-server`, console as
+`/usr/bin/marconi-server-console`, desktop file, icons, README, and a systemd *user* unit
+`/usr/lib/systemd/user/marconi-server.service` for `graphical-session.target`). Built here, unpacked with `dpkg-deb -x`,
+`lintian` run. Not done: the unit is not enabled by the package (each user runs `systemctl --user enable --now`); it
+was not started under a real user session, and the package was not installed with `apt`/`dpkg -i` or tried on another
+distribution.

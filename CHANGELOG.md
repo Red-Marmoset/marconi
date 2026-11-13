@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+- Marconi Server keeps a log file for each run (tray, service and helper), the newest 20 kept, with no passwords in it.
+- Marconi Server on Linux: a package (`PackageServerLinux.sh`) that installs it in the applications menu and can start it when you sign in.
+- Marconi Server no longer writes what a viewer types to its log when it has no screen to control.
+
 - Marconi Server's tray icon now has Marconi's own "M" on a blue circle.
 
 - Marconi Server refuses every login until a password is set, and its tray icon asks for one the first time it starts.

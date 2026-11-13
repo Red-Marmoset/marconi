@@ -266,6 +266,23 @@ Linux, in a "marconi-server" folder in your own user account.
 On macOS and Linux the server shows a moving test picture for the moment, while the screen-sharing part for those
 systems is finished.
 
+### Log files
+
+Every Marconi Server program writes a log file each time it runs, in the "logs" folder inside its settings folder (on
+Linux that is `~/.marconi-server/logs`; on Windows `C:\ProgramData\Marconi Server\logs` for the service and its
+helper). The file is named with the date and time, each line is saved as it is written, and the newest 20 files of each
+program are kept. If you have to report a problem, send the newest file. Passwords and keys are never written to it.
+The console program (`MarconiServer`) writes one only when asked: `--log-file FOLDER`.
+
+### Installing the server on Linux
+
+`./PackageServerLinux.sh` builds `Build/Installer/MarconiServer-<version>-linux-<arch>.deb` for Ubuntu, Debian and
+computers like them. Install it with `sudo apt install ./MarconiServer-...deb`. It adds **Marconi Server** to the
+applications menu and the programs `marconi-server` (with the tray icon) and `marconi-server-console` (without). The
+server has to run inside your signed-in desktop, because that is where the screen is, so it is not a system service: to
+start it every time you sign in, run `systemctl --user enable --now marconi-server.service` as yourself. It shares an
+X11 desktop; a Wayland-only desktop can't be shared yet.
+
 ## Keeping Marconi up to date
 
 When Marconi starts it asks GitHub whether a newer version has been released (it sends nothing about you; GitHub
