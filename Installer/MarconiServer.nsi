@@ -17,6 +17,14 @@
 ;
 ; "Start Marconi Server now" on the finish page needs the ShellExecAsUser plug-in, as the client's installer does.
 ;
+; Updating from a viewer (SERVER_PLAN.md, "Self-update"): Marconi Server checks this installer and starts it with
+;   /S /restart
+; /S is the usual silent install. /restart starts Marconi Server again at the end even though it had already closed
+; itself before Setup looked for it. A silent upgrade keeps the earlier choices for "Start with Windows", the Start
+; menu shortcut and the firewall rule, and keeps the settings and password (they are never touched by an upgrade). If
+; copying the new files fails, the previous version's files and its entry in Apps are put back and it is started
+; again, so the computer is never left without a working Marconi Server.
+;
 ; The access password is not asked for here: Marconi Server's tray icon asks for one the first time it runs (and the
 ; icon's menu changes it later). Until a password is set the server refuses every viewer (SERVER_PLAN.md, section 1,
 ; point 9).
@@ -70,6 +78,7 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 !include "LogicLib.nsh"
 !include "x64.nsh"
 !include "FileFunc.nsh"
+!include "Sections.nsh"
 !include "nsDialogs.nsh"
 !include "StrFunc.nsh"
 ${StrStr}
@@ -77,6 +86,14 @@ ${UnStrStr}
 
 Var ConsoleUser     ; the account signed in at this computer's screen: it runs the tray app and keeps the settings
 Var WasRunning      ; 1 when Setup closed a running ${APP_NAME} (it is started again at the end)
+Var Restart         ; 1 with /restart: start ${APP_NAME} at the end of a silent install even if it wasn't running
+Var PrevDir         ; the previous version's folder, when upgrading one in Program Files
+Var PrevVersion     ; and its version, for putting its Apps entry back if this install fails
+Var HadRunKey       ; 1 when "Start with Windows" was on before this install
+Var HadShortcut     ; 1 when the Start menu shortcut was there before this install
+Var HadFirewall     ; 1 when the firewall rule was there before this install
+Var BackupDone      ; 1 once the previous version's files are copied aside
+Var Restored        ; 1 once they have been put back
 
 !define MUI_ICON "${APP_ICON}"
 !define MUI_UNICON "${APP_ICON}"
@@ -196,6 +213,16 @@ Function .onInit
     SetRegView 64
     ; Everything is for the whole computer: the shared start menu and the shared settings folder (ProgramData).
     SetShellVarContext all
+    StrCpy $Restart 0
+    StrCpy $BackupDone 0
+    StrCpy $Restored 0
+    ${GetParameters} $0
+    ClearErrors
+    ${GetOptions} $0 "/restart" $1
+    ${IfNot} ${Errors}
+        StrCpy $Restart 1
+    ${EndIf}
+    Call RememberPreviousChoices
 FunctionEnd
 
 ; The license page starts with "I accept" ticked. Ticking it from here doesn't go through the click that enables
@@ -215,12 +242,75 @@ Function LaunchAsUser
     ShellExecAsUser::ShellExecAsUser "" "$INSTDIR\${APP_EXE}" ""
 FunctionEnd
 
-; A silent install has no finish page, so a ${APP_NAME} that Setup closed is started again here.
+; A silent install has no finish page, so a ${APP_NAME} that Setup closed (or that closed itself for an update and
+; asked for /restart) is started again here.
 Function .onInstSuccess
     ${If} ${Silent}
-    ${AndIf} $WasRunning == 1
-        Call LaunchAsUser
+        ${If} $WasRunning == 1
+        ${OrIf} $Restart == 1
+            Call LaunchAsUser
+        ${EndIf}
     ${EndIf}
+FunctionEnd
+
+; The install failed (a file couldn't be written, the disk is full): put the previous version back and start it again,
+; so the computer still has a working ${APP_NAME}. The viewer that sent the update then finds the old version.
+Function .onInstFailed
+    Call RestorePrevious
+    ${If} ${Silent}
+    ${AndIf} $Restored == 1
+        ${If} $WasRunning == 1
+        ${OrIf} $Restart == 1
+            Call LaunchAsUser
+        ${EndIf}
+    ${EndIf}
+FunctionEnd
+
+; Copies the previous version's files aside (into Setup's own temporary folder, removed when Setup ends) before its
+; uninstaller removes them.
+Function BackUpPrevious
+    ${If} $PrevDir == ""
+        Return
+    ${EndIf}
+    InitPluginsDir
+    CreateDirectory "$PLUGINSDIR\previous"
+    ClearErrors
+    CopyFiles /SILENT "$PrevDir\*.*" "$PLUGINSDIR\previous"
+    ${IfNot} ${Errors}
+        StrCpy $BackupDone 1
+    ${Else}
+        DetailPrint "Could not keep a copy of the previous version; a failed install could not be undone."
+    ${EndIf}
+FunctionEnd
+
+; Puts the previous version's files and its Apps entry (and "Start with Windows") back, once.
+Function RestorePrevious
+    ${If} $BackupDone != 1
+    ${OrIf} $Restored == 1
+        Return
+    ${EndIf}
+    DetailPrint "Putting the previous version back"
+    CreateDirectory "$PrevDir"
+    CopyFiles /SILENT "$PLUGINSDIR\previous\*.*" "$PrevDir"
+    WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "${APP_NAME}"
+    WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion" "$PrevVersion"
+    WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher" "${PUBLISHER}"
+    WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon" "$PrevDir\${APP_ICON_FILE}"
+    WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$PrevDir"
+    WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" '"$PrevDir\Uninstall.exe"'
+    WriteRegStr HKLM "${UNINSTALL_KEY}" "QuietUninstallString" '"$PrevDir\Uninstall.exe" /S'
+    ${If} $HadRunKey == 1
+        WriteRegStr HKLM "${RUN_KEY}" "${APP_NAME}" '"$PrevDir\${APP_EXE}"'
+    ${EndIf}
+    ${If} $HadShortcut == 1
+        CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$PrevDir\${APP_EXE}" "" "$PrevDir\${APP_ICON_FILE}"
+    ${EndIf}
+    ${If} $HadFirewall == 1
+        nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$PrevDir\${APP_EXE}" enable=yes'
+        Pop $0
+    ${EndIf}
+    StrCpy $INSTDIR "$PrevDir" ; so LaunchAsUser starts the version that was put back
+    StrCpy $Restored 1
 FunctionEnd
 
 Section "${APP_NAME}" SecApp
@@ -238,6 +328,8 @@ Section "${APP_NAME}" SecApp
         ${If} $2 != "$PROGRAMFILES64\"
             DetailPrint "The previous version at $0 is outside $PROGRAMFILES64, so its uninstaller won't be run. Installing over it."
         ${ElseIf} ${FileExists} "$0\Uninstall.exe"
+            StrCpy $PrevDir "$0"
+            Call BackUpPrevious ; so a failed install below can put it back
             ExecWait '"$0\Uninstall.exe" /S _?=$0'
             Delete "$0\Uninstall.exe"
             RMDir "$0"
@@ -246,10 +338,19 @@ Section "${APP_NAME}" SecApp
 
     SetOutPath "$INSTDIR"
     ; MarconiServer.exe and the MSVC runtime DLLs, deployed next to it (app-local) so no separate redistributable is needed.
+    ; "try" never stops to ask about a file it can't write: it sets the error flag, and the install is undone below.
+    SetOverwrite try
+    ClearErrors
     File "${STAGE_DIR}\App\*.*"
     File "/oname=${APP_ICON_FILE}" "${APP_ICON}"
     File "/oname=LICENSE.txt" "..\LICENSE"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
+    SetOverwrite on
+    ${If} ${Errors}
+        DetailPrint "Some of ${APP_NAME}'s files could not be written (is the disk full?)."
+        MessageBox MB_OK|MB_ICONSTOP "${APP_NAME} could not be installed: some of its files could not be written. The previous version, if there was one, is put back." /SD IDOK
+        Abort
+    ${EndIf}
 
     ; Settings > Apps and Programs and Features.
     WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "${APP_NAME}"
@@ -307,6 +408,42 @@ Section "Start menu shortcut" SecStartMenu
     SetShellVarContext all
     CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_ICON_FILE}"
 SectionEnd
+
+; Before anything is changed: what an earlier install had chosen. A silent upgrade (an update sent from a viewer has
+; nobody to tick boxes) keeps those choices instead of turning everything back on. Defined after the sections, whose
+; numbers it uses; called from .onInit.
+Function RememberPreviousChoices
+    StrCpy $HadRunKey 0
+    StrCpy $HadShortcut 0
+    StrCpy $HadFirewall 0
+    ReadRegStr $PrevVersion HKLM "${UNINSTALL_KEY}" "DisplayVersion"
+    ReadRegStr $0 HKLM "${UNINSTALL_KEY}" "InstallLocation"
+    ReadRegStr $1 HKLM "${RUN_KEY}" "${APP_NAME}"
+    ${If} $1 != ""
+        StrCpy $HadRunKey 1
+    ${EndIf}
+    ${If} ${FileExists} "$SMPROGRAMS\${APP_NAME}.lnk"
+        StrCpy $HadShortcut 1
+    ${EndIf}
+    nsExec::ExecToStack 'netsh advfirewall firewall show rule name="${FIREWALL_RULE}"'
+    Pop $1
+    Pop $2
+    ${If} $1 == 0
+        StrCpy $HadFirewall 1
+    ${EndIf}
+    ${If} ${Silent}
+    ${AndIf} $0 != ""
+        ${If} $HadRunKey == 0
+            !insertmacro UnselectSection ${SecAutoStart}
+        ${EndIf}
+        ${If} $HadShortcut == 0
+            !insertmacro UnselectSection ${SecStartMenu}
+        ${EndIf}
+        ${If} $HadFirewall == 0
+            !insertmacro UnselectSection ${SecFirewall}
+        ${EndIf}
+    ${EndIf}
+FunctionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} program."
