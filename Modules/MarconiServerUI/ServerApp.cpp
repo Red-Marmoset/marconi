@@ -14,6 +14,13 @@
 
 #include <Log/Log.h>
 
+#if defined(__linux__)
+#include <MarconiServerCore/X11Support.h>
+
+#include <cstdio>
+#include <cstdlib>
+#endif
+
 #include <wx/bmpbndl.h>
 #include <wx/dcmemory.h>
 #include <wx/icon.h>
@@ -144,6 +151,14 @@ namespace Marconi
 
             // There is no window; the tray icon keeps the program running until Quit.
             SetExitOnFrameDelete(false);
+
+            // If the screen can't be shared or controlled (a permission still to be given on a Mac, a Wayland
+            // desktop on Linux), say so now: the tray menu is easy to miss. The server keeps running meanwhile.
+            std::string problem = m_controller->GetProblem();
+            if (!problem.empty())
+            {
+                wxMessageBox(wxString::FromUTF8(problem.c_str()), "Marconi Server", wxOK | wxICON_INFORMATION);
+            }
             return true;
         }
 
@@ -166,4 +181,24 @@ namespace Marconi
     } // namespace ServerUI
 } // namespace Marconi
 
+#if defined(__linux__)
+// Without a desktop, wxWidgets would end with a one-line message about "the X Display". Say it in plain words
+// first. (Wayland desktops get past this: the tray works, and the server explains in its own message that the
+// screen can't be shared.)
+wxIMPLEMENT_APP_NO_MAIN(Marconi::ServerUI::ServerApp);
+
+int main(int argc, char** argv)
+{
+    const char* x11 = std::getenv("DISPLAY");
+    const char* wayland = std::getenv("WAYLAND_DISPLAY");
+    if ((x11 == nullptr || *x11 == '\0') && (wayland == nullptr || *wayland == '\0'))
+    {
+        std::fprintf(stderr, "%s\n", Marconi::Server::DescribeNoX11Display().c_str());
+        std::fprintf(stderr, "To run the server without a desktop, use the console program (MarconiServer).\n");
+        return 1;
+    }
+    return wxEntry(argc, argv);
+}
+#else
 wxIMPLEMENT_APP(Marconi::ServerUI::ServerApp);
+#endif

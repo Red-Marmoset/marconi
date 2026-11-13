@@ -4,6 +4,8 @@
 
 #include "SystemInput.h"
 
+#include "X11Support.h"
+
 #include <MarconiCore/Keysyms.h>
 
 #include <X11/Xlib.h>
@@ -30,10 +32,9 @@ namespace Marconi
                     }
                 }
 
-                bool Open()
+                bool Open(std::string& error)
                 {
-                    m_display = XOpenDisplay(nullptr);
-                    if (m_display == nullptr)
+                    if (!X11OpenDisplay(m_display, error))
                     {
                         return false;
                     }
@@ -41,7 +42,13 @@ namespace Marconi
                     int errorBase = 0;
                     int major = 0;
                     int minor = 0;
-                    return XTestQueryExtension(m_display, &eventBase, &errorBase, &major, &minor) != 0;
+                    if (XTestQueryExtension(m_display, &eventBase, &errorBase, &major, &minor) == 0)
+                    {
+                        error = "This desktop doesn't allow other programs to press keys and move the mouse (its "
+                                "XTEST extension is turned off), so viewers can see it but not control it.";
+                        return false;
+                    }
+                    return true;
                 }
 
                 void MovePointer(int32_t x, int32_t y, uint8_t buttons, int16_t wheel, int16_t wheelX) override
@@ -77,6 +84,13 @@ namespace Marconi
                     KeyCode code = XKeysymToKeycode(m_display, static_cast<KeySym>(keysym));
                     if (code == 0)
                     {
+                        // No key makes this character (an accent or another script's letter): type it by borrowing
+                        // a spare key, once, on the press. The release has nothing left to do.
+                        if (down)
+                        {
+                            TypeKeysym(keysym);
+                            XFlush(m_display);
+                        }
                         return;
                     }
                     XTestFakeKeyEvent(m_display, code, down ? True : False, CurrentTime);
@@ -160,10 +174,10 @@ namespace Marconi
             };
         } // namespace
 
-        std::unique_ptr<InputSink> CreateSystemInput()
+        std::unique_ptr<InputSink> CreateSystemInput(std::string& error)
         {
             auto input = std::make_unique<LinuxInput>();
-            if (!input->Open())
+            if (!input->Open(error))
             {
                 return nullptr; // no X display or no XTest: the caller falls back to logging the input
             }

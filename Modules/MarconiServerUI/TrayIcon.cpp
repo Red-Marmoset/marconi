@@ -17,6 +17,7 @@
 #include <wx/msgdlg.h>
 #include <wx/numdlg.h>
 #include <wx/textdlg.h>
+#include <wx/utils.h>
 
 namespace Marconi
 {
@@ -29,6 +30,10 @@ namespace Marconi
                 ID_SetPassword = wxID_HIGHEST + 1,
                 ID_ChangePort,
                 ID_CopyFingerprint,
+                ID_ShowProblem,
+                ID_CheckAgain,
+                ID_OpenScreenSettings,
+                ID_OpenControlSettings,
             };
         } // namespace
 
@@ -36,6 +41,10 @@ namespace Marconi
             EVT_MENU(ID_SetPassword, TrayIcon::OnSetPassword)
             EVT_MENU(ID_ChangePort, TrayIcon::OnChangePort)
             EVT_MENU(ID_CopyFingerprint, TrayIcon::OnCopyFingerprint)
+            EVT_MENU(ID_ShowProblem, TrayIcon::OnShowProblem)
+            EVT_MENU(ID_CheckAgain, TrayIcon::OnCheckAgain)
+            EVT_MENU(ID_OpenScreenSettings, TrayIcon::OnOpenScreenSettings)
+            EVT_MENU(ID_OpenControlSettings, TrayIcon::OnOpenControlSettings)
             EVT_MENU(wxID_EXIT, TrayIcon::OnQuit)
         wxEND_EVENT_TABLE()
 
@@ -66,6 +75,18 @@ namespace Marconi
                 wxString shortPrint = fingerprint.Left(16) + "…"; // first 16 hex digits then an ellipsis
                 menu->Append(wxID_ANY, "Fingerprint " + shortPrint)->Enable(false);
                 menu->Append(ID_CopyFingerprint, "Copy full fingerprint");
+            }
+
+            // When the screen can't be shared or controlled, say so here; clicking it shows the full explanation.
+            if (!m_controller.GetProblem().empty())
+            {
+                menu->AppendSeparator();
+                menu->Append(ID_ShowProblem, "Problem: click for details…");
+                menu->Append(ID_CheckAgain, "Check again");
+#ifdef __WXOSX__
+                menu->Append(ID_OpenScreenSettings, "Open Screen Recording settings…");
+                menu->Append(ID_OpenControlSettings, "Open Accessibility settings…");
+#endif
             }
 
             menu->AppendSeparator();
@@ -139,6 +160,43 @@ namespace Marconi
             }
             wxTheClipboard->SetData(new wxTextDataObject(fingerprint));
             wxTheClipboard->Close();
+        }
+
+        void TrayIcon::OnShowProblem(wxCommandEvent&)
+        {
+            ShowProblem();
+        }
+
+        void TrayIcon::ShowProblem()
+        {
+            wxMessageBox(wxString::FromUTF8(m_controller.GetProblem().c_str()), "Marconi Server",
+                         wxOK | wxICON_INFORMATION);
+        }
+
+        void TrayIcon::OnCheckAgain(wxCommandEvent&)
+        {
+            std::string error;
+            if (!m_controller.CheckScreenAndInputAgain(error))
+            {
+                wxMessageBox(wxString::Format("The server could not start: %s", wxString::FromUTF8(error.c_str())),
+                             "Marconi Server", wxOK | wxICON_ERROR);
+                return;
+            }
+            if (!m_controller.GetProblem().empty())
+            {
+                ShowProblem();
+            }
+        }
+
+        // These open the page of the macOS settings where the person allows Marconi Server.
+        void TrayIcon::OnOpenScreenSettings(wxCommandEvent&)
+        {
+            wxLaunchDefaultBrowser("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
+        }
+
+        void TrayIcon::OnOpenControlSettings(wxCommandEvent&)
+        {
+            wxLaunchDefaultBrowser("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
         }
 
         void TrayIcon::OnQuit(wxCommandEvent&)

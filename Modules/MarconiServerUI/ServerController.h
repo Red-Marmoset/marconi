@@ -51,6 +51,14 @@ namespace Marconi
             // A plain phrase for what the server is sending: "this computer's screen" or "a test pattern".
             std::string GetServedDescription() const;
 
+            // Why the screen can't be shared, or can't be controlled, in plain words for the person at this computer
+            // (for example a missing permission on a Mac, or a Wayland desktop on Linux). Empty when all is well.
+            std::string GetProblem() const;
+
+            // Looks again for this computer's screen and input (after the person has allowed them in the system's
+            // settings) and restarts the listener on whatever it finds. False (with `error`) if it can't listen.
+            bool CheckScreenAndInputAgain(std::string& error);
+
             // Changes the port and restarts the listener on it. False (with `error`) if the new port can't be opened;
             // the old listener is left stopped either way.
             bool ChangePort(uint16_t port, std::string& error);
@@ -77,6 +85,7 @@ namespace Marconi
             Server::ScreenSource* m_screen = nullptr;
             Server::InputSink* m_input = nullptr;
             std::string m_servedDescription;
+            std::string m_problem;
 
             std::unique_ptr<Server::Listener> m_listener;
             std::thread m_thread;
