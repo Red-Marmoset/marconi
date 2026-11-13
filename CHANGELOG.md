@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.4
+
+- The package scripts also build the Android app, next to the installer, disk image or package, when the Android tools are installed.
+
 ## 0.9.3
 
 - Fixed the Android app closing as soon as it opened.

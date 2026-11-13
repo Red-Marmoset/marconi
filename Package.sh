@@ -2,6 +2,8 @@
 # Package.sh - Build the release package for this computer's operating system:
 #   macOS:  Build/Installer/Marconi-<version>-macos-<arch>.dmg
 #   Linux:  Build/Installer/Marconi-<version>-linux-<arch>.deb
+# and, when this computer has the Android tools, the Android app too (see Apps/Android/Package.sh):
+#   Build/Installer/Marconi-<version>-android.apk
 #
 # Both start by building the Release app with Build.sh and checking that the build is the current source's version.
 #
@@ -276,3 +278,10 @@ else
         echo "To mark the release: git tag v$VERSION; git push origin v$VERSION"
     fi
 fi
+
+# The Android app too, beside the package, when this computer has the Android tools.
+ANDROID_ARGS=()
+if [[ $CLEAN -eq 1 ]]; then
+    ANDROID_ARGS+=(--clean)
+fi
+bash "$ROOT/Apps/Android/Package.sh" "${ANDROID_ARGS[@]}"

@@ -390,6 +390,20 @@ with neither picks the kind already installed, or everyone when run as administr
 `python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from
 `python Tools/make_installer_art.py`.
 
+## Releasing (Android)
+
+The three package scripts end by building the Android app too, when the computer has the tools: a JDK, the Android
+SDK (`ANDROID_HOME`, or where Android Studio installs it), an NDK in the SDK's `ndk` folder or at
+`ANDROID_NDK_HOME`, and the engine's BuildTool. The result goes next to the installer, disk image or package:
+
+    Build/Installer/Marconi-0.9.4.107-android.apk
+
+Without the tools the scripts say what is missing and carry on. `bash Apps/Android/Package.sh` (or
+`.\Apps\Android\Package.ps1`) builds just the app. It is signed with the standard debug key, which installs for
+testing; to publish, set `MARCONI_ANDROID_KEYSTORE`, `MARCONI_ANDROID_KEYSTORE_PASSWORD` and, if they differ from
+the defaults, `MARCONI_ANDROID_KEY_ALIAS` and `MARCONI_ANDROID_KEY_PASSWORD`. An app signed with a different key
+than the one installed has to be uninstalled first.
+
 ## Releasing (macOS)
 
     ./Package.sh                      # -> Build/Installer/Marconi-0.2.0.48-macos-arm64.dmg

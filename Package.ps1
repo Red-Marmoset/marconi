@@ -1,4 +1,5 @@
 # Package.ps1 - Build the Windows installer: Build\Installer\Marconi-<version>-win64-setup.exe
+# and, when this computer has the Android tools, the Android app: Build\Installer\Marconi-<version>-android.apk
 #
 # Runs the una engine's Packaging\PackageProject.ps1, which every una project packages with. Project.json's "package"
 # section says what goes in: Marconi.exe (built Release by Build.ps1), Nebula Sans and its licence, and the MSVC
@@ -40,4 +41,8 @@ if (-not (Test-Path $script)) {
     exit 1
 }
 & $script -ProjectDir $PSScriptRoot -NoZip -Clean:$Clean -SkipBuild:$SkipBuild -AllowDirty:$AllowDirty
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# The Android app too, beside the installer, when this computer has the Android tools (see Apps\Android\Package.ps1).
+& "$PSScriptRoot\Apps\Android\Package.ps1" -Clean:$Clean
 exit $LASTEXITCODE

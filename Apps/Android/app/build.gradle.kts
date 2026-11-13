@@ -104,9 +104,25 @@ android {
         }
     }
 
+    // A release APK must be signed or Android won't install it. With MARCONI_ANDROID_KEYSTORE set (see
+    // Apps/Android/Package.sh) it is signed with that key; otherwise with the standard debug key, which installs
+    // for testing but isn't for publishing.
+    signingConfigs {
+        val keystore = System.getenv("MARCONI_ANDROID_KEYSTORE")
+        if (!keystore.isNullOrEmpty()) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("MARCONI_ANDROID_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("MARCONI_ANDROID_KEY_ALIAS") ?: "marconi"
+                keyPassword = System.getenv("MARCONI_ANDROID_KEY_PASSWORD") ?: (System.getenv("MARCONI_ANDROID_KEYSTORE_PASSWORD") ?: "")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
