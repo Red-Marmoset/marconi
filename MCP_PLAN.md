@@ -109,7 +109,7 @@ It also logs to a file beside the viewer's logs. No engine change needed.
 
 ### 3.4 Tools offered to the AI
 
-One connection at a time. Coordinates are in the last screenshot's pixels unless the call says otherwise.
+One connection at a time (section 7). Coordinates are in the last screenshot's pixels unless the call says otherwise.
 
 | Tool | Arguments | What it does |
 |---|---|---|
@@ -198,7 +198,8 @@ One connection at a time. Coordinates are in the last screenshot's pixels unless
   (a command-line switch can ask for it in a silent install).
 - Registering runs `MarconiMcp.exe --register <tool>` as the signed-in user:
   - installing for one user: `ExecWait`, with the exit code; a failure shows a message and carries on;
-  - installing for everyone: see the decision needed in section 7.
+  - installing for everyone: ShellExecAsUser, which can't wait or see the result, so MarconiMcp shows its own
+    message if registering fails (section 7).
 - The uninstaller runs `--unregister` for each tool registered (recorded in the registry at install). For an
   install for everyone it can only reach whoever is signed in when it runs.
 
@@ -234,8 +235,7 @@ One connection at a time. Coordinates are in the last screenshot's pixels unless
 
 ### Phase 0: agree the plan, check the unknowns
 
-- First round of checks done 2026-11-13 (section 6). Owner reviews this file and answers section 7.
-- Done when: the owner agrees and section 7 is answered.
+- Checks done 2026-11-13 (section 6); the owner answered section 7 the same day. **Done.**
 
 ### Phase 1: the program, connect and screenshot
 
@@ -268,7 +268,7 @@ One connection at a time. Coordinates are in the last screenshot's pixels unless
 
 ### Phase 4: detecting apps (engine repo)
 
-1. `Apps.json` with the AI tools plus a few general apps the owner names; the C++ module and its tests.
+1. `Apps.json` with Claude Code, Codex, Claude Desktop, Blender and Ollama; the C++ module and its tests.
 2. The generated `DetectApps.nsh`, `addincludedir` in `PackageProject.ps1`, a test installer.
 3. Marconi's registration code (Phase 3) moves onto the engine module where they overlap.
 - Done when: a test installer and a test program both list which of the apps are installed on a Windows PC.
@@ -355,14 +355,13 @@ Codex desktop app brings a `codex` command; the exact file npm installs for each
 
 ## 7. Decisions needed from the owner
 
-1. **Registering when installing for everyone.** Setup is elevated and may be another account, so it can't see
-   whether registering worked.
-   - (a) Recommended: Setup starts `MarconiMcp --register ...` as the signed-in user (ShellExecAsUser), and
-     MarconiMcp shows its own message only if registering fails.
-   - (b) Setup skips the page when installing for everyone, and Marconi offers it the first time it starts.
-2. **One connection at a time** in the first version (recommended), or several named connections the AI switches
-   between.
-3. **Which general apps `Apps.json` starts with** besides the AI tools (Blender and Ollama were mentioned).
+None open. Answered 2026-11-13:
+
+1. **Registering when installing for everyone:** Setup starts `MarconiMcp --register ...` as the signed-in user
+   (ShellExecAsUser, as "Start Marconi now" does), and MarconiMcp shows its own message only if registering fails.
+2. **One connection at a time** for now, built so several can be added later: the connection lives in one object
+   the tools look up, so a later `connection` argument can pick between several without changing the tools.
+3. **`Apps.json` starts with** Claude Code, Codex, Claude Desktop, Blender and Ollama.
 
 ## 8. Not in this plan unless the owner asks
 
