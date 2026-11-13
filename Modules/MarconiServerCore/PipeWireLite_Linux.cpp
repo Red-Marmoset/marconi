@@ -61,8 +61,9 @@ namespace Marconi
                               Resolve(g_api.streamDequeue, "pw_stream_dequeue_buffer") &&
                               Resolve(g_api.streamQueue, "pw_stream_queue_buffer") &&
                               Resolve(g_api.streamSetActive, "pw_stream_set_active");
-                    // Only the test video source needs this one; the server never calls it.
+                    // Only the test video source needs these two; the server never calls them.
                     Resolve(g_api.streamTriggerProcess, "pw_stream_trigger_process");
+                    Resolve(g_api.streamGetNodeId, "pw_stream_get_node_id");
                     if (!ok)
                     {
                         g_error = "The PipeWire library on this computer is not a version Marconi Server understands.";
@@ -266,34 +267,44 @@ namespace Marconi
                     {
                         break;
                     }
+                    const uint32_t elementSize = ((value.size + 7) & ~7u);
+                    // A property may be wrapped in a choice (a list or range of values); the current value is the
+                    // first one. A format that has been agreed carries single-value "none" choices like this.
+                    SpaPod resolved = value;
+                    const uint8_t* resolvedBody = valueBody;
+                    if (value.type == kPodChoice && value.size >= 16)
+                    {
+                        std::memcpy(&resolved, valueBody + 8, sizeof(resolved));
+                        resolvedBody = valueBody + 16;
+                    }
                     auto read32 = [&](size_t offset) {
                         uint32_t v = 0;
-                        if (offset + 4 <= value.size)
+                        if (offset + 4 <= resolved.size)
                         {
-                            std::memcpy(&v, valueBody + offset, 4);
+                            std::memcpy(&v, resolvedBody + offset, 4);
                         }
                         return v;
                     };
                     switch (key)
                     {
-                        case kFormatMediaType: video = value.type == kPodId && read32(0) == kMediaTypeVideo; break;
-                        case kFormatMediaSubtype: raw = value.type == kPodId && read32(0) == kMediaSubtypeRaw; break;
+                        case kFormatMediaType: video = resolved.type == kPodId && read32(0) == kMediaTypeVideo; break;
+                        case kFormatMediaSubtype: raw = resolved.type == kPodId && read32(0) == kMediaSubtypeRaw; break;
                         case kFormatVideoFormat:
-                            if (value.type == kPodId)
+                            if (resolved.type == kPodId)
                             {
                                 out.format = read32(0);
                             }
                             break;
                         case kFormatVideoModifier: out.hasModifier = true; break;
                         case kFormatVideoSize:
-                            if (value.type == kPodRectangle)
+                            if (resolved.type == kPodRectangle)
                             {
                                 out.width = read32(0);
                                 out.height = read32(4);
                             }
                             break;
                         case kFormatVideoFramerate:
-                            if (value.type == kPodFraction)
+                            if (resolved.type == kPodFraction)
                             {
                                 out.framerateNum = read32(0);
                                 out.framerateDenom = read32(4);
@@ -301,7 +312,7 @@ namespace Marconi
                             break;
                         default: break;
                     }
-                    cursor += 16 + ((value.size + 7) & ~7u);
+                    cursor += 16 + elementSize;
                 }
                 return video && raw;
             }

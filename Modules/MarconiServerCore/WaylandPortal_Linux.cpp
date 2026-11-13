@@ -445,10 +445,12 @@ namespace Marconi
 
         void WaylandPortalSession::Monitor()
         {
+            // Looks for news without blocking and sleeps in between: while a read waits, a control call made from
+            // another thread would wait for it, and key presses must not.
             while (!m_stop.load())
             {
                 DBusMessageIn message;
-                if (m_link->Receive(message, 200))
+                if (m_link->Receive(message, 0))
                 {
                     if (message.type == DBusMessageIn::Type::Signal && message.interfaceName == kSession &&
                         message.member == "Closed" && message.path == m_sessionPath)
@@ -467,6 +469,10 @@ namespace Marconi
                     SetState(State::Ended, m_capture.GetFailure() + " Choose \"Check again\" in the Marconi Server "
                                                                     "tray menu to share again.");
                     return;
+                }
+                else
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 }
             }
         }

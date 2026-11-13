@@ -241,6 +241,8 @@ namespace Marconi
                 unsigned (*busAddMatch)(LdbConnection*, const char*, LdbError*) = nullptr;
                 int (*busRequestName)(LdbConnection*, const char*, unsigned, LdbError*) = nullptr;
                 const char* (*busGetUniqueName)(LdbConnection*) = nullptr;
+                char* (*iterGetSignature)(LdbIter*) = nullptr;
+                void (*dbusFree)(void*) = nullptr;
             };
 
             Libdbus g_lib;
@@ -304,7 +306,9 @@ namespace Marconi
                           Resolve(g_lib.popMessage, "dbus_connection_pop_message") &&
                           Resolve(g_lib.busAddMatch, "dbus_bus_add_match") &&
                           Resolve(g_lib.busRequestName, "dbus_bus_request_name") &&
-                          Resolve(g_lib.busGetUniqueName, "dbus_bus_get_unique_name");
+                          Resolve(g_lib.busGetUniqueName, "dbus_bus_get_unique_name") &&
+                          Resolve(g_lib.iterGetSignature, "dbus_message_iter_get_signature") &&
+                          Resolve(g_lib.dbusFree, "dbus_free");
                 if (!ok)
                 {
                     g_loadError = "The D-Bus library (libdbus-1) on this computer is not a version Marconi Server "
@@ -429,52 +433,17 @@ namespace Marconi
                 }
             }
 
-            std::string SignatureOfIter(LdbIter* iter);
-
-            // The signature of the value the iterator points at (needed for empty arrays' element types).
+            // The signature of the value the iterator points at ("a{sv}", "(ua{sv})"...), which libdbus works out
+            // even for an empty array.
             std::string SignatureOfIter(LdbIter* iter)
             {
-                int type = g_lib.iterArgType(iter);
-                switch (type)
+                char* signature = g_lib.iterGetSignature(iter);
+                std::string result = signature != nullptr ? signature : "";
+                if (signature != nullptr)
                 {
-                    case kTypeArray:
-                    {
-                        LdbIter sub;
-                        g_lib.iterRecurse(iter, &sub);
-                        // An empty array can't show its element type through the iterator's values; the element
-                        // type of the container is known, but only as a single character for basic types. Compound
-                        // element types are rebuilt from the first element, which is all the callers here need.
-                        int element = g_lib.iterElementType(iter);
-                        if (g_lib.iterArgType(&sub) != 0)
-                        {
-                            return "a" + SignatureOfIter(&sub);
-                        }
-                        return std::string("a") + static_cast<char>(element == kTypeDictEntry ? '{' : element);
-                    }
-                    case kTypeStruct:
-                    {
-                        std::string s = "(";
-                        LdbIter sub;
-                        g_lib.iterRecurse(iter, &sub);
-                        do
-                        {
-                            s += SignatureOfIter(&sub);
-                        } while (g_lib.iterNext(&sub) != 0);
-                        return s + ")";
-                    }
-                    case kTypeDictEntry:
-                    {
-                        std::string s = "{";
-                        LdbIter sub;
-                        g_lib.iterRecurse(iter, &sub);
-                        do
-                        {
-                            s += SignatureOfIter(&sub);
-                        } while (g_lib.iterNext(&sub) != 0);
-                        return s + "}";
-                    }
-                    default: return std::string(1, static_cast<char>(type));
+                    g_lib.dbusFree(signature);
                 }
+                return result;
             }
 
             DBusValue ReadValue(LdbIter* iter)
@@ -561,7 +530,7 @@ namespace Marconi
                     {
                         int fd = -1;
                         g_lib.iterGetBasic(iter, &fd);
-                        value = DBusValue::Fd(fd >= 0 ? dup(fd) : -1); // the message closes its own copy
+                        value = DBusValue::Fd(fd); // libdbus hands over a new descriptor: the caller closes it
                         break;
                     }
                     case kTypeVariant:
@@ -780,13 +749,26 @@ namespace Marconi
                         auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         deadline - std::chrono::steady_clock::now())
                                         .count();
-                        if (left <= 0)
+                        if (left < 0)
                         {
-                            return false;
+                            left = 0;
                         }
+                        // One round of reading and writing (a timeout of 0 still reads what has arrived). While it
+                        // waits, libdbus holds the connection's I/O, so a sender in another thread waits too: callers
+                        // that must not delay sends poll with a zero timeout and sleep in between.
                         if (g_lib.readWrite(m_connection, static_cast<int>(left < 50 ? left : 50)) == 0)
                         {
                             return false; // disconnected
+                        }
+                        LdbMessage* arrived = g_lib.popMessage(m_connection);
+                        if (arrived != nullptr)
+                        {
+                            Fill(arrived, out);
+                            return true;
+                        }
+                        if (left == 0)
+                        {
+                            return false;
                         }
                     }
                 }

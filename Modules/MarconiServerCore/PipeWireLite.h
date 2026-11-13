@@ -218,6 +218,7 @@ namespace Marconi
                 int (*streamQueue)(void*, PwBuffer*) = nullptr;
                 int (*streamSetActive)(void*, bool) = nullptr;
                 int (*streamTriggerProcess)(void*) = nullptr;
+                uint32_t (*streamGetNodeId)(void*) = nullptr;
             };
 
             // Loads libpipewire-0.3 (once). Null when it isn't installed or is too old; `error` says so in plain
