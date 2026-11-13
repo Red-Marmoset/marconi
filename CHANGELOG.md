@@ -5,9 +5,13 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
-## 0.10.3
+## 0.10.4
 
 - On this network finds Android phones and tablets that announce themselves, such as with droidVNC-NG.
+
+## 0.10.3
+
+- The installer's licence page starts with "I accept" ticked.
 
 ## 0.10.2
 

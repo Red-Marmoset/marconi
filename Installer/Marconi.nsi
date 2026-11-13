@@ -111,14 +111,14 @@ Var WasRunning    ; 1 when Setup closed a running ${APP_NAME} (it is started aga
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Open the source code on GitHub"
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
 
-; The MIT license. Its checkbox must be ticked before Next is enabled.
+; The MIT license, with its checkbox ticked to start with (LicenseShow); unticking it disables Next.
 !define MUI_LICENSEPAGE_CHECKBOX
 
 ; The copy started with administrator rights begins at the page after the choice.
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfRelaunched
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfRelaunched
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW ClearShield
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW LicenseShow
 !insertmacro MUI_PAGE_LICENSE "${STAGE_DIR}\LicensePage.txt"
 Page custom ModePageCreate ModePageLeave
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW ComponentsShow
@@ -293,6 +293,17 @@ FunctionEnd
 Function ClearShield
     GetDlgItem $0 $HWNDPARENT 1
     SendMessage $0 ${BCM_SETSHIELD} 0 0
+FunctionEnd
+
+; The license page starts with "I accept" ticked. Ticking it from here doesn't go through the click that enables
+; Next, so Next is enabled here too.
+Function LicenseShow
+    Call ClearShield
+    FindWindow $0 "#32770" "" $HWNDPARENT
+    GetDlgItem $0 $0 1034 ; the license page's checkbox
+    SendMessage $0 ${BM_SETCHECK} ${BST_CHECKED} 0
+    GetDlgItem $0 $HWNDPARENT 1
+    EnableWindow $0 1
 FunctionEnd
 
 Function UpdateShield
