@@ -510,6 +510,49 @@ authentication and logs every key, pointer and clipboard event it receives:
 `Tools/fake_vencrypt_server.py` is the same idea for encryption: it only accepts VeNCrypt over real TLS (a
 self-signed certificate, or anonymous TLS), then serves one frame and waits for a key press.
 
+## Testing the Windows service by hand
+
+`Tests/MarconiServerTest` covers the service's logic on any platform: which console session the helper should be in
+and when to restart it (fake session list and launcher), the messages between the tray icon and the helper and the
+administrator check for Set password (in-memory pipe), and the Lock message with lock on disconnect. What it cannot
+cover is Windows itself, so the Windows-only files (`ServiceHost_Windows.cpp`, `DesktopSwitch_Windows.cpp`,
+`ControlPipe_Windows.cpp`, `SystemLock_Windows.cpp` and the edits in `SystemScreen_Windows.cpp` and
+`SystemInput_Windows.cpp`) were written without a Windows machine and have never been built or run. On a Windows
+machine, build `Server\Project.json`, fix what the compiler says, then work through this list (an administrator
+prompt for each `MarconiServer.exe` command; the viewer is Marconi on another computer):
+
+1. **Helper by hand.** `psexec -s -i 1 MarconiServer.exe --session 1 --data-dir C:\Temp\ms` (session 1 is the console
+   session; use the number Task Manager's Users tab shows). Connect: the desktop shows, typing and clicking work.
+2. **Install.** `MarconiServer.exe --set-password` (type the password, then Enter) and `MarconiServer.exe
+   --install-service`. "Marconi Server" is running in Services; Task Manager shows `MarconiServer.exe` as SYSTEM in
+   the console session. Connect.
+3. **Control pipe.** `MarconiServer.exe --control-status` lists the connected viewer; `--control-disconnect 0` ends
+   it; `--control-set-password` from a normal prompt says it needs administrator permission, from an elevated one it
+   works and the new password is needed at the next connect.
+4. **Sign out.** With a viewer connected, sign out: the viewer reconnects (the helper restarts for the sign-in
+   screen) and the sign-in screen is visible and usable (type the password and sign in through Marconi).
+5. **Permission prompt (UAC).** Start something that asks for administrator permission: the dimmed prompt shows in
+   the viewer and Yes/No can be clicked. Also try it with the keyboard.
+6. **Lock screen.** Press Win+L at the computer, and from the viewer: the lock screen shows and the password can be
+   typed through Marconi.
+7. **Lock on disconnect.** With the Marconi viewer's "lock the other computer when I disconnect" on, disconnect: the
+   other computer locks. Then put `lock-on-disconnect=yes` in `C:\ProgramData\Marconi Server\server.conf`, restart
+   the service, connect from a viewer with the option off, close the window: it locks too. A viewer being ended from
+   the tray icon or `--control-disconnect` must not lock it.
+8. **Ctrl+Alt+Del.** From the viewer send Ctrl+Alt+Del (once at the sign-in screen, once signed in): the Windows
+   security screen appears. If it does not, check the registry value `SoftwareSASGeneration` under
+   `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System` (the installer sets 1) and report what the
+   Event Viewer says.
+9. **Switch user.** Use Start, then the user's picture, then another account: within a second or two the helper moves
+   to the new console session and the viewer reconnects to it. Switch back.
+10. **Remote Desktop.** Connect to the machine with Remote Desktop, then disconnect: whatever takes the console
+    session, Marconi follows it.
+11. **Restart.** Restart (not Shut down, which keeps part of the system with Fast Startup) with nobody signing in: from
+    the viewer, Marconi reconnects by itself to the sign-in screen. Note how long after the restart.
+12. **Crash and stop.** End the `MarconiServer.exe` helper in Task Manager: it is back in about a second; end it a
+    few times quickly: the waits grow to 30 seconds. Stop the service: the helper goes and the port closes.
+13. **Remove.** `MarconiServer.exe --remove-service` stops and removes it and the policy value.
+
 ## Encryption: how it works and what's left
 
 - `Modules/MarconiCore/Net/Tls.h` is the interface: `TlsStream` (handshake, read, write, shutdown, protocol name)

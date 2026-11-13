@@ -8,6 +8,7 @@
 #include <MarconiServerCore/ClipboardAccess.h>
 #include <MarconiServerCore/InputSink.h>
 
+#include <atomic>
 #include <condition_variable>
 #include <cstdio>
 #include <functional>
@@ -68,7 +69,13 @@ namespace MarconiServerTest
         void MovePointer(int32_t x, int32_t y, uint8_t buttons, int16_t wheel, int16_t wheelX) override;
         void SendKey(uint32_t keysym, uint32_t scancode, bool down) override;
         void TypeText(const std::string& utf8) override;
+        bool LockWorkstation() override
+        {
+            ++locks;
+            return true;
+        }
 
+        std::atomic<int> locks{0}; // how many times the session asked to lock the computer
         std::mutex mutex;
         struct PointerEvent
         {
@@ -144,4 +151,5 @@ namespace MarconiServerTest
     void RunX11Tests();
     void RunDisplayTests();
     void RunLinuxScreenTests();
+    void RunServiceTests();
 } // namespace MarconiServerTest

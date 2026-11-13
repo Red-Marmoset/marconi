@@ -25,14 +25,28 @@ namespace Marconi
 
             explicit Auth(std::string passwordHash) : m_passwordHash(std::move(passwordHash)) {}
 
-            bool HasPassword() const { return !m_passwordHash.empty(); }
+            bool HasPassword() const
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                return !m_passwordHash.empty();
+            }
+
+            // Replaces the password hash while the server runs (the tray icon's Set password). Clears the failure
+            // count and any lockout, since the new password starts fresh.
+            void SetPasswordHash(std::string passwordHash)
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_passwordHash = std::move(passwordHash);
+                m_failures = 0;
+                m_lockedUntil = std::chrono::steady_clock::time_point();
+            }
 
             // Checks one attempt. On too many recent failures it returns LockedOut without even hashing, so the
             // lockout can't be worn down by guessing fast.
             Result Check(const std::string& password, int& retryAfterSeconds);
 
         private:
-            std::mutex m_mutex;
+            mutable std::mutex m_mutex;
             std::string m_passwordHash;
             int m_failures = 0;
             std::chrono::steady_clock::time_point m_lockedUntil; // default-constructed: not locked

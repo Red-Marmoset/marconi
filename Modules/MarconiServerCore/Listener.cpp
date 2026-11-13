@@ -116,9 +116,20 @@ namespace Marconi
             Session session(transport, m_screen, m_input, m_settings, &m_auth);
             session.SetFrameIntervalMs(m_frameIntervalMs);
             session.SetClipboard(m_clipboard);
-            m_current = &session;
+            {
+                std::lock_guard<std::mutex> lock(m_currentMutex);
+                m_current = &session;
+                m_currentSocket = &client;
+                m_currentId = ++m_viewerCounter;
+                m_currentSince = std::chrono::steady_clock::now();
+            }
             session.Run();
-            m_current = nullptr;
+            {
+                // Taking the lock also waits out a GetViewer or DisconnectViewer that is using the session.
+                std::lock_guard<std::mutex> lock(m_currentMutex);
+                m_current = nullptr;
+                m_currentSocket = nullptr;
+            }
             client.Close();
             return true;
         }
@@ -139,12 +150,42 @@ namespace Marconi
         void Listener::Stop()
         {
             m_stop = true;
-            Session* current = m_current.load();
-            if (current != nullptr)
             {
-                current->Stop();
+                std::lock_guard<std::mutex> lock(m_currentMutex);
+                if (m_current != nullptr)
+                {
+                    m_current->Stop();
+                    m_currentSocket->Shutdown(); // wakes the session's blocked read so Run can return
+                }
             }
             m_listenSocket.Shutdown(); // wake a blocked Accept
+        }
+
+        bool Listener::GetViewer(ViewerSnapshot& viewer) const
+        {
+            std::lock_guard<std::mutex> lock(m_currentMutex);
+            if (m_current == nullptr || !m_current->IsLoggedIn())
+            {
+                return false; // nobody, or someone who hasn't passed the login yet
+            }
+            viewer.id = m_currentId;
+            viewer.name = m_current->GetViewerName();
+            auto seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() -
+                                                                           m_currentSince);
+            viewer.connectedSeconds = seconds.count() > 0 ? static_cast<uint32_t>(seconds.count()) : 0;
+            return true;
+        }
+
+        bool Listener::DisconnectViewer(uint32_t viewerId)
+        {
+            std::lock_guard<std::mutex> lock(m_currentMutex);
+            if (m_current == nullptr || (viewerId != 0 && viewerId != m_currentId))
+            {
+                return false;
+            }
+            m_current->Stop();
+            m_currentSocket->Shutdown(); // wakes the session's blocked read so Run can return
+            return true;
         }
     } // namespace Server
 } // namespace Marconi

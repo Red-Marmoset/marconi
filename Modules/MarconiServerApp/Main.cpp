@@ -12,6 +12,8 @@
 #include <MarconiServerCore/SystemScreen.h>
 #include <MarconiServerCore/TestPatternScreen.h>
 
+#include "ServerModes.h"
+
 #include <memory>
 
 #include <Log/Log.h>
@@ -39,6 +41,16 @@ namespace
         printf("  --key-file PATH       load the server's private key from PATH (made on first run with --cert-file)\n");
         printf("  --no-files            don't let viewers browse or copy this computer's files\n");
         printf("  --file-root PATH      let viewers reach only this folder (default: the whole computer)\n");
+        printf("  --lock-on-disconnect  lock this computer's screen when a viewer disconnects\n");
+        printf("  --service             run as the Windows service (started by Windows, not by hand)\n");
+        printf("  --session ID          the helper the service starts for console session ID\n");
+        printf("  --data-dir DIR        the settings and certificate folder for --session and --set-password\n");
+        printf("  --set-password        read a password from standard input and store its hash in the settings\n");
+        printf("  --install-service     (administrator) install the Windows service and start it [--no-start]\n");
+        printf("  --remove-service      (administrator) stop and remove the Windows service\n");
+        printf("  --control-status      ask the running helper who is connected (Windows service)\n");
+        printf("  --control-disconnect ID  end viewer ID's connection (0 = everyone)\n");
+        printf("  --control-set-password   change the password of the running helper (password on standard input)\n");
         printf("  --help                show this\n");
         printf("\nWithout --cert-file/--key-file the server makes a fresh certificate each run, so viewers are\n");
         printf("asked to trust it again every time. Point both at files to keep one identity across restarts.\n");
@@ -66,6 +78,22 @@ int main(int argc, char** argv)
     bool forceTestPattern = false;
     std::string certFile;
     std::string keyFile;
+    enum class Mode
+    {
+        Console,
+        Service,
+        Session,
+        SetPassword,
+        InstallService,
+        RemoveService,
+        Control
+    } mode = Mode::Console;
+    std::string dataDirectory;
+    unsigned consoleSession = 0;
+    std::string controlCommand;
+    unsigned controlViewerId = 0;
+    int portOverride = -1;
+    bool startServiceNow = true;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -79,6 +107,68 @@ int main(int argc, char** argv)
         {
             forceTestPattern = true;
         }
+        else if (arg == "--lock-on-disconnect")
+        {
+            settings.lockOnDisconnect = true;
+        }
+        else if (arg == "--service")
+        {
+            mode = Mode::Service;
+        }
+        else if (arg == "--session")
+        {
+            std::string value;
+            if (!TakeValue(argc, argv, i, "--session", value))
+            {
+                return 2;
+            }
+            mode = Mode::Session;
+            consoleSession = static_cast<unsigned>(std::strtoul(value.c_str(), nullptr, 10));
+        }
+        else if (arg == "--data-dir")
+        {
+            if (!TakeValue(argc, argv, i, "--data-dir", dataDirectory))
+            {
+                return 2;
+            }
+        }
+        else if (arg == "--set-password")
+        {
+            mode = Mode::SetPassword;
+        }
+        else if (arg == "--install-service")
+        {
+            mode = Mode::InstallService;
+        }
+        else if (arg == "--control-status")
+        {
+            mode = Mode::Control;
+            controlCommand = "status";
+        }
+        else if (arg == "--control-disconnect")
+        {
+            std::string value;
+            if (!TakeValue(argc, argv, i, "--control-disconnect", value))
+            {
+                return 2;
+            }
+            mode = Mode::Control;
+            controlCommand = "disconnect";
+            controlViewerId = static_cast<unsigned>(std::strtoul(value.c_str(), nullptr, 10));
+        }
+        else if (arg == "--control-set-password")
+        {
+            mode = Mode::Control;
+            controlCommand = "set-password";
+        }
+        else if (arg == "--no-start")
+        {
+            startServiceNow = false;
+        }
+        else if (arg == "--remove-service")
+        {
+            mode = Mode::RemoveService;
+        }
         else if (arg == "--port")
         {
             std::string value;
@@ -87,6 +177,7 @@ int main(int argc, char** argv)
                 return 2;
             }
             settings.port = static_cast<uint16_t>(std::atoi(value.c_str()));
+            portOverride = std::atoi(value.c_str());
         }
         else if (arg == "--name")
         {
@@ -171,6 +262,24 @@ int main(int argc, char** argv)
             PrintUsage();
             return 2;
         }
+    }
+
+    switch (mode)
+    {
+    case Mode::Service:
+        return Marconi::Server::RunServiceMode();
+    case Mode::Session:
+        return Marconi::Server::RunSessionMode(dataDirectory, consoleSession, forceTestPattern, portOverride);
+    case Mode::SetPassword:
+        return Marconi::Server::RunSetPasswordMode(dataDirectory);
+    case Mode::InstallService:
+        return Marconi::Server::RunInstallServiceMode(startServiceNow);
+    case Mode::RemoveService:
+        return Marconi::Server::RunRemoveServiceMode();
+    case Mode::Control:
+        return Marconi::Server::RunControlMode(controlCommand, controlViewerId);
+    case Mode::Console:
+        break;
     }
 
     // The real screen and input where this platform has them (Windows for now), unless --test-pattern was asked.

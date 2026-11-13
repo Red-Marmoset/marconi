@@ -15,6 +15,8 @@
 
 #include "SystemScreen.h"
 
+#include "DesktopSwitch.h"
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -233,6 +235,14 @@ namespace Marconi
 
                 bool Grab(Capture& out) override
                 {
+                    // Follow the desktop that receives input (UAC prompt, lock screen): the device contexts belong
+                    // to the desktop they were taken on, so they are taken again after a switch.
+                    if (FollowInputDesktop())
+                    {
+                        std::string ignored;
+                        Release();
+                        Open(ignored);
+                    }
                     MeasureVirtualScreen();
                     if (m_width <= 0 || m_height <= 0)
                     {

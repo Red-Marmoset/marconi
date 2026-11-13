@@ -177,6 +177,16 @@ namespace Marconi
             return message;
         }
 
+        Bytes Lock::Encode() const
+        {
+            return Build(Type::Lock, [](Writer&) {});
+        }
+
+        Lock Lock::Decode(Reader&)
+        {
+            return Lock();
+        }
+
         Bytes Displays::Encode() const
         {
             return Build(Type::Displays, [&](Writer& w) { WriteDisplayList(w, displays); });

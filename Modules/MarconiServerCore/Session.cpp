@@ -88,7 +88,30 @@ namespace Marconi
 
         void Session::Stop()
         {
+            m_stoppedByServer = true; // the server is ending this viewer, so it isn't a "viewer disconnected" lock
             m_stop = true;
+        }
+
+        std::string Session::GetViewerName() const
+        {
+            std::lock_guard<std::mutex> lock(m_nameMutex);
+            return m_viewerName;
+        }
+
+        void Session::LockComputer()
+        {
+            if (m_locked.exchange(true))
+            {
+                return; // already locked for this viewer
+            }
+            if (m_input.LockWorkstation())
+            {
+                LOG_INFO("Server", "Locked this computer's screen");
+            }
+            else
+            {
+                LOG_INFO("Server", "Could not lock this computer's screen (no way to lock here, or it failed)");
+            }
         }
 
         bool Session::Send(const Wire::Bytes& framed)
@@ -108,6 +131,10 @@ namespace Marconi
             }
             Wire::Hello hello = Wire::Hello::Decode(helloReader);
             m_clientCapabilities = hello.capabilities;
+            {
+                std::lock_guard<std::mutex> lock(m_nameMutex);
+                m_viewerName = hello.clientName;
+            }
             LOG_INFO("Server", "Viewer '%s' connected, protocol %u", hello.clientName.c_str(),
                      static_cast<unsigned>(hello.version));
 
@@ -169,6 +196,7 @@ namespace Marconi
             {
                 return false; // the viewer isn't allowed in (or the connection failed)
             }
+            m_loggedIn = true;
             return true;
         }
 
@@ -255,6 +283,10 @@ namespace Marconi
                         {
                             HandleClipboardData(Wire::ClipboardData::Decode(body));
                         }
+                        break;
+                    case Wire::Type::Lock:
+                        Wire::Lock::Decode(body);
+                        LockComputer();
                         break;
                     case Wire::Type::Bye:
                         m_stop = true;
@@ -727,6 +759,12 @@ namespace Marconi
             input.join();
             m_files->Stop();
             m_screen.RestoreDisplayModes(); // a changed screen size doesn't outlive the viewer
+            // A viewer that got in and then went away (not one the server itself ended) locks the screen when the
+            // setting says so.
+            if (m_loggedIn && m_settings.lockOnDisconnect && !m_stoppedByServer)
+            {
+                LockComputer();
+            }
         }
     } // namespace Server
 } // namespace Marconi

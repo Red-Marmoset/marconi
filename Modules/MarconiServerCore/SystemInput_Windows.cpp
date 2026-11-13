@@ -6,6 +6,9 @@
 
 #include "SystemInput.h"
 
+#include "DesktopSwitch.h"
+#include "SystemLock.h"
+
 #include <MarconiCore/Keysyms.h>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -98,6 +101,7 @@ namespace Marconi
             public:
                 void MovePointer(int32_t x, int32_t y, uint8_t buttons, int16_t wheel, int16_t wheelX) override
                 {
+                    FollowInputDesktop(); // the UAC prompt and lock screen take input on their own desktop
                     int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
                     int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
                     if (width < 2 || height < 2)
@@ -154,12 +158,33 @@ namespace Marconi
                     }
                 }
 
+                bool LockWorkstation() override { return LockThisComputer(); }
+
                 void SendKey(uint32_t keysym, uint32_t /*scancode*/, bool down) override
                 {
+                    FollowInputDesktop();
                     WORD vk = VkFromKeysym(keysym);
                     if (vk == 0)
                     {
                         return;
+                    }
+                    // Ctrl+Alt+Del can't be made with SendInput: Windows only honours it from the keyboard driver.
+                    // When Delete goes down with Ctrl and Alt held, ask for the secure attention sequence instead.
+                    if (vk == VK_LCONTROL || vk == VK_RCONTROL)
+                    {
+                        m_ctrlDown = down;
+                    }
+                    else if (vk == VK_LMENU || vk == VK_RMENU)
+                    {
+                        m_altDown = down;
+                    }
+                    else if (vk == VK_DELETE && m_ctrlDown && m_altDown)
+                    {
+                        if (down)
+                        {
+                            SendSecureAttention();
+                        }
+                        return; // neither the Delete down nor its up reaches the desktop
                     }
                     INPUT key = {};
                     key.type = INPUT_KEYBOARD;
@@ -174,6 +199,7 @@ namespace Marconi
 
                 void TypeText(const std::string& utf8) override
                 {
+                    FollowInputDesktop();
                     // Characters with no plain key: send them as Unicode, which doesn't depend on the layout.
                     std::wstring wide;
                     int needed = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
@@ -198,6 +224,8 @@ namespace Marconi
 
             private:
                 uint8_t m_buttons = 0;
+                bool m_ctrlDown = false; // for spotting Ctrl+Alt+Del
+                bool m_altDown = false;
             };
         } // namespace
 

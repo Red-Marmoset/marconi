@@ -58,6 +58,7 @@ namespace Marconi
             Ping = 5,        // either way: round-trip timing / keep-alive
             Pong = 6,        // the answer to a Ping, echoing its token
             Bye = 7,         // either way: closing cleanly, with a reason
+            Lock = 8,        // client -> server: lock the computer's screen now (sent before disconnecting)
 
             // Display and picture (control channel in Phase 1; video moves to datagrams in Phase 5)
             Displays = 16,       // server -> client: the layout of its displays
@@ -206,6 +207,15 @@ namespace Marconi
 
             Bytes Encode() const;
             static Bye Decode(Reader& reader);
+        };
+
+        // Asks the server to lock the computer it runs on (the login screen on Windows). It has no fields; the
+        // viewer sends it just before it disconnects when "lock the other computer on disconnect" is on. Only a
+        // viewer that has logged in can send it.
+        struct Lock
+        {
+            Bytes Encode() const;
+            static Lock Decode(Reader& reader);
         };
 
         struct Displays

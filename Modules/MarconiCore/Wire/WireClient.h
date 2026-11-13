@@ -74,6 +74,7 @@ namespace Marconi
             void SetQuality(int compressLevel, int qualityLevel) override;
             std::chrono::steady_clock::duration GetTimeSinceInput() const override;
             TrafficStats TakeTrafficStats() override;
+            bool SendLock() override;
 
             // File transfer with the server, once connected: true if the server agreed to it. The pointer stays
             // valid as long as this client does; its calls fail while there is no connection.

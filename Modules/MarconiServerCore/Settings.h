@@ -23,6 +23,11 @@ namespace Marconi
             // connection.
             std::string passwordHash;
 
+            // Lock this computer's screen whenever a viewer that has logged in disconnects (closes the window, loses
+            // the connection or says Bye), whether or not the viewer asked. Off by default. A viewer can still ask
+            // for a lock itself with the Lock message.
+            bool lockOnDisconnect = false;
+
             // The server's TLS identity, as PEM text: the certificate it presents and its private key. Every
             // connection is encrypted with it, and the client pins its fingerprint on first use. Empty means the
             // listener makes a fresh self-signed identity when it starts (its fingerprint then changes each run, so

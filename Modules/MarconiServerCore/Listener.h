@@ -13,6 +13,8 @@
 #include <MarconiCore/Net/Socket.h>
 
 #include <atomic>
+#include <chrono>
+#include <mutex>
 #include <string>
 
 namespace Marconi
@@ -21,6 +23,14 @@ namespace Marconi
     {
         // Listens on the settings' port and serves one viewer at a time (Phase 1; several at once comes later).
         // The screen and input are shared across connections, since there is one of each on this computer.
+        // Who is connected, for the tray icon.
+        struct ViewerSnapshot
+        {
+            uint32_t id = 0;
+            std::string name;
+            uint32_t connectedSeconds = 0;
+        };
+
         class Listener
         {
         public:
@@ -55,6 +65,16 @@ namespace Marconi
             // be shown to the person setting the server up. Empty before Start() or if the identity is bad.
             const std::string& GetCertificateFingerprint() const { return m_fingerprint; }
 
+            // The viewer that is connected and logged in, if any (one at a time for now). False when nobody is.
+            bool GetViewer(ViewerSnapshot& viewer) const;
+
+            // Changes the password logins are checked against while the server runs ("" = none).
+            void SetPasswordHash(const std::string& passwordHash) { m_auth.SetPasswordHash(passwordHash); }
+
+            // Ends the viewer with this id (from GetViewer), or the connected one when `viewerId` is 0. False if
+            // there was none to end.
+            bool DisconnectViewer(uint32_t viewerId);
+
         private:
             // Makes sure there is a usable TLS identity (generating a self-signed one if the settings have none)
             // and records its fingerprint. False (with `error`) if generation failed.
@@ -70,7 +90,12 @@ namespace Marconi
             int m_frameIntervalMs = 16;
             ClipboardAccess* m_clipboard = nullptr;
             std::atomic<bool> m_stop{false};
-            std::atomic<Session*> m_current{nullptr}; // the live session, so Stop() can end it
+            mutable std::mutex m_currentMutex; // guards the members below
+            Session* m_current = nullptr;      // the live session, so Stop() and DisconnectViewer can end it
+            Net::Socket* m_currentSocket = nullptr; // the live session's connection, shut down to end it
+            uint32_t m_currentId = 0;
+            uint32_t m_viewerCounter = 0;
+            std::chrono::steady_clock::time_point m_currentSince;
         };
     } // namespace Server
 } // namespace Marconi

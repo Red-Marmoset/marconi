@@ -625,6 +625,11 @@ namespace Marconi
             }
         }
 
+        bool Client::SendLock()
+        {
+            return Send(Lock().Encode());
+        }
+
         void Client::RequestFullUpdate()
         {
             // The server pushes the picture as it changes, so there is no update to ask for. A later refresh

@@ -16,6 +16,8 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 - Marconi Server shares the clipboard (text and pictures) with the viewer, both ways.
 - Marconi Server: shows each of the computer's screens separately, sends only the one you choose, and can change its screen size to fit your window and put it back when you leave.
 - Marconi Server: sends the mouse pointer's shape and position as they change.
+- Marconi connections lock the other computer's screen when you disconnect, if that option is on.
+- Marconi Server can run as a Windows service, so it keeps working at the sign-in screen and through permission prompts (written, not yet tried on Windows).
 
 ## 0.9.7
 

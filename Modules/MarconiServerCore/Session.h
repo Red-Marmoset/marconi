@@ -19,6 +19,7 @@
 #include <climits>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -52,6 +53,10 @@ namespace Marconi
             // Shares this computer's clipboard with the viewer (text and images, both ways). Null, the default,
             // leaves clipboard sharing off: the Welcome then doesn't grant it. Call before Run().
             void SetClipboard(ClipboardAccess* clipboard) { m_clipboard = clipboard; }
+            // The viewer's name from its Hello (empty before that), for the tray icon's status. Thread-safe.
+            std::string GetViewerName() const;
+            // True once the viewer has passed the login.
+            bool IsLoggedIn() const { return m_loggedIn; }
 
         private:
             bool Handshake(Wire::MessageReader& reader); // Hello/Welcome/Login/LoginResult; false if refused or lost
@@ -68,6 +73,7 @@ namespace Marconi
             void ApplyPendingRequests();                 // frame thread: display choice and size change from the viewer
             bool CheckLayout(bool force);                // frame thread: sends Displays if the layout changed
             void SendCursor();                           // frame thread: cursor shape (when new) and position (when moved)
+            void LockComputer(); // locks the screen through the input sink, once per viewer
 
             Wire::Transport& m_transport;
             ScreenSource& m_screen;
@@ -109,6 +115,11 @@ namespace Marconi
             int32_t m_lastCursorY = INT32_MIN;
             std::chrono::steady_clock::time_point m_lastLayoutCheck;
             std::atomic<bool> m_stop{false};
+            std::atomic<bool> m_stoppedByServer{false}; // Stop() was called, as opposed to the viewer leaving
+            std::atomic<bool> m_loggedIn{false};
+            std::atomic<bool> m_locked{false};
+            mutable std::mutex m_nameMutex;
+            std::string m_viewerName; // guarded by m_nameMutex
         };
     } // namespace Server
 } // namespace Marconi
