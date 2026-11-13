@@ -84,11 +84,6 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
 - **Phase 9 written, not run** 2026-11-13: `Package.sh` puts MarconiMcp, `Apps.json` and `marconi.mcpb` in
   `Marconi.app` and signs MarconiMcp before the bundle; nothing of it has been run on a Mac.
 
-**Testing on Windows:** `TestAiTools.bat`, run from any Marconi checkout, puts both branches in their own folders
-(git worktrees under `%LOCALAPPDATA%\MarconiAiToolsTest`, the engine one linked to your engine's modules and
-BuildTool), builds and runs the tests, then walks through Claude Code, the AI tools window and the installer;
-`TestAiTools.bat clean` removes the copies. Its flow was run under Wine with a stand-in git.
-
 **To ship** (as of 0.11.3): merge the engine's `claude/sweet-bell-nobab4` into its `main` (Marconi needs its
 `Process`, `AppDetect`, `Apps.json`, `Include/DetectApps.nsh` and the `PackageProject.ps1` change), then on a
 Windows PC run `Build.ps1`, MarconiCoreTest and `Package.ps1` (none of the PowerShell or MSVC builds has been run;
