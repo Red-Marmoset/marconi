@@ -8,6 +8,9 @@ Cross-platform VNC client. It's an out-of-tree una project; the engine lives at 
 The server component (Marconi Server) is planned in `SERVER_PLAN.md`: read it before working on the server, follow
 its phases in order, and keep it current (decisions, measurements, finished steps).
 
+`ROADMAP.md` lists every feature with its status (done, planned, idea) and the plan that covers it. Keep it current
+when a feature is finished or the owner adds an idea; ideas wait for the owner's go-ahead before anyone plans them.
+
 ## Working with the owner
 
 - **Don't fill gaps with assumptions** (the owner's rule). When you notice you're assuming something about what the
