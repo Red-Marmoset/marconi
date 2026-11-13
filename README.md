@@ -390,6 +390,22 @@ with neither picks the kind already installed, or everyone when run as administr
 `python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from
 `python Tools/make_installer_art.py`.
 
+## Releasing (Android)
+
+The three package scripts end by building the Android app too, when a release key is set (below) and the computer
+has the tools: a JDK, the Android SDK (`ANDROID_HOME`, or where Android Studio installs it), an NDK in the SDK's
+`ndk` folder or at `ANDROID_NDK_HOME`, and the engine's BuildTool. The result goes next to the installer, disk
+image or package:
+
+    Build/Installer/Marconi-0.9.4.107-android.apk
+
+Without the key or the tools the scripts say what is missing and carry on. `bash Apps/Android/Package.sh` (or
+`.\Apps\Android\Package.ps1`) builds just the app. The release key is a keystore file kept out of the repository:
+set `MARCONI_ANDROID_KEYSTORE` to its path and `MARCONI_ANDROID_KEYSTORE_PASSWORD` to its password, and, if they
+differ from the defaults, `MARCONI_ANDROID_KEY_ALIAS` (`marconi`) and `MARCONI_ANDROID_KEY_PASSWORD` (the
+keystore's). For a test build signed with the debug key, run `./gradlew assembleDebug` in `Apps/Android`. An app
+signed with a different key than the one installed has to be uninstalled first.
+
 ## Releasing (macOS)
 
     ./Package.sh                      # -> Build/Installer/Marconi-0.2.0.48-macos-arm64.dmg
@@ -399,11 +415,13 @@ signs it, and makes a disk image to drag it to Applications from. It takes `--cl
 `--allow-dirty`, which work like the Windows options. The app is built for the Mac's own architecture, and it needs
 that Mac's macOS version or newer.
 
-By default the app is signed ad-hoc, which is enough on the Mac that built it. On another Mac, macOS blocks a
-downloaded copy the first time. Try to open it, then click *Open Anyway* in *System Settings > Privacy & Security*.
-Copies shared by AirDrop or USB stick may be blocked too. For a release, set `MARCONI_SIGN_IDENTITY` to a Developer
-ID Application certificate, and set `MARCONI_NOTARY_PROFILE` to a profile from `xcrun notarytool store-credentials`.
-`Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the ticket.
+The app is signed with the Developer ID Application certificate in the Mac's keychain when there is exactly one
+(set `MARCONI_SIGN_IDENTITY` to choose between several, or to `-` for none). Without one it is signed ad-hoc, which
+is enough on the Mac that built it; on another Mac, macOS blocks a downloaded copy the first time. Try to open it,
+then click *Open Anyway* in *System Settings > Privacy & Security*. Copies shared by AirDrop or USB stick may be
+blocked too. For a release, also set `MARCONI_NOTARY_PROFILE` to a profile from `xcrun notarytool
+store-credentials`: `Package.sh` then signs with the hardened runtime, notarizes the disk image and staples the
+ticket.
 
 ## Releasing (Linux)
 

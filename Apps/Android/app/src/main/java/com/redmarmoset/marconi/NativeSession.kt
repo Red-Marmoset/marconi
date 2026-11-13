@@ -22,13 +22,21 @@ class NativeSession(private val listener: Listener) {
         fun askTrustSshHostKey(host: String, algorithm: String, fingerprint: String, previous: String): Boolean
     }
 
+    /** One of the server's displays, as it sits in the whole picture. */
+    data class Screen(val id: Int, val x: Int, val y: Int, val width: Int, val height: Int)
+
+    /** A computer found on the network. */
+    data class Found(val name: String, val host: String, val address: String, val port: Int, val protocol: String)
+
     private var handle: Long = create()
 
     // Every call checks the handle: a picture update queued on the main thread can arrive after close().
 
     /** Starts connecting; the outcome arrives through the listener. Returns a message if the address can't be used. */
-    fun connect(address: String, username: String, password: String, trustedCertificateHex: String): String? =
-        if (handle == 0L) "The session is closed." else connect(handle, address, username, password, trustedCertificateHex)
+    fun connect(address: String, username: String, password: String, trustedCertificateHex: String,
+                sshTunnel: Boolean, quality: Int): String? =
+        if (handle == 0L) "The session is closed."
+        else connect(handle, address, username, password, trustedCertificateHex, sshTunnel, quality, "Marconi for Android")
 
     fun disconnect() { if (handle != 0L) disconnect(handle) }
 
@@ -53,6 +61,20 @@ class NativeSession(private val listener: Listener) {
     fun requestFullUpdate() { if (handle != 0L) requestFullUpdate(handle) }
     fun isEncrypted(): Boolean = handle != 0L && isEncrypted(handle)
     fun encryptionName(): String = if (handle == 0L) "" else encryptionName(handle)
+    fun setQuality(quality: Int) { if (handle != 0L) setQuality(handle, quality) }
+    fun sendClipboardText(text: String): Boolean = handle != 0L && sendClipboardText(handle, text)
+    fun requestServerClipboard(): Boolean = handle != 0L && requestServerClipboard(handle)
+    fun supportsDesktopResize(): Boolean = handle != 0L && supportsDesktopResize(handle)
+    fun requestDesktopSize(width: Int, height: Int) { if (handle != 0L) requestDesktopSize(handle, width, height) }
+    fun roundTripMs(): Int = if (handle == 0L) -1 else roundTripMs(handle)
+    fun sendPing() { if (handle != 0L) sendPing(handle) }
+    fun isAppleServer(): Boolean = handle != 0L && isAppleServer(handle)
+
+    fun screens(): List<Screen> {
+        if (handle == 0L) return emptyList()
+        val values = screens(handle)
+        return (values.indices step 5).map { Screen(values[it], values[it + 1], values[it + 2], values[it + 3], values[it + 4]) }
+    }
 
     // Called from the native side, on the connection thread.
     @Suppress("unused") private fun onConnected(width: Int, height: Int, name: String) = listener.onConnected(width, height, name)
@@ -70,7 +92,8 @@ class NativeSession(private val listener: Listener) {
 
     private external fun create(): Long
     private external fun destroy(handle: Long)
-    private external fun connect(handle: Long, address: String, username: String, password: String, trustedCertificateHex: String): String?
+    private external fun connect(handle: Long, address: String, username: String, password: String, trustedCertificateHex: String,
+                                 sshTunnel: Boolean, quality: Int, clientName: String): String?
     private external fun disconnect(handle: Long)
     private external fun copyFramebuffer(handle: Long, bitmap: Bitmap, x: Int, y: Int, width: Int, height: Int): Boolean
     private external fun framebufferWidth(handle: Long): Int
@@ -80,6 +103,15 @@ class NativeSession(private val listener: Listener) {
     private external fun requestFullUpdate(handle: Long)
     private external fun isEncrypted(handle: Long): Boolean
     private external fun encryptionName(handle: Long): String
+    private external fun setQuality(handle: Long, quality: Int)
+    private external fun sendClipboardText(handle: Long, text: String): Boolean
+    private external fun requestServerClipboard(handle: Long): Boolean
+    private external fun screens(handle: Long): IntArray
+    private external fun supportsDesktopResize(handle: Long): Boolean
+    private external fun requestDesktopSize(handle: Long, width: Int, height: Int)
+    private external fun roundTripMs(handle: Long): Int
+    private external fun sendPing(handle: Long)
+    private external fun isAppleServer(handle: Long): Boolean
 
     companion object {
         // Rfb::CredentialsKind
@@ -96,6 +128,17 @@ class NativeSession(private val listener: Listener) {
 
         /** The keysym for a Unicode character (Marconi::Keysym::FromUnicode); 0 for control characters. */
         @JvmStatic external fun keysymForCodepoint(codepoint: Int): Int
+
+        /** Wakes a computer by its hardware address; returns a message when the call couldn't be sent. */
+        @JvmStatic external fun wake(macAddress: String): String?
+
+        /** Computers advertising screen sharing, Remote Desktop or SSH on this network. Blocks for [listenMs]. */
+        fun discover(listenMs: Int): List<Found> = discoverNative(listenMs).mapNotNull { line ->
+            val parts = line.split('\t')
+            if (parts.size < 5) null else Found(parts[0], parts[1], parts[2], parts[3].toIntOrNull() ?: 0, parts[4])
+        }
+
+        @JvmStatic private external fun discoverNative(listenMs: Int): Array<String>
 
         init {
             System.loadLibrary("Marconi")

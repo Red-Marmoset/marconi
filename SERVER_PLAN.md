@@ -27,7 +27,7 @@ How to use this document:
 
 ## Progress so far
 
-Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Linux against the real engine:
+Done and merged into `main`, each step building and tested on Linux against the real engine:
 
 - **Phase 1.1** The viewer talks to a `RemoteSession` interface; `Rfb::Client` implements it. No behaviour change.
 - **Phase 1.2** The protocol's byte layer: `MarconiCore/Wire` (little-endian stream, varints, the Phase 1
@@ -70,11 +70,10 @@ Done and on `claude/vigilant-hopper-tny37c`, each step building and tested on Li
   Built and run on Linux under a virtual display (test-pattern mode): it makes its identity, starts listening, and
   answers a client with the `MRCN` greeting. The Windows screen path still needs a run on a real Windows machine,
   as 1.6/1.7 note.
-- **Version** is bumped to **0.6.0** with changelog and README entries for the server.
 - **Naming:** the tray project is `MarconiServerTray` (output `Build/MarconiServerTray`) so it doesn't clash with
   the console `MarconiServer`. The installer phase decides the shipped program's name.
-- **Everything through 1.5 is merged into `main`; 1.9 is on the branch pending the owner's look.** `main` needs the
-  engine at e0cc258 or newer (for `Crypto::TlsServer`).
+- **Version history:** the server arrived in 0.6.0. The project is now at 0.9.7; no commit since 0.6.0 touches the
+  server's code or tests (the later versions are client, RDP, mobile and packaging work). It is all on `main`.
 
 Decisions taken as defaults under "get it done" (change any by editing section 1): port **1895**, `marconi://`,
 magic bytes `MRCN`, `Wire` namespace, one version for client and server. The server sends the four magic bytes
@@ -83,11 +82,21 @@ the instant a viewer connects, before the handshake, so a probe can identify it.
 Resequencing from the original plan: 1.8 (client) was done before 1.5 (TLS), since the transport is abstracted
 and TLS slots in later; the access password moved from 1.4 into 1.5, because it is checked inside TLS.
 
-Still to do in Phase 1, and why each waits:
+## Status at 0.9.7 (checked against the code)
 
-- **1.6 screen capture** and **1.7 input injection** are Windows-only (Desktop Duplication, `SendInput`); they
-  can't be built or tested in the Linux cloud container, so they need a Windows machine. Until that run confirms the
-  real screen works, 0.6.0 is a version in the code, not yet a release the owner has cut.
+Phase 1 is written but not finished:
+
+- **Not yet run on Windows.** `SystemScreen_Windows.cpp` (GDI grab) and `SystemInput_Windows.cpp` (`SendInput`)
+  exist but have never been built or run on a Windows machine; the `_Posix` versions are empty stubs, so on macOS
+  and Linux the server shows the test pattern. Phase 1's "done when" (two machines, `marconi://pc` shows the
+  desktop, typing and clicking work) has not been checked. The tray app has only been run under a virtual display
+  on Linux in test-pattern mode.
+- **Not in the server yet:** clipboard, file transfer, several displays, screen resizing, cursor shape (all
+  Phase 6), and the settings kept in `ProgramData` or the registry (it uses a per-user folder).
+- **Phases 2 to 8 have not been started.** There is no server installer (`Installer/` holds only the client's
+  `Marconi.nsi`), no service, no video encoder, no UDP, no gamepads and no macOS or Linux capture.
+- **Nothing measured yet:** the table in section 8 is empty.
+- **Next step:** run 1.6 and 1.7 on a Windows machine and fix what it shows, then Phase 2.
 
 ## 1. Decisions needed from the owner
 

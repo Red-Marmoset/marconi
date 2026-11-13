@@ -25,7 +25,10 @@ it before working on that, follow its phases in order, and keep it current.
 - **App:** `.\Build.ps1 [-Config Debug] [-Clean]` (Windows) or `./Build.sh` (macOS/Linux). Output goes to
   `Build/Marconi/<Config>/`.
 - **Android:** `./gradlew assembleDebug` in `Apps/Android` (runs `Build.sh`/`Build.ps1` with `--platform Android`
-  first; needs `ANDROID_HOME` or `ANDROID_NDK_HOME`). **iPad:** `bash Apps/iPad/GenerateProject.sh`, then Xcode.
+  first; needs `ANDROID_HOME` or `ANDROID_NDK_HOME`). **iPad:** `bash Apps/iPad/GenerateProject.sh` (with
+  `UNA_IOS_TEAM_ID` set for signing), then Xcode, or `bash Apps/iPad/Build.sh ["device name" | --simulator]` on a
+  Mac, which names the destination (a bare `xcodebuild` may pick the Mac and fail to sign).
+  `Tools/make_app_icon.py` also draws the iOS icon.
 - **Tests:** `.\Build.ps1 -Project Tests\MarconiCoreTest\Project.json -Config Debug -Clean`, then run
   `Build\MarconiCoreTest\Debug\MarconiCoreTest.exe`. The exit code is the number of failures.
 - **Building an engine test from here:** `-Project C:\code\engine\Tests\CryptoTest\Project.json` works too; output
@@ -66,6 +69,15 @@ it before working on that, follow its phases in order, and keep it current.
   `Installer/Linux/marconi.desktop`, the icons from `Installer/Linux/icons` (also made by `make_app_icon.py`), the
   fonts in `/usr/share/marconi`. Its dependencies come from `dpkg-shlibdeps` (package `dpkg-dev`); its maintainer
   is the owner's address in `Package.sh` unless `MARCONI_DEB_MAINTAINER` overrides it.
+- **Android app package:** `Package.ps1` and `Package.sh` end by running `Apps/Android/Package.ps1` or `.sh`, which
+  builds the release app with Gradle, signed with the key in `MARCONI_ANDROID_KEYSTORE`, as
+  `Build/Installer/Marconi-<version>-android.apk` when that key is set and a JDK, the Android SDK, an NDK and
+  BuildTool are found, and says what is missing otherwise without failing the desktop package.
+- **Signing variables:** the `signing` section of `Project.json` names the environment variable each signing input
+  is read from (the Windows certificate, the macOS identity and notary profile, the Android keystore, its passwords
+  and alias, the Linux maintainer). The packaging scripts and Gradle ask the engine's BuildTool for the names
+  (`--signing-env`; `Tools/SigningSettings.sh` for bash), so rename a variable there, not in the scripts. Passwords
+  are only ever named, never written to a file or printed. The engine's `Packaging/README.md` describes the section.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
   logs every input event it receives. `Tools/fake_vencrypt_server.py` is the same for encrypted (VeNCrypt over TLS)
   connections, and `Tools/TlsStream_OpenSSL.cpp` is the reference TLS stream it was checked against (not built).

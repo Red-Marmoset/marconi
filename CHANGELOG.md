@@ -5,6 +5,35 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.7
+
+- The package scripts build the Android app only when its release key is set.
+
+## 0.9.6
+
+- The macOS disk image is signed with the Developer ID certificate on the Mac when there is one.
+
+## 0.9.5
+
+- The iPad and iPhone app has Marconi's icon, carries the version number, and signs with the team set on the Mac.
+
+## 0.9.4
+
+- The package scripts also build the Android app, next to the installer, disk image or package, when the Android tools are installed.
+
+## 0.9.3
+
+- Fixed the Android app closing as soon as it opened.
+
+## 0.9.2
+
+- The Android app now has the desktop's start screen and choices: quick connect, saved connections with favourites, groups, notes, remembered passwords and search, computers found on the network, wake-up calls, and the viewer's menu with zoom, displays, picture quality, view only, the clipboard both ways, sent keys and screenshots.
+- The Android app wears Marconi's own look: its icon, colours, fonts and a light, dark or system appearance.
+
+## 0.9.1
+
+- The Android app keeps a list of computers: add one with its name, address and user name, tap it to connect, touch and hold to change or remove it.
+
 ## 0.9.0
 
 - Marconi runs on Android phones and tablets (`Apps/Android`) and on iPad and iPhone (`Apps/iPad`), for VNC, VNC through SSH and Marconi servers.

@@ -1,4 +1,5 @@
 # Package.ps1 - Build the Windows installer: Build\Installer\Marconi-<version>-win64-setup.exe
+# and, when this computer has the Android tools, the Android app: Build\Installer\Marconi-<version>-android.apk
 #
 # Runs the una engine's Packaging\PackageProject.ps1, which every una project packages with. Project.json's "package"
 # section says what goes in: Marconi.exe (built Release by Build.ps1), Nebula Sans and its licence, and the MSVC
@@ -12,7 +13,8 @@
 #
 # Signing: unsigned by default, which makes Windows warn before running the installer and Marconi. To publish, sign
 # with a code-signing certificate from the current user's certificate store (where a hardware token's certificate
-# shows up):
+# shows up). Project.json's "signing" section names these environment variables (windows.thumbprintEnv; the
+# timestamp variable's name follows from it):
 #   MARCONI_SIGN_THUMBPRINT=<the certificate's SHA-1 thumbprint>
 #   MARCONI_SIGN_TIMESTAMP_URL=<RFC 3161 timestamp server>   optional; http://timestamp.digicert.com by default
 # signtool (Windows SDK) then signs Marconi.exe, the uninstaller and the setup executable, with a timestamp so the
@@ -39,5 +41,15 @@ if (-not (Test-Path $script)) {
     Write-Host "ERROR: the una engine at $engine has no Packaging\PackageProject.ps1. Update it (git pull), or set UNA_ENGINE_PATH." -ForegroundColor Red
     exit 1
 }
+# Project.json names the signing variables in its "signing" section, which an older engine doesn't read: it would
+# make an unsigned installer without saying why.
+if (-not (Select-String -LiteralPath $script -Pattern 'thumbprintEnv' -SimpleMatch -Quiet)) {
+    Write-Host "ERROR: the una engine at $engine is too old to read Project.json's signing section. Update it (git pull)." -ForegroundColor Red
+    exit 1
+}
 & $script -ProjectDir $PSScriptRoot -NoZip -Clean:$Clean -SkipBuild:$SkipBuild -AllowDirty:$AllowDirty
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# The Android app too, beside the installer, when this computer has the Android tools (see Apps\Android\Package.ps1).
+& "$PSScriptRoot\Apps\Android\Package.ps1" -Clean:$Clean
 exit $LASTEXITCODE

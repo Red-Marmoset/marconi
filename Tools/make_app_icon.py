@@ -8,6 +8,9 @@
 #   Installer/Linux/icons/hicolor/<size>x<size>/apps/marconi.png
 #                                              the Linux package's icons (Package.sh), one PNG per size in the layout
 #                                              /usr/share/icons expects
+#   Apps/iPad/Assets.xcassets/AppIcon.appiconset/Icon-1024.png
+#                                              the iPad and iPhone app's icon: the mark on a white square with no
+#                                              transparency, as iOS wants (it rounds the corners itself)
 #
 # It draws the same picture as Modules/MarconiUI/AppIcon.cpp (the runtime window icon), so keep the two in step.
 # Needs Pillow: pip install pillow
@@ -60,6 +63,14 @@ def draw_mac_icon(size):
     return image
 
 
+def draw_ios_icon(size):
+    image = Image.new("RGBA", (size, size), (255, 255, 255, 255))
+    mark = draw_icon(round(size * 0.78))
+    offset = (size - mark.width) // 2
+    image.alpha_composite(mark, (offset, offset + round(size * 0.02)))
+    return image.convert("RGB")
+
+
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     resources = os.path.join(root, "Modules", "MarconiUI", "Resources")
@@ -76,6 +87,10 @@ def main():
     images = [draw_mac_icon(size) for size in MAC_SIZES]
     images[-1].save(icns, format="ICNS", append_images=images[:-1])
     print("Wrote " + icns)
+
+    icon_set = os.path.join(root, "Apps", "iPad", "Assets.xcassets", "AppIcon.appiconset")
+    os.makedirs(icon_set, exist_ok=True)
+    draw_ios_icon(1024).save(os.path.join(icon_set, "Icon-1024.png"), format="PNG", optimize=True)
 
     for size in LINUX_SIZES:
         folder = os.path.join(root, "Installer", "Linux", "icons", "hicolor", "%dx%d" % (size, size), "apps")

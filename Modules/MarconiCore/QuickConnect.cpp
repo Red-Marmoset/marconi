@@ -29,6 +29,9 @@ namespace Marconi
         connection.credentials.username = address.username;
         connection.credentials.password = options.password;
         connection.trustedCertificateSha256 = options.trustedCertificateSha256;
+        const QualitySettings quality = SettingsFor(options.quality);
+        connection.compressLevel = quality.compressLevel;
+        connection.qualityLevel = quality.qualityLevel;
         if (address.protocol == Protocol::Ssh)
         {
             // Through the computer's SSH server (on the address's port, if any) to the VNC server on its usual port.
@@ -39,6 +42,12 @@ namespace Marconi
         else
         {
             connection.port = EffectivePort(address);
+            if (options.sshTunnel)
+            {
+                // A saved connection's choice: through the SSH server on its usual port to the address's VNC port.
+                connection.sshTunnel = true;
+                connection.sshPort = DefaultPort(Protocol::Ssh);
+            }
         }
         return connection;
     }

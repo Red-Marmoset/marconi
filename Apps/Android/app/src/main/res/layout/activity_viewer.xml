@@ -1,41 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black"
-    android:orientation="vertical">
+    android:background="@android:color/black">
 
-    <com.redmarmoset.marconi.RemoteView
-        android:id="@+id/remote"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-    <HorizontalScrollView
-        android:id="@+id/keyBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="#202020"
-        android:scrollbars="none">
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/marconi_overlay"
+            app:subtitleTextColor="#B2BCC9"
+            app:titleTextAppearance="@style/TextAppearance.Marconi.Heading"
+            app:titleTextColor="#F2F4F7" />
 
-        <LinearLayout
-            android:layout_width="wrap_content"
+        <com.redmarmoset.marconi.RemoteView
+            android:id="@+id/remote"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <HorizontalScrollView
+            android:id="@+id/keyBar"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:background="@color/marconi_overlay"
+            android:scrollbars="none"
+            android:visibility="gone">
 
-            <Button android:id="@+id/keyboard" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/keyboard" />
-            <ToggleButton android:id="@+id/keyCtrl" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOff="Ctrl" android:textOn="Ctrl" />
-            <ToggleButton android:id="@+id/keyAlt" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOff="Alt" android:textOn="Alt" />
-            <ToggleButton android:id="@+id/keyShift" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOff="Shift" android:textOn="Shift" />
-            <Button android:id="@+id/keyEsc" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Esc" />
-            <Button android:id="@+id/keyTab" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tab" />
-            <Button android:id="@+id/keyUp" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="↑" />
-            <Button android:id="@+id/keyDown" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="↓" />
-            <Button android:id="@+id/keyLeft" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="←" />
-            <Button android:id="@+id/keyRight" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="→" />
-            <Button android:id="@+id/keyDel" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Del" />
-            <Button android:id="@+id/keyWin" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Win" />
-            <Button android:id="@+id/disconnect" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/disconnect" />
-        </LinearLayout>
-    </HorizontalScrollView>
-</LinearLayout>
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <ToggleButton android:id="@+id/keyCtrl" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOff="Ctrl" android:textOn="Ctrl" />
+                <ToggleButton android:id="@+id/keyAlt" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOff="Alt" android:textOn="Alt" />
+                <ToggleButton android:id="@+id/keyShift" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textOff="Shift" android:textOn="Shift" />
+                <Button android:id="@+id/keyEsc" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Esc" />
+                <Button android:id="@+id/keyTab" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tab" />
+                <Button android:id="@+id/keyUp" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="↑" />
+                <Button android:id="@+id/keyDown" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="↓" />
+                <Button android:id="@+id/keyLeft" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="←" />
+                <Button android:id="@+id/keyRight" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="→" />
+                <Button android:id="@+id/keyDel" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Del" />
+                <Button android:id="@+id/keyWin" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Win" />
+                <Button android:id="@+id/keyF8" style="@style/Widget.Material3.Button.TextButton" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="F8" />
+            </LinearLayout>
+        </HorizontalScrollView>
+    </LinearLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/menuButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:alpha="0.75"
+        android:contentDescription="@string/menu_zoom"
+        android:src="@drawable/ic_menu"
+        android:visibility="gone"
+        app:fabSize="mini" />
+</FrameLayout>

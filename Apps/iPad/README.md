@@ -24,12 +24,20 @@ BuildTool bootstrapped (the engine and BuildTool revisions this app was made wit
    The script goes through `Build.sh`, which writes the version header the core needs, then runs
    `BuildTool --generate-xcode --platform iOS Apps/iPad/Project.json`. Rerun it after a source, manifest or version
    change; it resets signing settings, so choose your team again afterwards.
-3. In Xcode, select the **Marconi** target, then **Signing & Capabilities**, and choose your development team (a
-   personal Apple ID installs on your own device). Change the bundle identifier if yours must be unique.
+3. The project names the Red Marmoset development team (`developmentTeam` in `Project.json`), so Xcode signs it
+   straight away. Under another team, change that value, or remove it and set `UNA_IOS_TEAM_ID` on the Mac, which
+   the generator uses when a project names none. The bundle identifier is `com.RedMarmosetStudios.Marconi`, in
+   the style of the Soccer Boy app; change it in `Project.json` if yours must differ.
 4. Connect the iPad or iPhone, trust the Mac on it, turn on Developer Mode if asked, select it as the run
    destination and press Run. Use the Release configuration for a smooth picture.
 
-To check that it compiles without a device or signing:
+From the command line, `bash Apps/iPad/Build.sh` generates the project, builds it and installs it on the iPad or
+iPhone that is connected (with none connected it just builds; with several it lists them, and
+`bash Apps/iPad/Build.sh "<name>"` picks one). Always go through it, or name a
+destination yourself: a bare `xcodebuild` may pick the Mac as the place to run, which the team's provisioning
+profile doesn't cover.
+
+To check that it compiles without a device or signing (`bash Apps/iPad/Build.sh --simulator` does the same):
 
 ```sh
 xcodebuild -project Build/Xcode/Marconi/Marconi.xcodeproj -scheme Marconi -configuration Release \
@@ -47,6 +55,13 @@ to drag with the left button. One finger moves the pointer, two fingers move and
 bar at the bottom shows the keyboard and has Esc, Tab, the arrows and Del; Ctrl, Alt, Shift and Cmd stay pressed
 for the next key. A hardware keyboard works too. Text the other computer copies goes to the clipboard. Links of
 the form `vnc://host` and `marconi://host` open in the app.
+
+## Version and icon
+
+The app's version is the one in the root `Project.json` (through `versionFrom`) and its build number is the commit
+count, the same numbering as the desktop builds; rerun the generation after a version change. The icon is
+`Assets.xcassets/AppIcon.appiconset/Icon-1024.png`, drawn by `python Tools/make_app_icon.py` along with the
+desktop icons: the Marconi mark on white, which iOS rounds itself.
 
 ## What was and wasn't checked
 

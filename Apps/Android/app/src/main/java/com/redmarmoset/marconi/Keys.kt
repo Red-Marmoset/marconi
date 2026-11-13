@@ -20,6 +20,7 @@ object Keys {
     const val PAGE_DOWN = 0xff56
     const val END = 0xff57
     const val INSERT = 0xff63
+    const val PRINT = 0xff61
     const val F1 = 0xffbe
     const val SHIFT_L = 0xffe1
     const val CONTROL_L = 0xffe3

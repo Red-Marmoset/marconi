@@ -2,6 +2,8 @@
 # Package.sh - Build the release package for this computer's operating system:
 #   macOS:  Build/Installer/Marconi-<version>-macos-<arch>.dmg
 #   Linux:  Build/Installer/Marconi-<version>-linux-<arch>.deb
+# and, when this computer has the Android tools, the Android app too (see Apps/Android/Package.sh):
+#   Build/Installer/Marconi-<version>-android.apk
 #
 # Both start by building the Release app with Build.sh and checking that the build is the current source's version.
 #
@@ -9,10 +11,12 @@
 # Sans in Contents/Resources), signs it and puts it on a disk image beside an Applications shortcut, so it installs
 # by dragging.
 #
-# Signing: ad-hoc by default, which runs on the Mac that built it. On another Mac, Gatekeeper blocks a downloaded
-# copy until it's allowed in System Settings > Privacy & Security ("Open Anyway"). To publish, sign with a
-# Developer ID and notarize:
-#   MARCONI_SIGN_IDENTITY="Developer ID Application: Red Marmoset Studios Ltd. (TEAMID)"
+# Signing: with the Developer ID Application certificate in this Mac's keychain when there is exactly one, else
+# ad hoc, which runs on the Mac that built it (on another Mac, Gatekeeper blocks a downloaded copy until it's
+# allowed in System Settings > Privacy & Security, "Open Anyway"). To choose a certificate, or to notarize, which
+# publishing needs, set the environment variables Project.json's "signing" section names (macos.identityEnv and
+# macos.notaryProfileEnv):
+#   MARCONI_SIGN_IDENTITY="Developer ID Application: Red Marmoset Studios Ltd. (TEAMID)"   or "-" for ad hoc
 #   MARCONI_NOTARY_PROFILE=<profile>   from: xcrun notarytool store-credentials <profile>
 #
 # Linux: makes a Debian package (.deb), which installs on Ubuntu, Debian and the distributions based on them with
@@ -22,7 +26,8 @@
 # from /usr/bin) and the licence and changelog in /usr/share/doc/marconi. The package depends on the system
 # libraries the app links against, worked out by dpkg-shlibdeps (from the dpkg-dev package), so it needs a build
 # machine no newer than the oldest release it should install on. The package is not signed.
-#   MARCONI_DEB_MAINTAINER="Name <email>"   the package's Maintainer field, if not the owner's below
+#   MARCONI_DEB_MAINTAINER="Name <email>"   the package's Maintainer field, if not the owner's below (the variable
+#                                           Project.json's signing section names as linux.maintainerEnv)
 #
 # The version is MAJOR.MINOR.PATCH from Project.json plus the revision, the number of commits in the history (see
 # README.md). Release builds should come from a clean, full clone so the version identifies the source exactly.
@@ -89,6 +94,11 @@ if [[ $SKIP_BUILD -eq 0 ]]; then
     bash "$ROOT/Build.sh" "${BUILD_ARGS[@]}"
 fi
 
+# Which environment variables hold the signing inputs is Project.json's to say; BuildTool reads it.
+source "$ROOT/Tools/SigningSettings.sh"
+find_buildtool
+[[ -n "$BUILDTOOL" ]] || fail "no BuildTool under ${UNA_ENGINE_PATH:-$ROOT/../engine}/Build/BuildTool (bootstrap the engine, or set UNA_ENGINE_PATH)."
+
 EXE="$ROOT/Build/Marconi/Release/Marconi"
 [[ -x "$EXE" ]] || fail "$EXE not found. Run without --skip-build."
 
@@ -142,7 +152,17 @@ package_macos() {
         "$ROOT/Assets/Fonts/NebulaSans-LICENSE.txt" "$app/Contents/Resources/"
     cp "$ROOT/LICENSE" "$app/Contents/Resources/LICENSE.txt"
 
-    IDENTITY="${MARCONI_SIGN_IDENTITY:--}"
+    # The Developer ID certificate in the keychain, when there is exactly one and no choice was made
+    IDENTITY="$(signing_input macos.identity)"
+    if [[ -z "$IDENTITY" ]]; then
+        local found
+        found="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | tr -d '"' | sort -u || true)"
+        if [[ -n "$found" && "$(wc -l <<< "$found")" -eq 1 ]]; then
+            IDENTITY="$found"
+        else
+            IDENTITY="-"
+        fi
+    fi
     if [[ "$IDENTITY" == "-" ]]; then
         codesign --force --sign - "$app"
     else
@@ -164,8 +184,10 @@ package_macos() {
 
     if [[ "$IDENTITY" != "-" ]]; then
         codesign --force --timestamp --sign "$IDENTITY" "$OUT_FILE"
-        if [[ -n "${MARCONI_NOTARY_PROFILE:-}" ]]; then
-            xcrun notarytool submit "$OUT_FILE" --keychain-profile "$MARCONI_NOTARY_PROFILE" --wait
+        local notaryProfile
+        notaryProfile="$(signing_input macos.notaryProfile)"
+        if [[ -n "$notaryProfile" ]]; then
+            xcrun notarytool submit "$OUT_FILE" --keychain-profile "$notaryProfile" --wait
             xcrun stapler staple "$OUT_FILE"
         fi
     fi
@@ -181,7 +203,8 @@ package_linux() {
     fi
 
     local maintainer
-    maintainer="${MARCONI_DEB_MAINTAINER:-Sem Essessi <sem.essessi@redmarmosetstudios.com>}"
+    maintainer="$(signing_input linux.maintainer)"
+    [[ -n "$maintainer" ]] || maintainer="Sem Essessi <sem.essessi@redmarmosetstudios.com>"
 
     local arch stageDir pkg
     arch="$(dpkg --print-architecture)"
@@ -276,3 +299,10 @@ else
         echo "To mark the release: git tag v$VERSION; git push origin v$VERSION"
     fi
 fi
+
+# The Android app too, beside the package, when this computer has the Android tools.
+ANDROID_ARGS=()
+if [[ $CLEAN -eq 1 ]]; then
+    ANDROID_ARGS+=(--clean)
+fi
+bash "$ROOT/Apps/Android/Package.sh" "${ANDROID_ARGS[@]}"

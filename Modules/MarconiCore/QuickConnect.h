@@ -6,6 +6,7 @@
 #pragma once
 
 #include <MarconiCore/Address.h>
+#include <MarconiCore/Quality.h>
 #include <MarconiCore/RemoteSession.h>
 #include <MarconiCore/Rfb/Client.h>
 #include <MarconiCore/Wire/WireClient.h>
@@ -24,6 +25,9 @@ namespace Marconi
         std::string password; // sent first; the listener is asked when it's missing or refused
         std::vector<uint8_t> trustedCertificateSha256; // a certificate accepted before (see OnUntrustedCertificate)
         std::string clientName = "Marconi";             // what a Marconi server shows in its log
+        // VNC through the computer's SSH server, as an "ssh://" address does, whatever the address says.
+        bool sshTunnel = false;
+        PictureQuality quality = PictureQuality::Balanced;
     };
 
     // Starts connecting on a worker thread and returns the session, whose picture, input and callbacks work as

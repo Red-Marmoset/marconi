@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop app's light palette (MarconiUI/Appearance.cpp) -->
+<resources>
+    <color name="marconi_background">#FAFBFD</color>
+    <color name="marconi_surface">#FFFFFF</color>
+    <color name="marconi_text">#1B232F</color>
+    <color name="marconi_muted">#576578</color>
+    <color name="marconi_border">#D7DDE6</color>
+    <color name="marconi_accent">#B22234</color>
+    <color name="marconi_selection">#FAE7EA</color>
+    <color name="marconi_icon_background">#FAFBFD</color>
+    <color name="marconi_overlay">#CC22262B</color>
+</resources>

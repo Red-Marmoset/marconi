@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/marconi_background">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/marconi_background"
+        app:elevation="0dp">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/marconi_background"
+            app:navigationIcon="@drawable/ic_back"
+            app:titleTextAppearance="@style/TextAppearance.Marconi.Heading" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView style="@style/Marconi.Heading" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="0dp" android:text="@string/section_connection" />
+
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/shown_in_list_as">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/name" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textCapWords" android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="@string/group" style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+                <com.google.android.material.textfield.MaterialAutoCompleteTextView android:id="@+id/group" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textCapWords" android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="@string/address" app:helperText="@string/address_help">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/address" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textUri|textNoSuggestions" android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="@string/login_name" app:helperText="@string/login_name_help">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/username" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="text|textNoSuggestions" android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="@string/password" app:endIconMode="password_toggle">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/password" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textPassword" android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/rememberPassword" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/remember_password" />
+            <TextView android:id="@+id/noPasswordStore" style="@style/Marconi.Muted" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/no_password_store" android:visibility="gone" />
+
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="@string/hardware_address" app:helperText="@string/hardware_address_help">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/mac" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textCapCharacters|textNoSuggestions" android:singleLine="true" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="@string/notes">
+                <com.google.android.material.textfield.TextInputEditText android:id="@+id/notes" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textMultiLine|textCapSentences" android:minLines="2" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/favourite" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/favourite" />
+
+            <TextView style="@style/Marconi.Heading" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/section_viewer" />
+
+            <TextView style="@style/Marconi.Muted" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/size" />
+            <RadioGroup android:id="@+id/scale" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/scaleFit" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="@string/scale_fit" />
+                <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/scaleActual" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/scale_actual" />
+            </RadioGroup>
+
+            <TextView style="@style/Marconi.Muted" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/picture" />
+            <RadioGroup android:id="@+id/quality" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+                <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/qualityBest" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/quality_best" />
+                <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/qualityBalanced" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="@string/quality_balanced" />
+                <com.google.android.material.radiobutton.MaterialRadioButton android:id="@+id/qualityLow" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/quality_low" />
+            </RadioGroup>
+
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/viewOnly" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/view_only" />
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/clipboard" android:layout_width="match_parent" android:layout_height="wrap_content" android:checked="true" android:text="@string/share_clipboard" />
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/lock" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/lock_on_disconnect" />
+            <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/sshTunnel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ssh_tunnel" />
+            <TextView style="@style/Marconi.Muted" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingLeft="4dp" android:text="@string/ssh_tunnel_help" />
+
+            <Button android:id="@+id/connect" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:fontFamily="@font/nebula_sans_semibold" android:text="@string/save_and_connect" />
+            <Button android:id="@+id/save" style="@style/Widget.Material3.Button.OutlinedButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:fontFamily="@font/nebula_sans_semibold" android:text="@string/save" />
+            <Button android:id="@+id/delete" style="@style/Widget.Material3.Button.TextButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/delete" android:textColor="@color/marconi_accent" android:visibility="gone" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

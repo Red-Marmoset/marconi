@@ -56,6 +56,21 @@ namespace MarconiTest
             CHECK(vnc.port == 5900);
         });
 
+        RunTest("QuickConnect: a saved connection's SSH and picture quality choices", []() {
+            Marconi::QuickConnectOptions options;
+            options.sshTunnel = true;
+            options.quality = Marconi::PictureQuality::LowBandwidth;
+            Marconi::Rfb::ConnectionOptions vnc = Marconi::QuickConnectVncOptions(Parse("studio-pc:1"), options);
+            CHECK(vnc.sshTunnel);
+            CHECK(vnc.sshPort == 22);
+            CHECK(vnc.port == 5901);
+            const Marconi::QualitySettings low = Marconi::SettingsFor(Marconi::PictureQuality::LowBandwidth);
+            CHECK(vnc.compressLevel == low.compressLevel && vnc.qualityLevel == low.qualityLevel);
+            options.quality = Marconi::PictureQuality::Best;
+            vnc = Marconi::QuickConnectVncOptions(Parse("studio-pc"), options);
+            CHECK(vnc.qualityLevel == -1);
+        });
+
         RunTest("QuickConnect: marconi:// options carry the password, name and trusted certificate", []() {
             Marconi::QuickConnectOptions options;
             options.password = "pw";

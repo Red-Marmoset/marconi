@@ -39,14 +39,24 @@ decided along the way, and what is still unchecked. Keep it current.
   into a debug APK, the iOS project generated with every source it needs and none of the desktop ones.
 - Not checked yet: the apps on a device. Nobody has tapped on either. Expect the first run on a phone or an iPad
   to turn up small things in `RemoteView.kt`, `ViewerActivity.kt` and `Marconi_iOS.mm` (gesture feel, keyboard
-  handling, picture scaling). The iOS code has not been compiled with the iOS SDK either.
-- Not in the apps: Remote Desktop, finding computers on the network, saved connections, file transfer, the
-  clipboard towards the other computer, the local cursor shape, wake-on-LAN, the update check.
+  handling, picture scaling). The iOS app compiles with the iOS SDK and is signed for a device (on the Mac,
+  November 2026).
+- The Android app (0.9.2) has the desktop's start screen and choices: `ConnectionsActivity` (quick connect,
+  saved connections with favourites, groups and search, "On this network" through the core's mDNS discovery with
+  a multicast lock), `EditConnectionActivity` (every field of the desktop's connection dialog; passwords in an
+  encrypted store guarded by the phone's keystore), `SettingsActivity` (appearance, about), and the viewer's menu
+  (zoom levels, displays, picture quality, match screen size, full screen, view only, clipboard both ways, sent
+  keys, screenshots, key bar, refresh). Its look follows `MarconiUI/Appearance.cpp`: the palette in
+  `res/values/colors.xml` and `values-night`, Nebula Sans for headings, the M mark as an adaptive icon.
+- The iPad app still has the first version's single screen: it needs the same list, editor, settings and viewer
+  menu, written in UIKit over the same `QuickConnect` options. The desktop wording and layout are the spec, as
+  for Android.
+- Not in the apps: Remote Desktop, file transfer, the local cursor shape, the update check, saved connections
+  shared between devices.
 
 ## Next steps
 
 1. Install the Android APK on a phone and the iOS app on an iPad; connect to a VNC server on the same Wi-Fi; fix
    what the first session shows.
-2. Scroll wheel gesture (two-finger drag when the picture isn't zoomed), and the clipboard towards the server.
-3. Saved connections, shared with the desktop format where it makes sense.
-4. Remote Desktop through `QuickConnect` once the desktop size question has an answer for a touch screen.
+2. Bring the iPad app to the Android app's level: saved connections, the editor, settings and the viewer menu.
+3. Remote Desktop through `QuickConnect` once the desktop size question has an answer for a touch screen.

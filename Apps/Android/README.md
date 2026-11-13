@@ -33,18 +33,28 @@ Gradle (the wrapper in this folder fetches 8.14).
 
    Or open this folder in Android Studio and press Run.
 
-`assembleRelease` makes an unsigned release APK; sign it with your own key before installing.
+For a release build, `bash Apps/Android/Package.sh` (or `.\Apps\Android\Package.ps1`) makes
+`Build/Installer/Marconi-<version>-android.apk`, which the desktop package scripts also do at the end of their run.
+It is signed with the release key `MARCONI_ANDROID_KEYSTORE` names (see the script's header for the password
+variables), and skipped when that isn't set.
 
 ## Using it
 
-Type the computer's address, and a user name and password if you want to send them straight away (otherwise
-the app asks when the computer does), then Connect. The app remembers the last address and user name, never the
-password. A certificate you accept is remembered for that address; a changed one is asked about again.
+The first screen is the desktop's: a quick connect box, your saved connections (favourites first, then by group,
+with search) and the computers found on this network. Tap a connection to connect, touch and hold it for Connect,
+Edit, Wake up (when it has a hardware address) and Delete, and add one with the button at the bottom. A connection
+keeps the same choices as on the desktop: name, group, address, login name, a password kept in an encrypted store
+on the phone if you ask, hardware address, notes, favourite, size, picture quality, view only, clipboard sharing,
+locking the other computer's screen when you disconnect, and connecting through SSH. Settings has the appearance
+choice (system, light or dark) and the version.
 
 On the screen: tap to click, double-tap to double-click, touch and hold for a right click, double-tap and hold to
-drag with the left button. One finger moves the pointer, two fingers move and zoom the picture. The bar at the
-bottom opens the keyboard and has Esc, Tab, the arrows, Del and Win; Ctrl, Alt and Shift stay pressed for the
-next key. Text the other computer copies arrives on the phone's clipboard. Rotating the phone keeps the
+drag with the left button. One finger moves the pointer, two fingers move and zoom the picture, and scroll the
+other computer's window while the picture fits the screen. The menu has zoom levels, the other computer's displays,
+picture quality, matching its screen size to the phone, full screen, view only, the clipboard both ways, keys to
+send (Ctrl+Alt+Del, Alt+Tab, the Windows key and more), screenshots, a key bar with Esc, Tab, the arrows, Del, Win
+and F8 (Ctrl, Alt and Shift stay pressed for the next key), refresh and disconnect. The bar at the top shows the
+computer's name, whether the connection is encrypted, and the round trip time. Rotating the phone keeps the
 connection.
 
 ## How it fits together
