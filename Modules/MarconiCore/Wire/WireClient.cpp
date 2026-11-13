@@ -352,8 +352,8 @@ namespace Marconi
                 std::lock_guard<std::mutex> lock(m_clipboardMutex);
                 m_offeredText.clear();
                 m_offeredPng.clear();
-                m_awaitText = false;
-                m_awaitImage = false;
+                m_awaitText = 0;
+                m_awaitImage = 0;
                 m_incoming = Rfb::ClipboardContent();
             }
             m_clipboardGranted = (welcome.capabilities & options.capabilities & Capability::Clipboard) != 0;
@@ -537,9 +537,12 @@ namespace Marconi
             }
             {
                 std::lock_guard<std::mutex> lock(m_clipboardMutex);
-                m_awaitText = true;
-                m_awaitImage = true;
-                m_incoming = Rfb::ClipboardContent();
+                if (m_awaitText == 0 && m_awaitImage == 0)
+                {
+                    m_incoming = Rfb::ClipboardContent();
+                }
+                ++m_awaitText;
+                ++m_awaitImage;
             }
             ClipboardRequest text;
             text.format = ClipboardRequest::Format::Text;
@@ -556,9 +559,12 @@ namespace Marconi
             }
             {
                 std::lock_guard<std::mutex> lock(m_clipboardMutex);
-                m_awaitText = offer.hasText;
-                m_awaitImage = offer.hasImage;
-                m_incoming = Rfb::ClipboardContent();
+                if (m_awaitText == 0 && m_awaitImage == 0)
+                {
+                    m_incoming = Rfb::ClipboardContent();
+                }
+                m_awaitText += offer.hasText ? 1 : 0; // one answer per request, the last one wins
+                m_awaitImage += offer.hasImage ? 1 : 0;
             }
             if (offer.hasText)
             {
@@ -595,12 +601,12 @@ namespace Marconi
             {
                 std::lock_guard<std::mutex> lock(m_clipboardMutex);
                 const bool isText = data.format == ClipboardRequest::Format::Text;
-                bool& awaited = isText ? m_awaitText : m_awaitImage;
-                if (!m_clipboardGranted.load() || !awaited)
+                int& awaited = isText ? m_awaitText : m_awaitImage;
+                if (!m_clipboardGranted.load() || awaited <= 0)
                 {
                     return; // nothing was asked for in that form
                 }
-                awaited = false;
+                --awaited;
                 if (isText)
                 {
                     if (data.data.size() <= kMaxClipboardTextBytes)
@@ -612,7 +618,7 @@ namespace Marconi
                 {
                     PngToDib(data.data, m_incoming.dib); // stays empty for a picture this build can't read
                 }
-                if (m_awaitText || m_awaitImage)
+                if (m_awaitText > 0 || m_awaitImage > 0)
                 {
                     return;
                 }

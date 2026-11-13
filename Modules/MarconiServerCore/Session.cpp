@@ -156,6 +156,11 @@ namespace Marconi
             m_grantedCapabilities = hello.capabilities & offered;
             welcome.capabilities = m_grantedCapabilities;
             m_clipboardActive = (welcome.capabilities & Wire::Capability::Clipboard) != 0;
+            if (m_clipboardActive)
+            {
+                // Listen from now, not after the login: a copy made in between would otherwise never be offered.
+                m_clipboard->SetChangeHandler([this]() { m_clipboardChanged = true; });
+            }
             welcome.serverName = m_settings.serverName;
             welcome.serverVersion = m_settings.serverVersion;
             welcome.displays = m_screen.GetDisplays();
@@ -385,13 +390,26 @@ namespace Marconi
             }
         }
 
+        void Session::StopClipboardHandler()
+        {
+            if (m_clipboardActive)
+            {
+                m_clipboard->SetChangeHandler(nullptr); // returns once no call to the handler is running
+            }
+        }
+
         void Session::HandleClipboardOffer(const Wire::ClipboardOffer& offer)
         {
             {
                 std::lock_guard<std::mutex> lock(m_clipboardMutex);
-                m_incoming = ClipboardContents();
-                m_awaitText = offer.hasText;
-                m_awaitImage = offer.hasImage;
+                if (m_awaitText == 0 && m_awaitImage == 0)
+                {
+                    m_incoming = ClipboardContents(); // a fresh exchange; with requests still out, keep what has arrived
+                }
+                // Every request gets one answer, applied in order, so the last answer (the newest copy) wins. A flag
+                // instead of a count let an answer to an older request use up the one that mattered.
+                m_awaitText += offer.hasText ? 1 : 0;
+                m_awaitImage += offer.hasImage ? 1 : 0;
             }
             // Ask for what is offered. The viewer answers each request with its data.
             if (offer.hasText)
@@ -432,12 +450,12 @@ namespace Marconi
             {
                 std::lock_guard<std::mutex> lock(m_clipboardMutex);
                 const bool isText = data.format == Wire::ClipboardRequest::Format::Text;
-                bool& awaited = isText ? m_awaitText : m_awaitImage;
-                if (!awaited)
+                int& awaited = isText ? m_awaitText : m_awaitImage;
+                if (awaited <= 0)
                 {
                     return; // nothing was asked for: ignore it
                 }
-                awaited = false;
+                --awaited;
                 if (isText && data.data.size() <= Wire::kMaxClipboardTextBytes)
                 {
                     m_incoming.text.assign(data.data.begin(), data.data.end());
@@ -446,9 +464,9 @@ namespace Marconi
                 {
                     m_incoming.png = std::move(data.data);
                 }
-                if (m_awaitText || m_awaitImage)
+                if (m_awaitText > 0 || m_awaitImage > 0)
                 {
-                    return; // the other format is still on its way
+                    return; // more answers are still on their way
                 }
                 ready = std::move(m_incoming);
                 m_incoming = ClipboardContents();
@@ -739,28 +757,23 @@ namespace Marconi
             {
                 if (!Handshake(reader))
                 {
+                    StopClipboardHandler();
                     return;
                 }
             }
             catch (const Wire::WireError& error)
             {
                 LOG_INFO("Server", "Handshake failed: %s", error.what());
+                StopClipboardHandler();
                 return;
             }
 
             m_files = std::make_unique<FileService>(m_settings.filesEnabled, m_settings.fileRoot,
                                                     [this](const Wire::Bytes& framed) { return Send(framed); });
-            if (m_clipboardActive)
-            {
-                m_clipboard->SetChangeHandler([this]() { m_clipboardChanged = true; });
-            }
             std::thread input([this, &reader]() { RunInputLoop(reader); });
             RunFrameLoop();
             m_stop = true;
-            if (m_clipboardActive)
-            {
-                m_clipboard->SetChangeHandler(nullptr); // returns once no call to the handler is running
-            }
+            StopClipboardHandler();
             input.join();
             m_files->Stop();
             m_screen.RestoreDisplayModes(); // a changed screen size doesn't outlive the viewer

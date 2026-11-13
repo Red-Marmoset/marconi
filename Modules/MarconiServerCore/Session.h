@@ -64,6 +64,7 @@ namespace Marconi
             void RunInputLoop(Wire::MessageReader& reader); // the other thread: read and apply input
             bool Send(const Wire::Bytes& framed);        // one message, serialised against other senders
             void SendFrame(const Capture& capture, bool full);
+            void StopClipboardHandler();                 // stops listening for clipboard changes
             void CheckClipboard();                       // frame loop: the computer's clipboard changed; offer it
             void HandleClipboardOffer(const Wire::ClipboardOffer& offer);
             void HandleClipboardRequest(const Wire::ClipboardRequest& request);
@@ -97,8 +98,8 @@ namespace Marconi
             std::mutex m_clipboardMutex;
             std::vector<uint64_t> m_recentHashes;
             ClipboardContents m_incoming;
-            bool m_awaitText = false;
-            bool m_awaitImage = false;
+            int m_awaitText = 0;  // requests sent for the viewer's text that it hasn't answered yet
+            int m_awaitImage = 0; // the same for its image (rapid copies leave several outstanding)
 
             // The viewer's display requests, set on the input thread and applied on the frame thread (the screen
             // source is only called from the frame thread).

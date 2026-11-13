@@ -117,8 +117,8 @@ namespace Marconi
             std::mutex m_clipboardMutex;
             Bytes m_offeredText;
             Bytes m_offeredPng;
-            bool m_awaitText = false;
-            bool m_awaitImage = false;
+            int m_awaitText = 0;  // requests sent for the server's text that it hasn't answered yet
+            int m_awaitImage = 0; // the same for its image (rapid copies leave several outstanding)
             Rfb::ClipboardContent m_incoming;
             std::atomic<uint32_t> m_selectedDisplay{0}; // the display being streamed, 0 for the whole desktop
 

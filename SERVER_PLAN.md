@@ -863,9 +863,9 @@ glass.
 
 ## Known issues (integration branch)
 
-- `ClipboardTests.cpp` "Many quick copies in both directions end on the last one and never loop" fails about 2 runs in 7
-  (the server's clipboard ends on something other than the last copy). A race in the offer/request/data exchange
-  under rapid copies; not yet investigated.
+- The clipboard flake (rapid copies sometimes ended on an older copy, and a copy made during the login could be lost)
+  is fixed: the server and the client now count outstanding requests instead of using one flag, and the server
+  listens for clipboard changes from the moment it grants the clipboard. 15 of 15 runs pass.
 - A server with no password now refuses every login (`Settings::allowNoPassword`, `--allow-no-password` for testing).
   The tray's first-run prompt and its Set password item now refuse an empty password, its menu says "No password set:
   viewers can't connect" until one is set, and the server installer no longer has a password page (the owner prefers
