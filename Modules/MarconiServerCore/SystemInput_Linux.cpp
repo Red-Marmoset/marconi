@@ -3,6 +3,7 @@
 // The wire's keysyms are X keysyms already, so keys map straight onto the keyboard's own layout.
 
 #include "SystemInput.h"
+#include "SystemLock.h"
 
 #include <MarconiCore/Keysyms.h>
 
@@ -82,6 +83,8 @@ namespace Marconi
                     XTestFakeKeyEvent(m_display, code, down ? True : False, CurrentTime);
                     XFlush(m_display);
                 }
+
+                bool LockWorkstation() override { return LockThisComputer(); }
 
                 void TypeText(const std::string& utf8) override
                 {

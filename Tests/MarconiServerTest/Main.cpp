@@ -14,6 +14,7 @@ namespace Test
         MarconiServerTest::RunPasswordTests();
         MarconiServerTest::RunIdentityTests();
         MarconiServerTest::RunSessionTests();
+        MarconiServerTest::RunServiceTests();
         MarconiServerTest::RunListenerTests();
         MarconiServerTest::RunEndToEndTests();
         printf("\nMarconiServerTest: %d passed, %d failed\n", MarconiServerTest::g_passed, MarconiServerTest::g_failed);

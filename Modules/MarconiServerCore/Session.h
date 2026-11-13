@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <thread>
 
 namespace Marconi
@@ -43,12 +44,18 @@ namespace Marconi
             // set their own. A grab with nothing changed sends no message.
             void SetFrameIntervalMs(int ms) { m_frameIntervalMs = ms; }
 
+            // The viewer's name from its Hello (empty before that), for the tray icon's status. Thread-safe.
+            std::string GetViewerName() const;
+            // True once the viewer has passed the login.
+            bool IsLoggedIn() const { return m_loggedIn; }
+
         private:
             bool Handshake(Wire::MessageReader& reader); // Hello/Welcome/Login/LoginResult; false if refused or lost
             void RunFrameLoop();                         // this thread: capture and send the picture
             void RunInputLoop(Wire::MessageReader& reader); // the other thread: read and apply input
             bool Send(const Wire::Bytes& framed);        // one message, serialised against other senders
             void SendFrame(const Capture& capture, bool full);
+            void LockComputer(); // locks the screen through the input sink, once per viewer
 
             Wire::Transport& m_transport;
             ScreenSource& m_screen;
@@ -60,6 +67,11 @@ namespace Marconi
             int m_frameIntervalMs = 16;
             std::mutex m_writeMutex;
             std::atomic<bool> m_stop{false};
+            std::atomic<bool> m_stoppedByServer{false}; // Stop() was called, as opposed to the viewer leaving
+            std::atomic<bool> m_loggedIn{false};
+            std::atomic<bool> m_locked{false};
+            mutable std::mutex m_nameMutex;
+            std::string m_viewerName; // guarded by m_nameMutex
         };
     } // namespace Server
 } // namespace Marconi

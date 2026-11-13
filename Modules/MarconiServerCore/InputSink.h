@@ -27,6 +27,12 @@ namespace Marconi
 
             // A run of characters to type that have no plain key (accents, other scripts).
             virtual void TypeText(const std::string& utf8) = 0;
+
+            // Locks this computer's screen (the login screen on Windows). Called when the viewer sends a Lock
+            // message or disconnects with "lock on disconnect" on. The default does nothing and says so, for sinks
+            // that only log or record; the real ones call LockThisComputer (SystemLock.h). Called from the
+            // session's threads, one at a time.
+            virtual bool LockWorkstation() { return false; }
         };
     } // namespace Server
 } // namespace Marconi
