@@ -24,10 +24,16 @@
 
 #include <wx/bmpbndl.h>
 #include <wx/dcmemory.h>
+#include <wx/graphics.h>
 #include <wx/icon.h>
+#include <wx/image.h>
 #include <wx/msgdlg.h>
 #include <wx/textdlg.h>
 #include <wx/utils.h>
+#include <wx/vector.h>
+
+#include <algorithm>
+#include <memory>
 
 namespace Marconi
 {
@@ -35,28 +41,63 @@ namespace Marconi
     {
         namespace
         {
-            // A small drawn icon so the tray app needs no image file: a rounded square in Marconi's blue with a
-            // white "M".
-            wxIcon MakeTrayIcon()
+            // The tray icon, drawn at runtime so the tray app needs no image file: a blue circle with the white "M" of
+            // Marconi's own icon (a mirrored line with rounded joins and a round dot at each end, the same geometry as
+            // MarconiUI/AppIcon.cpp, scaled to sit inside the circle). Keep the two in step.
+            wxBitmap DrawTrayBitmap(int size)
             {
-                const int size = 32;
-                wxBitmap bitmap(size, size, 32);
+                wxImage image(size, size);
+                image.InitAlpha();
+                std::fill_n(image.GetAlpha(), size * size, 0);
+                wxBitmap bitmap(image);
                 {
                     wxMemoryDC dc(bitmap);
-                    dc.SetBackground(*wxTRANSPARENT_BRUSH);
-                    dc.Clear();
-                    dc.SetBrush(wxBrush(wxColour(0x1E, 0x66, 0xD0)));
-                    dc.SetPen(*wxTRANSPARENT_PEN);
-                    dc.DrawRoundedRectangle(0, 0, size, size, 6);
-                    wxFont font(wxFontInfo(16).Bold());
-                    dc.SetFont(font);
-                    dc.SetTextForeground(*wxWHITE);
-                    wxSize text = dc.GetTextExtent("M");
-                    dc.DrawText("M", (size - text.GetWidth()) / 2, (size - text.GetHeight()) / 2);
+                    std::unique_ptr<wxGraphicsContext> gc(wxGraphicsContext::Create(dc));
+                    if (gc)
+                    {
+                        gc->SetPen(*wxTRANSPARENT_PEN);
+                        gc->SetBrush(wxBrush(wxColour(0x1E, 0x66, 0xD0)));
+                        gc->DrawEllipse(0, 0, size, size);
+
+                        // The main icon's 32-unit grid, with the M scaled about its centre (16, 16) to fit the circle.
+                        const double unit = size / 32.0;
+                        const double fit = 0.86;
+                        auto at = [&](double v) { return (16.0 + (v - 16.0) * fit) * unit; };
+                        const wxColour white(255, 255, 255);
+                        wxGraphicsPenInfo stroke(white, 4.0 * unit * fit);
+                        stroke.Cap(wxCAP_ROUND).Join(wxJOIN_ROUND);
+                        gc->SetPen(gc->CreatePen(stroke));
+                        gc->SetBrush(*wxTRANSPARENT_BRUSH);
+                        wxGraphicsPath signal = gc->CreatePath();
+                        signal.MoveToPoint(at(5), at(23));
+                        signal.AddLineToPoint(at(10.5), at(9));
+                        signal.AddLineToPoint(at(16), at(20));
+                        signal.AddLineToPoint(at(21.5), at(9));
+                        signal.AddLineToPoint(at(27), at(23));
+                        gc->StrokePath(signal);
+
+                        gc->SetPen(*wxTRANSPARENT_PEN);
+                        gc->SetBrush(wxBrush(white));
+                        const double radius = 3.0 * unit * fit;
+                        for (double x : {5.0, 27.0})
+                        {
+                            gc->DrawEllipse(at(x) - radius, at(23) - radius, 2 * radius, 2 * radius);
+                        }
+                    }
                 }
-                wxIcon icon;
-                icon.CopyFromBitmap(bitmap);
-                return icon;
+                return bitmap;
+            }
+
+            // Several sizes, so the system picks a sharp one for its tray (16 px on a normal screen, more on a
+            // high-resolution one).
+            wxBitmapBundle MakeTrayIcon()
+            {
+                wxVector<wxBitmap> bitmaps;
+                for (int size : {16, 24, 32, 48, 64})
+                {
+                    bitmaps.push_back(DrawTrayBitmap(size));
+                }
+                return wxBitmapBundle::FromBitmaps(bitmaps);
             }
 
             // Asks for an access password, and asks again if it is left empty: a server with no password refuses every
