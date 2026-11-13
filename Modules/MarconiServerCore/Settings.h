@@ -9,6 +9,8 @@
 
 #include <MarconiCore/Wire/WireMessages.h>
 
+#include "UpdatePolicy.h"
+
 namespace Marconi
 {
     namespace Server
@@ -63,6 +65,14 @@ namespace Marconi
             bool videoStats = false;
             // How long a part of the picture must stay unchanged before it is resent as a lossless still.
             uint32_t videoStillDelayMs = 300;
+
+            // Letting a newer Marconi update this server (SERVER_PLAN.md, "Self-update"): ask the person at this
+            // computer each time (the default), allow without asking, or never. Whatever this says, the installer's
+            // SHA-256, version and signature are checked before it runs.
+            UpdatePermission updatePermission = UpdatePermission::Ask;
+            // Take updates that aren't signed, when this server isn't signed either (a development build). Off by
+            // default: an unsigned installer can't be told apart from any other program.
+            bool allowUnsignedUpdates = false;
         };
     } // namespace Server
 } // namespace Marconi

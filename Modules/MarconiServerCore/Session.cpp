@@ -35,7 +35,7 @@ namespace Marconi
 
             // What this build's server can always do, for the capability handshake. It grows as phases land (video,
             // clipboard, files, gamepads). Resizing a display is added when the screen source can do it.
-            constexpr uint64_t kServerCapabilities = Wire::Capability::MultipleDisplays;
+            constexpr uint64_t kServerCapabilities = Wire::Capability::MultipleDisplays | Wire::Capability::ServerUpdate;
 
             Wire::Rect Intersect(const Wire::Rect& a, const Wire::Rect& b)
             {
@@ -167,6 +167,7 @@ namespace Marconi
                 std::lock_guard<std::mutex> lock(m_nameMutex);
                 m_viewerName = hello.clientName;
             }
+            m_viewerVersion = hello.clientVersion;
             LOG_INFO("Server", "Viewer '%s' connected, protocol %u", LogSafe(hello.clientName).c_str(),
                      static_cast<unsigned>(hello.version));
 
@@ -279,6 +280,12 @@ namespace Marconi
                 try
                 {
                     type = Wire::ReadType(body);
+                    if (m_update && m_update->IsHoldingInput() &&
+                        (type == Wire::Type::Pointer || type == Wire::Type::Key || type == Wire::Type::Text ||
+                         type == Wire::Type::GamepadState))
+                    {
+                        continue; // the person here is being asked about an update: the viewer can't answer for them
+                    }
                     if (type != Wire::Type::Ping && type != Wire::Type::Bye && type != Wire::Type::GamepadState &&
                         type != Wire::Type::VideoFeedback && type != Wire::Type::VideoRequestKeyframe)
                     {
@@ -417,6 +424,10 @@ namespace Marconi
                         m_stop = true;
                         break;
                     default:
+                        if (m_update && m_update->Handle(type, body))
+                        {
+                            break; // an update message
+                        }
                         if (m_files != nullptr)
                         {
                             m_files->Handle(type, body); // file messages; anything else it leaves
@@ -940,6 +951,23 @@ namespace Marconi
                                                          [this](const Wire::Bytes& framed) { return Send(framed); },
                                                          m_videoClock, videoOptions);
             }
+            if ((m_grantedCapabilities & Wire::Capability::ServerUpdate) != 0)
+            {
+                UpdateSettings updateSettings;
+                updateSettings.runningVersion = m_settings.serverVersion;
+                updateSettings.permission = m_settings.updatePermission;
+                updateSettings.allowUnsigned = m_settings.allowUnsignedUpdates;
+                m_update = std::make_unique<UpdateService>(
+                    m_updateEnvironment, updateSettings, UpdateViewer{GetViewerName(), m_viewerVersion, m_peerAddress},
+                    [this](const Wire::Bytes& framed) { return Send(framed); },
+                    [this]() {
+                        m_stop = true;
+                        if (m_endHandler)
+                        {
+                            m_endHandler(); // wakes the input thread; the frame loop sees m_stop
+                        }
+                    });
+            }
             std::thread input([this, &reader]() { RunInputLoop(reader); });
             RunFrameLoop();
             m_stop = true;
@@ -947,6 +975,7 @@ namespace Marconi
             input.join();
             m_gamepads.reset(); // whatever the viewer was holding is let go and its controllers removed
             m_files->Stop();
+            m_update.reset(); // a question still open is withdrawn, a half-received installer removed
             m_video.reset(); // the encoder (a hardware one holds the GPU) goes with the viewer
             m_screen.RestoreDisplayModes(); // a changed screen size doesn't outlive the viewer
             // A viewer that got in and then went away (not one the server itself ended) locks the screen when the

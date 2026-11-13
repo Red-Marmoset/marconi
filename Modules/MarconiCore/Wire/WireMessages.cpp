@@ -84,7 +84,8 @@ namespace Marconi
 
         Bytes Hello::Encode() const
         {
-            return Build(Type::Hello, [&](Writer& w) { w.U16(version).U64(capabilities).String(clientName); });
+            return Build(Type::Hello,
+                         [&](Writer& w) { w.U16(version).U64(capabilities).String(clientName).String(clientVersion); });
         }
 
         Hello Hello::Decode(Reader& r)
@@ -93,6 +94,10 @@ namespace Marconi
             message.version = r.U16();
             message.capabilities = r.U64();
             message.clientName = r.String();
+            if (!r.AtEnd())
+            {
+                message.clientVersion = r.String(); // absent from viewers older than the field
+            }
             return message;
         }
 

@@ -157,6 +157,7 @@ namespace MarconiTest
     void RunWireTests();
     void RunWireFileTests();
     void RunWireGamepadTests();
+    void RunWireUpdateTests();
     void RunWireVideoTests();
     void RunDatagramTests();
     void RunDatagramLoopbackTests();

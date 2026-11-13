@@ -11,6 +11,7 @@
 #include <MarconiCore/Video/VideoReceiver.h>
 #include <MarconiCore/Wire/WireChannel.h>
 #include <MarconiCore/Wire/WireMessages.h>
+#include <MarconiCore/Wire/WireUpdateClient.h>
 
 #include <atomic>
 #include <chrono>
@@ -38,7 +39,8 @@ namespace Marconi
             bool offerFiles = true; // also offer file transfer (the Files capability)
             // What this client offers; grows with each phase.
             uint64_t capabilities =
-                Capability::MultipleDisplays | Capability::ResizeDisplay | Capability::Clipboard | Capability::Gamepads;
+                Capability::MultipleDisplays | Capability::ResizeDisplay | Capability::Clipboard | Capability::Gamepads |
+                Capability::ServerUpdate;
             // A server certificate with this SHA-256 fingerprint is trusted without asking (the user accepted it
             // before). Any other goes to the listener's OnUntrustedCertificate.
             std::vector<uint8_t> trustedCertificateSha256;
@@ -108,6 +110,12 @@ namespace Marconi
             bool SendGamepadState(const GamepadState& message) override;
             void SetGamepadListener(Gamepad::GamepadListener* listener) override;
 
+            // Updating the server (SERVER_PLAN.md, "Self-update"): the version its Welcome gave (empty before that),
+            // whether it understands the update messages, and the uploader that offers and sends the installer.
+            std::string GetServerVersion() const;
+            bool SupportsServerUpdate() const { return m_serverUpdateGranted.load(); }
+            UpdateUploader& GetServerUpdate() { return m_update; }
+
         private:
             void Run(ClientOptions options);
             bool Handshake(MessageReader& reader, ClientOptions& options, DisconnectInfo& info);
@@ -148,6 +156,9 @@ namespace Marconi
             std::shared_ptr<Video::VideoReceiver> m_video; // guarded by m_videoMutex
             std::atomic<bool> m_videoGranted{false};
             std::atomic<bool> m_videoStreaming{false};
+            UpdateUploader m_update;
+            std::atomic<bool> m_serverUpdateGranted{false};
+            std::string m_serverVersion; // guarded by m_nameMutex
 
             // Clipboard sharing, once the server granted it. `m_offered` is what we last told the server we have (it
             // asks for it when someone pastes); the await flags and `m_incoming` collect what we asked the server for,

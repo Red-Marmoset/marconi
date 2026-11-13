@@ -44,6 +44,7 @@ namespace Marconi
             constexpr uint64_t Gamepads = 1u << 4;         // forwarded game controllers; Phase 7
             constexpr uint64_t MultipleDisplays = 1u << 5; // choose one of several displays
             constexpr uint64_t ResizeDisplay = 1u << 6;    // ask the server to match its screen to the window
+            constexpr uint64_t ServerUpdate = 1u << 7;     // the update messages (WireUpdateMessages.h) are understood
         } // namespace Capability
 
         // The type byte at the start of every message's payload. Control-channel and datagram messages share one
@@ -114,6 +115,12 @@ namespace Marconi
             DatagramAccept = 91, // client -> server: will use UDP, or won't
             DatagramState = 92,  // either way: UDP is working, or is blocked so use the control channel
             DatagramData = 93,   // either way: one datagram-channel message carried on the control channel
+
+            // Updating the server from a newer viewer (the messages are in WireUpdateMessages.h); 106 to 109.
+            UpdateOffer = 106,  // client -> server: this installer (version, size, SHA-256), or only "would you?"
+            UpdateAnswer = 107, // server -> client: send it, asking the person here, or why not
+            UpdateChunk = 108,  // client -> server: the next piece of the installer
+            UpdateResult = 109, // server -> client: checked and starting the installer, or what went wrong
         };
 
         // One rectangle of the screen. Plain ints so the protocol layer needs nothing from the VNC code.
@@ -165,6 +172,9 @@ namespace Marconi
             uint16_t version = kProtocolVersion;
             uint64_t capabilities = 0;
             std::string clientName; // for the server's log and its "someone connected" notice
+            // The viewer's own version ("0.10.0.512"), for the server's log and its update question. Added after the
+            // first release: older viewers don't send it (empty), and older servers ignore the extra bytes.
+            std::string clientVersion;
 
             Bytes Encode() const;
             static Hello Decode(Reader& reader);

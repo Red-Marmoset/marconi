@@ -4,6 +4,7 @@
 #include <MarconiCore/Wire/WireClient.h>
 
 #include <MarconiCore/Net/Tls.h>
+#include <MarconiCore/Version.h>
 #include <MarconiCore/Wire/WireCompress.h>
 #include <MarconiCore/Wire/WireImage.h>
 #include <MarconiCore/Wire/WireVideoMessages.h>
@@ -62,8 +63,15 @@ namespace Marconi
         } // namespace
 
         Client::Client(SessionListener& listener)
-            : m_listener(listener), m_files([this](const Bytes& framed) { return Send(framed); })
+            : m_listener(listener), m_files([this](const Bytes& framed) { return Send(framed); }),
+              m_update([this](const Bytes& framed) { return Send(framed); })
         {
+        }
+
+        std::string Client::GetServerVersion() const
+        {
+            std::lock_guard<std::mutex> lock(m_nameMutex);
+            return m_serverVersion;
         }
 
         Client::~Client()
@@ -329,11 +337,15 @@ namespace Marconi
                         Bye bye = Bye::Decode(body);
                         info.error = bye.reason;
                         info.wasConnected = true;
+                        info.serverUpdating = m_update.IsInstalling(); // it said it is updating, then left
                         m_stopping = true;
                         break;
                     }
                     default:
-                        m_files.OnMessage(type, body); // file answers; any other type is skipped by its length
+                        if (!m_update.OnMessage(type, body))
+                        {
+                            m_files.OnMessage(type, body); // file answers; any other type is skipped by its length
+                        }
                         break;
                     }
                 }
@@ -362,6 +374,12 @@ namespace Marconi
                 m_video.reset();
             }
             m_files.Close();
+            m_update.Reset();
+            m_serverUpdateGranted = false;
+            if (!info.serverUpdating && m_update.IsInstalling() && info.wasConnected)
+            {
+                info.serverUpdating = true; // the server said it is installing, then the connection dropped
+            }
             m_listener.OnDisconnected(info);
         }
 
@@ -388,6 +406,7 @@ namespace Marconi
             hello.capabilities = options.capabilities | (options.offerFiles ? Capability::Files : uint64_t(0)) |
                                  (video ? Capability::Video : uint64_t(0));
             hello.clientName = options.clientName;
+            hello.clientVersion = GetVersionString();
             if (!Send(hello.Encode()))
             {
                 info.error = "Could not send the greeting";
@@ -442,6 +461,12 @@ namespace Marconi
             }
 
             m_supportsFiles = (welcome.capabilities & Capability::Files) != 0;
+            m_serverUpdateGranted = (welcome.capabilities & options.capabilities & Capability::ServerUpdate) != 0;
+            {
+                std::lock_guard<std::mutex> lock(m_nameMutex);
+                m_serverVersion = welcome.serverVersion;
+            }
+            m_update.Reset();
             m_gamepadsGranted = (welcome.capabilities & options.capabilities & Capability::Gamepads) != 0;
             m_files.Reopen(); // a server that doesn't share files still answers file requests, with a refusal
             {

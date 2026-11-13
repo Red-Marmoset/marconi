@@ -15,6 +15,7 @@
 #include "Settings.h"
 #include "VirtualGamepad.h"
 #include "VideoSession.h"
+#include "UpdateService.h"
 
 #include <MarconiCore/Wire/WireChannel.h>
 
@@ -87,6 +88,9 @@ namespace Marconi
             // Called when the server ends the session itself (for being idle) so the owner of the connection can
             // shut it down and wake the thread waiting to read from the viewer. Call before Run().
             void SetEndHandler(std::function<void()> handler) { m_endHandler = std::move(handler); }
+            // Lets a newer viewer update this server through `environment` (null, the default: every offer is answered
+            // "not supported here"). It must outlive the session. Call before Run().
+            void SetUpdateEnvironment(const UpdateEnvironment* environment) { m_updateEnvironment = environment; }
             // The viewer's name from its Hello (empty before that), for the tray icon's status. Thread-safe.
             std::string GetViewerName() const;
             // True once the viewer has passed the login.
@@ -132,6 +136,11 @@ namespace Marconi
             bool m_videoFactorySet = false;
             VideoSession::Clock m_videoClock;
             std::unique_ptr<VideoSession> m_video;
+
+            // Self-update: made after the login; holds the viewer's input while the person here is asked.
+            const UpdateEnvironment* m_updateEnvironment = nullptr;
+            std::unique_ptr<UpdateService> m_update;
+            std::string m_viewerVersion; // from the Hello
 
             // Clipboard sharing. `m_clipboardActive` is set once the viewer was granted it. The change handler only
             // raises `m_clipboardChanged`; the frame loop does the reading. `m_recentHashes` holds hashes of what

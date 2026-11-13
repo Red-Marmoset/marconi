@@ -35,6 +35,7 @@ namespace Marconi
         bool tightFailed = false;          // VNC: the TightVNC login went wrong (not the password): retry without it
         bool encryptionUnusable = false;   // VNC: the server only offers encryption this computer can't make: retry
                                            // without asking for encryption
+        bool serverUpdating = false;       // Marconi Server said it was starting an update, then went: reconnect
     };
 
     // Counts since the last TakeTrafficStats().

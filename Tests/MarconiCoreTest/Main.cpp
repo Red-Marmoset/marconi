@@ -35,6 +35,7 @@ namespace Test
         MarconiTest::RunWireTests();
         MarconiTest::RunWireFileTests();
         MarconiTest::RunWireGamepadTests();
+        MarconiTest::RunWireUpdateTests();
         MarconiTest::RunWireVideoTests();
         MarconiTest::RunDatagramTests();
         MarconiTest::RunDatagramLoopbackTests();

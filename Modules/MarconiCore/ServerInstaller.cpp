@@ -85,5 +85,15 @@ namespace Marconi
             }
             return best != nullptr ? best->path : std::string();
         }
+
+        std::string VersionOfFile(const std::string& path)
+        {
+            Update::Version version;
+            if (!ParseName(fs::path(path).filename().string(), version))
+            {
+                return std::string();
+            }
+            return version.ToString();
+        }
     } // namespace ServerInstaller
 } // namespace Marconi

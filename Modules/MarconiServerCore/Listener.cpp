@@ -161,6 +161,7 @@ namespace Marconi
                 session.SetVideoEncoderFactory(m_videoFactory, m_videoCodecs);
             }
             session.SetNotifier(m_notifier, client.GetPeerAddress());
+            session.SetUpdateEnvironment(m_updateEnvironment);
             if (m_idleClock)
             {
                 session.SetIdleClock(m_idleClock);

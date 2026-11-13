@@ -77,6 +77,10 @@ namespace Marconi
             // none). The backend must outlive the listener. Call before Run() or ServeOne().
             void SetGamepads(VirtualGamepadBackend* backend) { m_gamepadBackend = backend; }
 
+            // Lets newer viewers update this server (see Session::SetUpdateEnvironment); it must outlive the listener.
+            // Call before Run() or ServeOne().
+            void SetUpdateEnvironment(const UpdateEnvironment* environment) { m_updateEnvironment = environment; }
+
             // The SHA-256 fingerprint of the certificate the server presents, as a lowercase hex string, so it can
             // be shown to the person setting the server up. Empty before Start() or if the identity is bad.
             const std::string& GetCertificateFingerprint() const { return m_fingerprint; }
@@ -123,6 +127,7 @@ namespace Marconi
             std::vector<Wire::VideoCodec> m_videoCodecs;
             bool m_videoFactorySet = false;
             ConnectionNotifier* m_notifier = nullptr;
+            const UpdateEnvironment* m_updateEnvironment = nullptr;
             IdleClock m_idleClock;
             std::atomic<int> m_idleMinutes{0};
             mutable std::mutex m_allowMutex;

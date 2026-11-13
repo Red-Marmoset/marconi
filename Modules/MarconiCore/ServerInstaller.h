@@ -21,5 +21,9 @@ namespace Marconi
         // (Build/Marconi/Release -> Build/Installer). When several are there, the one for `currentVersion` wins,
         // else the newest. Returns its full path with '/' separators, or an empty string if there is none.
         std::string Find(const std::string& programFolder, const std::string& currentVersion);
+
+        // The version in an installer's file name or path ("MarconiServer-0.10.0.512-win64-setup.exe"), as
+        // MAJOR.MINOR.PATCH.REVISION text. Empty if the name doesn't have that shape.
+        std::string VersionOfFile(const std::string& path);
     } // namespace ServerInstaller
 } // namespace Marconi
