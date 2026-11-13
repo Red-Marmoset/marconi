@@ -213,8 +213,8 @@ Marconi can now also work the other way round. **Marconi Server** is a separate 
 computer, so someone using Marconi on another computer can see its screen and control it. You don't need any other
 VNC server.
 
-It's an early version, and so far it has only been tried on Linux with a test picture. The Windows screen sharing and
-the installer below have been written but not yet tried on a real Windows computer, so expect rough edges.
+It's an early version. It has been tried on Linux and on Windows, but not yet on a Mac, and the Windows installer and
+the Windows service below have not been fully tried, so expect rough edges.
 
 ### Installing it from Marconi
 
@@ -243,13 +243,17 @@ installer with `/S` installs without any questions; Marconi Server then asks for
 ### What it does and doesn't do yet
 
 It does: show this computer's screen and take the other computer's keyboard and mouse, always encrypted, behind an
-access password.
+access password. It also shares the clipboard (text and pictures), shows each of the computer's screens separately,
+changes the screen's size to fit your window, shows the other computer's mouse pointer shape, and can lock the computer
+when you disconnect. Copying files is available but off until you turn it on in the tray menu. From the tray menu you
+can also limit who can connect (by address), disconnect a viewer that has been idle, and choose whether you are told
+when someone connects.
 
-It doesn't yet: share the clipboard, copy files, show more than one screen, change the screen's size, show the other
-computer's mouse pointer shape, play sound, or carry game controllers. It also runs only while someone is signed in
-to Windows, so it can't show the sign-in screen or keep going through a restart on its own. If you change its port,
-the Windows Firewall rule (made for port 1895) has to be changed to match. A server with no password refuses every
-viewer, so set one. Other VNC viewers can't connect to it; it only talks to Marconi.
+It doesn't yet: play sound, carry game controllers, or let more than one person connect at once. It runs as a program
+in the signed-in user's session; a Windows service that also works at the sign-in screen and through a restart is
+written but has not been tried on Windows. If you change its port, the Windows Firewall rule (made for port 1895) has
+to be changed to match. A server with no password refuses every viewer, so set one. Other VNC viewers can't connect to
+it; it only talks to Marconi.
 
 ### Starting it by hand
 
