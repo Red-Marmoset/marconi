@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.9.7
+
+- The package scripts build the Android app only when its release key is set.
+
 ## 0.9.6
 
 - The macOS disk image is signed with the Developer ID certificate on the Mac when there is one.

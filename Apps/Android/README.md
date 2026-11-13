@@ -35,8 +35,8 @@ Gradle (the wrapper in this folder fetches 8.14).
 
 For a release build, `bash Apps/Android/Package.sh` (or `.\Apps\Android\Package.ps1`) makes
 `Build/Installer/Marconi-<version>-android.apk`, which the desktop package scripts also do at the end of their run.
-It is signed with the standard debug key unless `MARCONI_ANDROID_KEYSTORE` names a release key (see the script's
-header for the password variables).
+It is signed with the release key `MARCONI_ANDROID_KEYSTORE` names (see the script's header for the password
+variables), and skipped when that isn't set.
 
 ## Using it
 

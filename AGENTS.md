@@ -65,9 +65,9 @@ its phases in order, and keep it current (decisions, measurements, finished step
   fonts in `/usr/share/marconi`. Its dependencies come from `dpkg-shlibdeps` (package `dpkg-dev`); its maintainer
   is the owner's address in `Package.sh` unless `MARCONI_DEB_MAINTAINER` overrides it.
 - **Android app package:** `Package.ps1` and `Package.sh` end by running `Apps/Android/Package.ps1` or `.sh`, which
-  builds the release app with Gradle (signed with the debug key, or the key in `MARCONI_ANDROID_KEYSTORE`) as
-  `Build/Installer/Marconi-<version>-android.apk` when a JDK, the Android SDK, an NDK and BuildTool are found, and
-  says what is missing otherwise without failing the desktop package.
+  builds the release app with Gradle, signed with the key in `MARCONI_ANDROID_KEYSTORE`, as
+  `Build/Installer/Marconi-<version>-android.apk` when that key is set and a JDK, the Android SDK, an NDK and
+  BuildTool are found, and says what is missing otherwise without failing the desktop package.
 - **Manual testing:** `python Tools/fake_vnc_server.py --port 5999`, then connect to `127.0.0.1::5999`. The server
   logs every input event it receives. `Tools/fake_vencrypt_server.py` is the same for encrypted (VeNCrypt over TLS)
   connections, and `Tools/TlsStream_OpenSSL.cpp` is the reference TLS stream it was checked against (not built).

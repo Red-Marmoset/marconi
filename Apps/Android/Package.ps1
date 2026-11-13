@@ -3,11 +3,11 @@
 # Package.ps1 runs this after the Windows installer; Apps\Android\Package.sh is the same for macOS and Linux. It
 # needs a JDK, the Android SDK (ANDROID_HOME or ANDROID_SDK_ROOT, else %LOCALAPPDATA%\Android\Sdk where Android
 # Studio installs it) with an NDK in its ndk folder or at ANDROID_NDK_HOME, and the Una engine at UNA_ENGINE_PATH
-# with its BuildTool built. When any of those is missing it says so and exits with 0, so the installer still gets
-# made.
+# with its BuildTool built. When any of those is missing, or no release key is set, it says so and exits with 0, so
+# the installer still gets made.
 #
-# Signing: with the standard debug key by default, which installs for testing but isn't for publishing. To
-# publish, sign with a release key:
+# Signing: with the release key these name. Without MARCONI_ANDROID_KEYSTORE the app is not packaged (for a test
+# build signed with the debug key, run gradlew.bat assembleDebug here instead):
 #   MARCONI_ANDROID_KEYSTORE=<path to the keystore>
 #   MARCONI_ANDROID_KEYSTORE_PASSWORD=<its password>
 #   MARCONI_ANDROID_KEY_ALIAS=<the key's alias>          optional; "marconi" by default
@@ -28,6 +28,11 @@ function Skip([string]$reason) {
     Write-Host "[Package.ps1] Android app not built: $reason"
     exit 0
 }
+
+# A release is signed with the release key, so there is nothing to package without one.
+if (-not $env:MARCONI_ANDROID_KEYSTORE) { Skip "MARCONI_ANDROID_KEYSTORE isn't set (the release key; see the top of Apps\Android\Package.ps1)." }
+if (-not (Test-Path $env:MARCONI_ANDROID_KEYSTORE)) { throw "MARCONI_ANDROID_KEYSTORE=$env:MARCONI_ANDROID_KEYSTORE doesn't exist." }
+if (-not $env:MARCONI_ANDROID_KEYSTORE_PASSWORD) { throw "MARCONI_ANDROID_KEYSTORE_PASSWORD isn't set." }
 
 # The tools: a JDK, the SDK with a platform and build tools, an NDK, and BuildTool.
 $java = if ($env:JAVA_HOME -and (Test-Path "$env:JAVA_HOME\bin\java.exe")) { "$env:JAVA_HOME\bin\java.exe" } else { (Get-Command java -ErrorAction SilentlyContinue).Source }
@@ -56,11 +61,7 @@ $env:UNA_ENGINE_PATH = $engine
 $aapt = Get-ChildItem "$sdk\build-tools" -Directory | Sort-Object { [version]$_.Name } | Select-Object -Last 1 | ForEach-Object { Join-Path $_.FullName 'aapt.exe' }
 if (-not $aapt -or -not (Test-Path $aapt)) { Skip "no aapt in $sdk\build-tools." }
 
-$signing = 'debug key'
-if ($env:MARCONI_ANDROID_KEYSTORE) {
-    if (-not (Test-Path $env:MARCONI_ANDROID_KEYSTORE)) { throw "MARCONI_ANDROID_KEYSTORE=$env:MARCONI_ANDROID_KEYSTORE doesn't exist." }
-    $signing = "release key $env:MARCONI_ANDROID_KEYSTORE"
-}
+$signing = "release key $env:MARCONI_ANDROID_KEYSTORE"
 
 Write-Host "[Package.ps1] Android: SDK=$sdk"
 Write-Host "[Package.ps1] Android: NDK=$ndk"
@@ -97,6 +98,3 @@ $hash = (Get-FileHash $outFile -Algorithm SHA256).Hash.ToLower()
 Write-Host ""
 Write-Host "Android app: $outFile"
 Write-Host "SHA256:      $hash"
-if ($signing -eq 'debug key') {
-    Write-Host "Signed with the debug key: fine for testing, not for publishing (set MARCONI_ANDROID_KEYSTORE for that)."
-}

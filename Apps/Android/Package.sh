@@ -4,10 +4,11 @@
 # Package.sh runs this after the macOS or Linux package, and Package.ps1 has a PowerShell twin. It needs a JDK,
 # the Android SDK (ANDROID_HOME or ANDROID_SDK_ROOT, else where Android Studio installs it) with an NDK in its
 # ndk folder or at ANDROID_NDK_HOME, and the Una engine at UNA_ENGINE_PATH with its BuildTool bootstrapped. When
-# any of those is missing it says so and exits with 0, so the desktop package still gets made.
+# any of those is missing, or no release key is set, it says so and exits with 0, so the desktop package still
+# gets made.
 #
-# Signing: with the standard debug key by default, which installs for testing but isn't for publishing. To
-# publish, sign with a release key:
+# Signing: with the release key these name. Without MARCONI_ANDROID_KEYSTORE the app is not packaged (for a test
+# build signed with the debug key, run ./gradlew assembleDebug here instead):
 #   MARCONI_ANDROID_KEYSTORE=<path to the keystore>
 #   MARCONI_ANDROID_KEYSTORE_PASSWORD=<its password>
 #   MARCONI_ANDROID_KEY_ALIAS=<the key's alias>          optional; "marconi" by default
@@ -33,6 +34,11 @@ skip() {
     echo "[Package.sh] Android app not built: $1"
     exit 0
 }
+
+# A release is signed with the release key, so there is nothing to package without one.
+[[ -n "${MARCONI_ANDROID_KEYSTORE:-}" ]] || skip "MARCONI_ANDROID_KEYSTORE isn't set (the release key; see the top of Apps/Android/Package.sh)."
+[[ -f "$MARCONI_ANDROID_KEYSTORE" ]] || { echo "ERROR: MARCONI_ANDROID_KEYSTORE=$MARCONI_ANDROID_KEYSTORE doesn't exist." >&2; exit 1; }
+[[ -n "${MARCONI_ANDROID_KEYSTORE_PASSWORD:-}" ]] || { echo "ERROR: MARCONI_ANDROID_KEYSTORE_PASSWORD isn't set." >&2; exit 1; }
 
 # The tools: a JDK, the SDK with a platform and build tools, an NDK, and BuildTool.
 if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
@@ -75,11 +81,7 @@ export UNA_ENGINE_PATH="$ENGINE"
 AAPT="$(ls "$SDK"/build-tools/*/aapt 2>/dev/null | sort -V | tail -n 1)"
 [[ -x "$AAPT" ]] || skip "no aapt in $SDK/build-tools."
 
-SIGNING="debug key"
-if [[ -n "${MARCONI_ANDROID_KEYSTORE:-}" ]]; then
-    [[ -f "$MARCONI_ANDROID_KEYSTORE" ]] || { echo "ERROR: MARCONI_ANDROID_KEYSTORE=$MARCONI_ANDROID_KEYSTORE doesn't exist." >&2; exit 1; }
-    SIGNING="release key $MARCONI_ANDROID_KEYSTORE"
-fi
+SIGNING="release key $MARCONI_ANDROID_KEYSTORE"
 
 echo "[Package.sh] Android: SDK=$SDK"
 echo "[Package.sh] Android: NDK=$NDK"
@@ -110,6 +112,3 @@ fi
 echo ""
 echo "Android app: $OUT_FILE"
 echo "SHA256:      $HASH"
-if [[ "$SIGNING" == "debug key" ]]; then
-    echo "Signed with the debug key: fine for testing, not for publishing (set MARCONI_ANDROID_KEYSTORE for that)."
-fi

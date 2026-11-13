@@ -392,17 +392,19 @@ with neither picks the kind already installed, or everyone when run as administr
 
 ## Releasing (Android)
 
-The three package scripts end by building the Android app too, when the computer has the tools: a JDK, the Android
-SDK (`ANDROID_HOME`, or where Android Studio installs it), an NDK in the SDK's `ndk` folder or at
-`ANDROID_NDK_HOME`, and the engine's BuildTool. The result goes next to the installer, disk image or package:
+The three package scripts end by building the Android app too, when a release key is set (below) and the computer
+has the tools: a JDK, the Android SDK (`ANDROID_HOME`, or where Android Studio installs it), an NDK in the SDK's
+`ndk` folder or at `ANDROID_NDK_HOME`, and the engine's BuildTool. The result goes next to the installer, disk
+image or package:
 
     Build/Installer/Marconi-0.9.4.107-android.apk
 
-Without the tools the scripts say what is missing and carry on. `bash Apps/Android/Package.sh` (or
-`.\Apps\Android\Package.ps1`) builds just the app. It is signed with the standard debug key, which installs for
-testing; to publish, set `MARCONI_ANDROID_KEYSTORE`, `MARCONI_ANDROID_KEYSTORE_PASSWORD` and, if they differ from
-the defaults, `MARCONI_ANDROID_KEY_ALIAS` and `MARCONI_ANDROID_KEY_PASSWORD`. An app signed with a different key
-than the one installed has to be uninstalled first.
+Without the key or the tools the scripts say what is missing and carry on. `bash Apps/Android/Package.sh` (or
+`.\Apps\Android\Package.ps1`) builds just the app. The release key is a keystore file kept out of the repository:
+set `MARCONI_ANDROID_KEYSTORE` to its path and `MARCONI_ANDROID_KEYSTORE_PASSWORD` to its password, and, if they
+differ from the defaults, `MARCONI_ANDROID_KEY_ALIAS` (`marconi`) and `MARCONI_ANDROID_KEY_PASSWORD` (the
+keystore's). For a test build signed with the debug key, run `./gradlew assembleDebug` in `Apps/Android`. An app
+signed with a different key than the one installed has to be uninstalled first.
 
 ## Releasing (macOS)
 
