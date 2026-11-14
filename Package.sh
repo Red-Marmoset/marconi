@@ -8,8 +8,8 @@
 # Both start by building the Release app with Build.sh and checking that the build is the current source's version.
 #
 # macOS: hands Build/Marconi/Release/Marconi to the Una engine's Packaging/PackageProject.sh, which makes Marconi.app
-# (Installer/macOS/Info.plist, the icon from Assets/AppIcon.png, Nebula Sans in Contents/Resources, MarconiMcp beside
-# the app's program with the Claude Desktop extension made from it by Installer/macOS/BeforeSigning.sh), signs it
+# (Installer/macOS/Info.plist, the icon from Assets/AppIcon-macOS.png, Nebula Sans in Contents/Resources, MarconiMcp
+# beside the app's program with the Claude Desktop extension made from it by Installer/macOS/BeforeSigning.sh), signs it
 # and puts it on a disk image to drag it to Applications from, all as Project.json's package section says. Finder
 # lays out the disk image's window, so it has to run with someone logged in to the Mac's screen and be allowed to
 # control Finder (the engine's Packaging/README.md, "Packaging on a build server"); that is checked before the build.

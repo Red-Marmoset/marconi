@@ -579,8 +579,8 @@ starts the tray program when someone signs in, and has an uninstaller. Neither t
 run on Windows yet (see `SERVER_PLAN.md`, Phase 2).
 
 `Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico`,
-`Assets/AppIcon.png` (the Mac app's icon and disk image picture) and the Linux package's PNGs in
-`Installer/Linux/icons`, are rendered by
+`Assets/AppIcon.png` (the bare mark, for every platform), `Assets/AppIcon-macOS.png` (the mark on a white plate,
+the Mac app's icon and disk image picture) and the Linux package's PNGs in `Installer/Linux/icons`, are rendered by
 `python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from
 `python Tools/make_installer_art.py`.
 

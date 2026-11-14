@@ -3,9 +3,11 @@
 # Renders the app icons:
 #
 #   Modules/MarconiUI/Resources/Marconi.ico    embedded in the Windows executable and installer
-#   Assets/AppIcon.png                         1024x1024, the icon Project.json's package.iconImage names: the Una
-#                                              engine's packaging makes the macOS app's icon and the disk image's
-#                                              background from it (the mark on a white plate)
+#   Assets/AppIcon.png                         1024x1024, the bare mark: the icon for every platform that
+#                                              Project.json's package.iconImage names
+#   Assets/AppIcon-macOS.png                   1024x1024, the mark on a white plate: the Mac's own icon
+#                                              (package.macos.iconImage), from which the Una engine's packaging makes
+#                                              the app's icon and the disk image's background
 #   Modules/MarconiUI/Resources/Marconi.icns   the same picture as a macOS icon, for PackageServer.sh until the
 #                                              server's packaging goes through the engine too
 #   Installer/Linux/icons/hicolor/<size>x<size>/apps/marconi.png
@@ -127,9 +129,10 @@ def main():
     images[-1].save(ico, format="ICO", sizes=[(n, n) for n in SIZES], append_images=images[:-1])
     print("Wrote " + ico)
 
-    app_icon = os.path.join(root, "Assets", "AppIcon.png")
-    draw_mac_icon(1024).save(app_icon, format="PNG", optimize=True)
-    print("Wrote " + app_icon)
+    for name, image in (("AppIcon.png", draw_icon(1024)), ("AppIcon-macOS.png", draw_mac_icon(1024))):
+        path = os.path.join(root, "Assets", name)
+        image.save(path, format="PNG", optimize=True)
+        print("Wrote " + path)
 
     icns = os.path.join(resources, "Marconi.icns")
     images = [draw_mac_icon(size) for size in MAC_SIZES]

@@ -43,6 +43,7 @@
         "outputDir": "Build/Installer",
         "zip": false,
         "macos": {
+            "iconImage": "Assets/AppIcon-macOS.png",
             "bundleIdentifier": "com.redmarmosetstudios.marconi",
             "infoPlist": "Installer/macOS/Info.plist",
             "category": "public.app-category.utilities",

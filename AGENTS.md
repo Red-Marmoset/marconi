@@ -69,7 +69,8 @@ it before working on that, follow its phases in order, and keep it current.
   `python Tools/make_installer_art.py`; rerun it after changing the icon, accent colour or fonts.
 - **macOS disk image:** `./Package.sh` builds Release, checks the version, then hands the binary to the engine's
   `Packaging/PackageProject.sh`, which makes `Marconi.app` and `Build/Installer/Marconi-<version>-macos-<arch>.dmg`
-  from `Project.json`'s `package` section: the icon and background from `Assets/AppIcon.png` (drawn by
+  from `Project.json`'s `package` section: the icon and background from `Assets/AppIcon-macOS.png` (the Mac's
+  own icon; `Assets/AppIcon.png`, the bare mark, is every other platform's; both drawn by
   `Tools/make_app_icon.py`), `Installer/macOS/Info.plist` for Marconi's own entries, signing as the `signing`
   section says. Finder lays out the disk image's window, so it needs a logged-in screen and permission to control
   Finder (the engine's `Packaging/README.md`). Opening a Finder window takes focus, so don't run it while the owner
