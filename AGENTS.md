@@ -14,6 +14,10 @@ when a feature is finished or the owner adds an idea; ideas wait for the owner's
 Letting AI tools (Claude Code, Codex, Claude Desktop) drive Marconi is planned in `MCP_PLAN.md`, the same way: read
 it before working on that, follow its phases in order, and keep it current.
 
+The terminal (a shell on the other computer over SSH or Marconi Server, in a tab, and commands for AI tools) is
+planned in `TERMINAL_PLAN.md`, the same way. Its finishing rule applies to that work: everything on `main`, pushed,
+engine changes included, with no branches left behind.
+
 ## Working with the owner
 
 - **Don't fill gaps with assumptions** (the owner's rule). When you notice you're assuming something about what the

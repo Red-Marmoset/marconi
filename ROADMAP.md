@@ -20,6 +20,7 @@ Where the plans are:
 | `Documentation/RDP.md` | Remote Desktop | `main` |
 | `MCP_PLAN.md` | Marconi for AI tools (the `MarconiMcp` program) | branch `claude/sweet-bell-nobab4`, not merged |
 | `PERFORMANCE_PLAN.md` | speed: video, the datagram channel, sound, games | branch `claude/beautiful-babbage-qh3jhe`, made at 0.6.3, not merged |
+| `TERMINAL_PLAN.md` | a terminal over SSH and Marconi Server, and commands and files for AI tools | `main` |
 
 The ideas from the owner's phone chat of 2026-11-13 are folded in below, each next to what already exists.
 
@@ -85,7 +86,7 @@ drivers, and the ideas for AI tools below.
 | Recording a session (for bug reports and trailers) | Idea | Today Marconi saves single screenshots. |
 | Game controllers from a phone or laptop | Written, tried with stand-ins only | `SERVER_PLAN.md` Phase 7 progress. The protocol, the server (Linux uinput; Windows ViGEmBus; no Mac), the viewer menu item and the Windows and Linux readers are written and tested with fake controllers. Never run with a real controller, `/dev/uinput` or ViGEmBus. Not on phones, not on a Mac viewer or server, and not on the datagram channel yet. Relative mouse and scancodes (Phase 7 step 4) not done. |
 | Our own Windows drivers (a fork of ViGEmBus, or new ones): virtual gamepad, virtual screen, virtual microphone | Idea | Researched in `DRIVER_PLAN.md`; waits for the owner's go-ahead. Short version: forking is allowed but means owning a signed kernel driver; a USB/IP test could avoid that. Meanwhile controllers use the existing ViGEmBus (`SERVER_PLAN.md` decision 6). |
-| A terminal in the same app, opening SSH computers found on the network | Idea | Today Marconi finds SSH computers on the network and recognises `ssh://` addresses, but says it can't open them. It uses SSH only to carry VNC and for Mac file transfer. |
+| A terminal in the same app, opening SSH computers found on the network, and through Marconi Server | Planned | `TERMINAL_PLAN.md` (the owner's go-ahead, 2026-11-14): tabs in the viewer window, SSH first (Phase 4), then Marconi Server (Phases 5 and 6). Nothing built yet. Today Marconi finds SSH computers on the network and recognises `ssh://` addresses, but says it can't open them. It uses SSH only to carry VNC and for Mac file transfer. |
 | Watching an iPad or iPhone's screen (view only), through a ReplayKit companion app | Idea | The details are in a separate email, not copied here yet. |
 | "Follow along": watching live what an AI tool is doing through Marconi, with a big Stop button | Idea | `MarconiMcp` connects by itself with no window, and "AI control of the viewer's own window" is not planned (`MCP_PLAN.md` section 8). Marconi Server takes one viewer at a time today, so watching alongside would need it to take more (Phase 6 step 7). |
 
@@ -128,7 +129,7 @@ takes one connection at a time and offers: `connect`, `disconnect`, `status`,
 | Waiting until something happens, with a time limit | Partly done | `wait_for_change` returns when the picture changes (optionally in one area) or the time runs out, and screenshots wait for the screen to settle. Waiting for some text or a control to appear: idea (needs reading text, or the list of controls). |
 | Reading text on the screen; typing whole strings | Partly done | `type_text` types whole strings. Reading the screen's text (OCR): idea. |
 | Device information: a list of computers, their state, battery (phones), what's running | Partly done | `status` describes the one connection. A list of computers (saved and found on the network), battery and running programs: idea; the last two need Marconi Server. `MCP_PLAN.md` decision 2 keeps room for several connections later. |
-| Running commands, reading and writing files, after asking first | Idea | Marconi already copies files (over SSH, TightVNC and Marconi Server), which a files tool could reuse. Commands need SSH or Marconi Server. |
+| Running commands, reading and writing files, after asking first | Planned | `TERMINAL_PLAN.md` Phase 2 (over SSH: `run_command`, `read_file`, `write_file`), Phase 5 (through Marconi Server) and Phase 7 (a live terminal). Nothing built yet. Marconi already copies files (over SSH, TightVNC and Marconi Server), which the file tools reuse. |
 | Cheaper screenshots: one area, smaller, only what changed | Partly done | Areas and a largest size are done. Only what changed since the last one: idea. |
 
 ## Safety for AI tools
