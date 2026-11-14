@@ -283,8 +283,7 @@ namespace MarconiUI
         StyleWindow(m_toolBar);
         m_toolBar->SendSizeEvent(); // Rebuild its cached background even when the toolbar is floating.
         StyleWindow(m_fullScreenBar);
-        wxFont statusFont = GetFont();
-        statusFont.SetPointSize(10);
+        const wxFont statusFont = SizedFont(GetFont(), 10);
         GetStatusBar()->SetFont(statusFont);
         GetStatusBar()->SetMinHeight(FromDIP(28));
         GetStatusBar()->SetBackgroundColour(palette.background);

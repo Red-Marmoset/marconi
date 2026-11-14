@@ -4,6 +4,7 @@
 #include "Controls.h"
 #include "Appearance.h"
 
+#include <wx/display.h>
 #include <wx/fontenum.h>
 #include <wx/brush.h>
 #include <wx/pen.h>
@@ -21,6 +22,13 @@
 
 namespace MarconiUI
 {
+    wxFont SizedFont(const wxFont& base, double windowsPoints)
+    {
+        wxFont font = base;
+        font.SetFractionalPointSize(windowsPoints * 96.0 / wxDisplay::GetStdPPIValue());
+        return font;
+    }
+
     wxFont HeadingFont(const wxFont& base, float scale, bool heavy)
     {
         wxFont font = base.Scaled(scale);

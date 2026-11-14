@@ -119,9 +119,7 @@ namespace MarconiUI
     ConnectionsFrame::ConnectionsFrame() : wxFrame(nullptr, wxID_ANY, "Marconi")
     {
         SetIcons(GetAppIcons());
-        wxFont bodyFont = GetFont();
-        bodyFont.SetPointSize(11);
-        SetFont(bodyFont);
+        SetFont(SizedFont(GetFont(), 11));
         wxPanel* panel = new wxPanel(this);
         const int border = FromDIP(24);
         const int gap = FromDIP(10);

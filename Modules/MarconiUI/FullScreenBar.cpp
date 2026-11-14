@@ -4,6 +4,7 @@
 #include "FullScreenBar.h"
 
 #include "Appearance.h"
+#include "Controls.h"
 #include "ViewerToolbarArt.h"
 
 #include <wx/aui/auibar.h>
@@ -25,8 +26,7 @@ namespace MarconiUI
     {
         Hide();
         int gap = FromDIP(6);
-        wxFont font = GetFont();
-        font.SetPointSize(10);
+        const wxFont font = SizedFont(GetFont(), 10);
         wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
         m_title = new wxStaticText(this, wxID_ANY, title);
         m_title->SetFont(font);
