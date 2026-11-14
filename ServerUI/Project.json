@@ -7,5 +7,32 @@
         "MarconiCore",
         "MarconiServerUI"
     ],
-    "compiler": "msvc"
+    "compiler": "msvc",
+    "package": {
+        "displayName": "Marconi Server",
+        "fileName": "MarconiServer",
+        "publisher": "Red Marmoset Studios Ltd.",
+        "iconImage": "../Assets/ServerIcon.png",
+        "accentColour": "#1E66D0",
+        "titleFont": "../Assets/Fonts/NebulaSans-Black.ttf",
+        "textFont": "../Assets/Fonts/NebulaSans-Semibold.ttf",
+        "files": [
+            "../Installer/macOS/com.redmarmoset.MarconiServer.plist"
+        ],
+        "license": "../LICENSE",
+        "outputDir": "../Build/Installer",
+        "macos": {
+            "iconImage": "../Assets/ServerIcon-macOS.png",
+            "executableName": "MarconiServer",
+            "bundleIdentifier": "com.redmarmoset.MarconiServer",
+            "infoPlist": "../Installer/macOS/ServerInfo.plist",
+            "category": "public.app-category.utilities"
+        }
+    },
+    "signing": {
+        "macos": {
+            "identityEnv": "MARCONI_SIGN_IDENTITY",
+            "notaryProfileEnv": "MARCONI_NOTARY_PROFILE"
+        }
+    }
 }

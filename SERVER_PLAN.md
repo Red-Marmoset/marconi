@@ -1200,7 +1200,7 @@ Outline only; planned in detail when reached.
   server app bundle, signed and notarized. Either way the server feeds it `GamepadState`.
 - The client's install menu then offers the right installer per server, using SFTP for Macs.
 
-#### Phase 8 progress: macOS (written, never built) and Linux X11 (built and tested)
+#### Phase 8 progress: macOS (builds, never run) and Linux X11 (built and tested)
 
 **Linux X11** (`SystemScreen_Linux.cpp`, `SystemInput_Linux.cpp`, `X11Support.h`): built and tested under Xvfb by
 `Tests/MarconiServerTest/X11Tests.cpp` (run with `DISPLAY` set to an Xvfb `-screen 0 1024x768x24`; without a display
@@ -1215,8 +1215,10 @@ covering the whole root window), releasing held keys and buttons when a viewer v
 X server that dies ends the program).
 
 **macOS** (`SystemScreen_Mac.cpp`, `SystemInput_Mac.cpp`, `MacDisplays.h`; frameworks in `Module.manifest`): written
-without a Mac. Only syntax-checked against hand-written stub headers, so no claim is made that it compiles against the
-real SDK, still less that it works. Decisions:
+without a Mac. On the owner's Mac (Apple Silicon, macOS 26.6, 14 November 2026) it compiles and links against the real
+SDK: `Server/Project.json` and `Tests/MarconiServerTest/Project.json` in Debug, `ServerUI/Project.json` in Release.
+Nothing has been run yet, the tests included (they may reach the screen and input code, which asks macOS for the
+Screen Recording and Accessibility permissions). Decisions:
 
 - **Capture:** `CGDisplayCreateImage` per display (looked up with `dlsym`, since Apple is retiring it). ScreenCaptureKit
   only once this has been run and measured (also what Phase 4's GPU frames want). Needs the Screen Recording permission,
@@ -1238,18 +1240,22 @@ real SDK, still less that it works. Decisions:
   lives in the menu bar; `ServerInfo.plist` sets `LSUIElement` so there is no Dock icon. A permission problem shows in
   a dialog at start, as a "Problem" line in the menu, with "Open Screen Recording settings", "Open Accessibility
   settings" and "Check again" items (the screen permission still needs a restart of the app).
-- **Package:** `PackageServer.sh` makes `Marconi Server.app` on a `.dmg` (Developer ID signing and notarizing as in
-  `Package.sh`; not called from it yet). Sign every build with the same identity, or the permissions have to be given
-  again after each rebuild.
+- **Package:** `PackageServer.sh` builds the tray program and hands it to the engine's `Packaging/PackageProject.sh`,
+  as `Package.sh` does for the client: `Marconi Server.app` (the executable named `MarconiServer`, so the launch agent's
+  path holds) on `MarconiServer-<version>-macos-<arch>.dmg`, laid out like the client's with the server's blue
+  (`ServerUI/Project.json`'s package section; icons `Assets/ServerIcon.png` and `Assets/ServerIcon-macOS.png` from
+  `Tools/make_app_icon.py --server`). Developer ID signing and notarizing as in `Package.sh`; not called from it yet.
+  Sign every build with the same identity, or the permissions have to be given again after each rebuild.
 - **Start at login (plan, nothing installs it):** a per-user launch agent
   (`Installer/macOS/com.redmarmoset.MarconiServer.plist`, into `~/Library/LaunchAgents`), not a daemon, because only a
   program in the login session may read the screen or post events. Next step: a tray menu item "Start at login" that
   writes or removes that file (or uses `SMAppService.mainApp` on macOS 13 and later, which needs a small `.mm`). Showing
   the login window itself (before anyone has logged in) is not possible this way and is not planned.
 
-What has to be checked on a Mac (nothing below has been done):
+What has to be checked on a Mac (only the first has been done):
 
-1. It compiles and links: `./Build.sh Server/Project.json`, `./Build.sh ServerUI/Project.json`, and the tests.
+1. It compiles and links: `./Build.sh Server/Project.json`, `./Build.sh ServerUI/Project.json`, and the tests (done,
+   14 November 2026; the tests not yet run).
 2. Screen Recording: first run shows the prompt; after allowing it and restarting, the picture is the real desktop, not
    just the wallpaper. Is `CGDisplayCreateImage` still present and working on the Mac's macOS version (it is marked as
    going away; if not, ScreenCaptureKit is needed)?

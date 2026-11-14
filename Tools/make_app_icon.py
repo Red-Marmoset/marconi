@@ -8,8 +8,6 @@
 #   Assets/AppIcon-macOS.png                   1024x1024, the mark on a white plate: the Mac's own icon
 #                                              (package.macos.iconImage), from which the Una engine's packaging makes
 #                                              the app's icon and the disk image's background
-#   Modules/MarconiUI/Resources/Marconi.icns   the same picture as a macOS icon, for PackageServer.sh until the
-#                                              server's packaging goes through the engine too
 #   Installer/Linux/icons/hicolor/<size>x<size>/apps/marconi.png
 #                                              the Linux package's icons (Package.sh), one PNG per size in the layout
 #                                              /usr/share/icons expects
@@ -19,6 +17,10 @@
 #   Modules/MarconiServerUI/Resources/MarconiServer.ico
 #                                              Marconi Server's icon: the same mark in white on a blue circle, as in
 #                                              the tray (only with --server, so the others aren't redrawn)
+#   Assets/ServerIcon.png                      1024x1024, that blue circle: the server's icon for every platform
+#                                              (ServerUI/Project.json's package.iconImage)
+#   Assets/ServerIcon-macOS.png                1024x1024, the white mark on a blue plate: the server's Mac icon
+#                                              (package.macos.iconImage), also with --server
 #
 # It draws the same picture as Modules/MarconiUI/AppIcon.cpp (the runtime window icon), so keep the two in step.
 # Needs Pillow: pip install pillow
@@ -31,7 +33,6 @@ import sys
 from PIL import Image, ImageDraw
 
 SIZES = [16, 20, 24, 32, 48, 64, 96, 128, 256]
-MAC_SIZES = [16, 32, 64, 128, 256, 512, 1024]
 LINUX_SIZES = [16, 24, 32, 48, 64, 128, 256]
 SUPERSAMPLE = 8
 MAC_SUPERSAMPLE = 4
@@ -81,6 +82,23 @@ def draw_server_icon(size):
     return image.resize((size, size), Image.LANCZOS)
 
 
+def draw_server_mac_icon(size):
+    # The Mac plate (see draw_mac_icon) in the server's blue, with the mark in white
+    big = size * MAC_SUPERSAMPLE
+    image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    inset = big * 100 / 1024
+    draw.rounded_rectangle((inset, inset, big - inset, big - inset), radius=big * 185 / 1024, fill=SERVER_BLUE)
+    image = image.resize((size, size), Image.LANCZOS)
+
+    mark = draw_icon(round(size * 0.8))
+    white = Image.new("RGBA", mark.size, WHITE)
+    white.putalpha(mark.getchannel("A"))
+    offset = (size - mark.width) // 2
+    image.alpha_composite(white, (offset, offset + round(size * 0.02)))
+    return image
+
+
 def draw_mac_icon(size):
     # Apple's icon grid: an 824/1024 plate with a ~185/1024 corner radius, leaving room for the system's shadow.
     big = size * MAC_SUPERSAMPLE
@@ -113,6 +131,12 @@ def make_server_icon(root):
     images[-1].save(ico, format="ICO", sizes=[(n, n) for n in SIZES], append_images=images[:-1])
     print("Wrote " + ico)
 
+    for name, image in (("ServerIcon.png", draw_server_icon(1024)),
+                        ("ServerIcon-macOS.png", draw_server_mac_icon(1024))):
+        path = os.path.join(root, "Assets", name)
+        image.save(path, format="PNG", optimize=True)
+        print("Wrote " + path)
+
 
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -133,11 +157,6 @@ def main():
         path = os.path.join(root, "Assets", name)
         image.save(path, format="PNG", optimize=True)
         print("Wrote " + path)
-
-    icns = os.path.join(resources, "Marconi.icns")
-    images = [draw_mac_icon(size) for size in MAC_SIZES]
-    images[-1].save(icns, format="ICNS", append_images=images[:-1])
-    print("Wrote " + icns)
 
     icon_set = os.path.join(root, "Apps", "iPad", "Assets.xcassets", "AppIcon.appiconset")
     os.makedirs(icon_set, exist_ok=True)

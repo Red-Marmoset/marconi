@@ -1,36 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Copyright (c) 2026 Red Marmoset Studios Ltd. -->
-<!-- Info.plist for "Marconi Server.app". PackageServer.sh fills in the @VERSION@, @SHORT_VERSION@ and @MIN_MACOS@
-     placeholders. Not yet tried on a Mac. -->
+<!-- "Marconi Server.app"'s own Info.plist entries: a menu-bar program with no Dock icon (LSUIElement). The Una
+     engine's Packaging/PackageProject.sh starts from this and adds the executable, icon, version, bundle identifier,
+     category and minimum macOS from ServerUI/Project.json and the build. -->
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
     <string>Marconi Server</string>
-    <key>CFBundleExecutable</key>
-    <string>MarconiServer</string>
-    <key>CFBundleIconFile</key>
-    <string>Marconi</string>
     <!-- A different identifier from the viewer's: macOS keeps the Screen Recording and Accessibility permissions
          per identifier (and per signing identity), so the server is allowed on its own. -->
-    <key>CFBundleIdentifier</key>
-    <string>com.redmarmoset.MarconiServer</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
     <key>CFBundleName</key>
     <string>Marconi Server</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>@SHORT_VERSION@</string>
-    <key>CFBundleVersion</key>
-    <string>@VERSION@</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.utilities</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>@MIN_MACOS@</string>
     <!-- A menu-bar program: no Dock icon and no menu bar of its own, only the icon in the menu bar. -->
     <key>LSUIElement</key>
     <true/>

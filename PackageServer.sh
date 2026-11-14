@@ -2,14 +2,19 @@
 # PackageServer.sh - Build the Marconi Server for macOS as "Marconi Server.app" on a disk image:
 #   Build/Installer/MarconiServer-<version>-macos-<arch>.dmg
 #
-# NOT YET RUN ON A MAC: written without one (see SERVER_PLAN.md, Phase 8). It mirrors the client's package_macos in
-# Package.sh, with the server's Info.plist (Installer/macOS/ServerInfo.plist, a menu-bar program with no Dock icon).
-# Package.sh doesn't call it yet; run it by hand until the owner has tried the result.
+# It builds the tray program (ServerUI/Project.json) Release and checks the version, as Package.sh does for the
+# client, then hands it to the Una engine's Packaging/PackageProject.sh, which makes the app and the disk image from
+# ServerUI/Project.json's package section: the icon and the disk image's background from Assets/ServerIcon-macOS.png,
+# Installer/macOS/ServerInfo.plist (a menu-bar program with no Dock icon), and the login item's launch agent
+# (Installer/macOS/com.redmarmoset.MarconiServer.plist, carried in Contents/Resources but not installed; see
+# SERVER_PLAN.md, Phase 8). Finder lays out the disk image's window, so it needs someone logged in to the Mac's
+# screen and permission to control Finder (the engine's Packaging/README.md); that is checked before the build.
+# Package.sh doesn't call it yet; run it by hand until the owner has tried the server on a Mac.
 #
-# Signing and notarizing work as in Package.sh (MARCONI_SIGN_IDENTITY, MARCONI_NOTARY_PROFILE). Sign with the same
-# Developer ID every time: macOS keeps the Screen Recording and Accessibility permissions against the app's signing
-# identity, so an ad-hoc signed build (a new identity at every build) has to be allowed again in System Settings
-# after each rebuild.
+# Signing and notarizing work as in Package.sh (MARCONI_SIGN_IDENTITY, MARCONI_NOTARY_PROFILE, named by
+# ServerUI/Project.json's signing section). Sign with the same Developer ID every time: macOS keeps the Screen
+# Recording and Accessibility permissions against the app's signing identity, so an ad-hoc signed build (a new
+# identity at every build) has to be allowed again in System Settings after each rebuild.
 #
 # Usage:
 #   ./PackageServer.sh [--clean] [--skip-build] [--allow-dirty]
@@ -36,9 +41,12 @@ for arg in "$@"; do
 done
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "PackageServer.sh makes the macOS disk image, so it has to run on a Mac."
-for tool in git hdiutil codesign otool lipo plutil; do
-    command -v "$tool" > /dev/null || fail "$tool not found. Install the Xcode command line tools (xcode-select --install)."
-done
+command -v git > /dev/null || fail "git not found. Install the Xcode command line tools (xcode-select --install)."
+ENGINE="${UNA_ENGINE_PATH:-$ROOT/../engine}"
+[[ -f "$ENGINE/Packaging/PackageProject.sh" ]] ||
+    fail "the Una engine at $ENGINE has no Packaging/PackageProject.sh: update it, or set UNA_ENGINE_PATH."
+# The engine's packaging checks Finder, its permission, the tools and ServerUI/Project.json before the build
+bash "$ENGINE/Packaging/PackageProject.sh" --check-only --project-dir "$ROOT/ServerUI"
 git -C "$ROOT" rev-parse HEAD > /dev/null 2>&1 || fail "packaging needs git and a clone of the repository."
 if [[ "$(git -C "$ROOT" rev-parse --is-shallow-repository)" == "true" ]]; then
     fail "this is a shallow clone, so the revision would be wrong. Fetch the full history (git fetch --unshallow)."
@@ -69,74 +77,9 @@ if [[ "$EXE" -ot "$ROOT/Modules/MarconiCore/BuildVersion.h" ]]; then
     fail "MarconiServerTray is older than its version header, so it may not be version $VERSION. Rebuild (run without --skip-build)."
 fi
 
-# Only system libraries may be linked dynamically: anything else would be missing on other Macs.
-NON_SYSTEM="$(otool -L "$EXE" | tail -n +2 | awk '{print $1}' | grep -vE '^(/usr/lib/|/System/Library/)' || true)"
-if [[ -n "$NON_SYSTEM" ]]; then
-    fail "Marconi Server links libraries that other Macs won't have:"$'\n'"$NON_SYSTEM"
-fi
-
-ARCHS="$(lipo -archs "$EXE" 2>/dev/null || uname -m)"
-ARCH_LABEL="$(tr ' ' '-' <<< "$ARCHS")"
-if [[ "$ARCHS" == *" "* ]]; then
-    ARCH_LABEL="universal"
-fi
-MIN_MACOS="$(otool -l "$EXE" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')"
-[[ -n "$MIN_MACOS" ]] || MIN_MACOS="11.0"
-
-INSTALLER_DIR="$ROOT/Build/Installer"
-STAGE_DIR="$INSTALLER_DIR/StageMacServer"
-APP="$STAGE_DIR/Marconi Server.app"
-rm -rf "$STAGE_DIR"
-mkdir -p "$INSTALLER_DIR" "$APP/Contents/MacOS" "$APP/Contents/Resources"
-
-cp "$EXE" "$APP/Contents/MacOS/MarconiServer"
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/$BASE_VERSION/g" -e "s/@MIN_MACOS@/$MIN_MACOS/g" \
-    "$ROOT/Installer/macOS/ServerInfo.plist" > "$APP/Contents/Info.plist"
-plutil -lint "$APP/Contents/Info.plist" > /dev/null
-printf 'APPL????' > "$APP/Contents/PkgInfo"
-cp "$ROOT/Modules/MarconiUI/Resources/Marconi.icns" "$APP/Contents/Resources/" # the viewer's icon, until the server has its own
-cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE.txt"
-
-# The login-item plan's launch agent travels with the app but is not installed by it (see SERVER_PLAN.md).
-cp "$ROOT/Installer/macOS/com.redmarmoset.MarconiServer.plist" "$APP/Contents/Resources/"
-
-IDENTITY="${MARCONI_SIGN_IDENTITY:-}"
-if [[ -z "$IDENTITY" ]]; then
-    FOUND="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | tr -d '"' | sort -u || true)"
-    if [[ -n "$FOUND" && "$(wc -l <<< "$FOUND")" -eq 1 ]]; then
-        IDENTITY="$FOUND"
-    else
-        IDENTITY="-"
-    fi
-fi
-if [[ "$IDENTITY" == "-" ]]; then
-    codesign --force --sign - "$APP"
-else
-    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
-fi
-codesign --verify --strict "$APP"
-
-ln -s /Applications "$STAGE_DIR/Applications"
-
-OUT_FILE="$INSTALLER_DIR/MarconiServer-$VERSION-macos-$ARCH_LABEL.dmg"
-rm -f "$OUT_FILE"
-echo "[PackageServer.sh] Version=$VERSION Arch=$ARCHS MinMacOS=$MIN_MACOS Signing=$IDENTITY"
-hdiutil create -quiet -volname "Marconi Server $VERSION" -srcfolder "$STAGE_DIR" -fs HFS+ -format UDZO -ov "$OUT_FILE"
-
-if [[ "$IDENTITY" != "-" ]]; then
-    codesign --force --timestamp --sign "$IDENTITY" "$OUT_FILE"
-    if [[ -n "${MARCONI_NOTARY_PROFILE:-}" ]]; then
-        xcrun notarytool submit "$OUT_FILE" --keychain-profile "$MARCONI_NOTARY_PROFILE" --wait
-        xcrun stapler staple "$OUT_FILE"
-    fi
-fi
-
-echo ""
-echo "Disk image: $OUT_FILE"
-echo "SHA256:     $(shasum -a 256 "$OUT_FILE" | awk '{print $1}')"
+bash "$ENGINE/Packaging/PackageProject.sh" --executable "$EXE" --version "$VERSION" --project-dir "$ROOT/ServerUI"
 if [[ -n "$DIRTY" ]]; then
     echo "WARNING: built with uncommitted changes; don't publish this one."
-elif [[ "$IDENTITY" == "-" ]]; then
-    echo "Ad-hoc signed: fine for testing on this Mac. After each rebuild, allow Marconi Server again under Screen"
-    echo "Recording and Accessibility in System Settings > Privacy & Security."
 fi
+echo "If it was signed ad hoc (see above), macOS asks again for Screen Recording and Accessibility after each"
+echo "rebuild (see the top of PackageServer.sh)."
