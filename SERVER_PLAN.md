@@ -332,6 +332,37 @@ Measurement is part of the work, not an afterthought: `--bench` on the server, t
   after the person at the computer allows it.
 - The protocol parser is fuzzed the way `RandomInputTests.cpp` fuzzes the RFB client.
 
+#### Security review, 0.11.12 to 0.11.15 (2026-11-14)
+
+A read-through of the client and server for weaknesses, and the fixes that followed. What changed on the server:
+
+- **Before the login.** `Listener::Run` handles each connection on its own thread up to the login (16 at once, 4
+  from one address), every read has a time limit (`SetLoginTimeoutMs`, two minutes: a person may be reading a
+  certificate warning or typing a password) and messages are held to 64 KB. One viewer is still served at a time; a
+  second that logs in waits in `Session`'s admission step. Before this, one connection that said nothing held the
+  server for everyone.
+- **Lockout.** `Auth` counts wrong passwords per address, so a guesser can't lock the owner out. More than 20 wrong
+  passwords from all addresses in ten minutes cuts each address to one try before its lockout.
+- **Shared things.** The screen source is asked for its displays from one thread at a time (`DisplaysForWelcome`),
+  the clipboard is listened to only once a viewer is in, and the video encoders are looked up once in `Start`.
+- **The tray icon.** It talks to the control pipe only if SYSTEM or Administrators own it, and uses
+  `ProgramData\Marconi Server` only if they own that. The installer moves aside a settings folder made by any other
+  account.
+- **Self-update.** The staged installer is opened deny-write before it is hashed and inspected (`Hold`), not after.
+
+Still open, for the owner to decide (none of these is done):
+
+1. A minimum length for the access password (only an empty one is refused now).
+2. The firewall rule covers every network type, public ones included.
+3. "Ask me each time" for updates can be changed from the tray menu by a viewer using the mouse; so can file
+   access. A setting a viewer can't reach needs either the Windows permission prompt or ignoring input that comes
+   from the viewer on those windows.
+4. The login sends the password itself inside TLS. A login where the password never crosses (a PAKE) would mean a
+   viewer who accepts the wrong certificate still gives nothing away, but it changes the protocol.
+5. The server listens on IPv4 only, so another program on the computer can take the same port on IPv6.
+6. The Windows service (not shipped): its "is this an administrator" check goes by process id and can be raced, and
+   it doesn't restrict its data folder.
+
 ### Running as a Windows service (Phase 3)
 
 A server that is any use shows the login screen, survives a restart, and keeps working through a UAC prompt or the
