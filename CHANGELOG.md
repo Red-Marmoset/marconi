@@ -5,6 +5,14 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.15
+
+- Security: Marconi Server's tray icon only believes a background helper that Windows or an administrator started.
+- Security: Marconi Server uses the shared settings folder only if an administrator made it; the installer moves aside one made by another account.
+- Security: an update sent by a viewer can't be swapped between being checked and being run.
+- Security: on Linux and macOS, Marconi Server's private key is never readable by other accounts, even for a moment.
+- The installers run Windows' own tools by their full path.
+
 ## 0.11.14
 
 - Security: someone who connects to Marconi Server and says nothing can no longer keep everyone else out.

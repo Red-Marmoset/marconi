@@ -168,7 +168,7 @@ FunctionEnd
 !macro CloseRunningAppFunction PREFIX
 Function ${PREFIX}CloseRunningApp
     StrCpy $WasRunning 0
-    nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
+    nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /FI "IMAGENAME eq ${APP_EXE}" /NH'
     Pop $0
     Pop $1
     ${If} $0 != 0
@@ -180,13 +180,13 @@ Function ${PREFIX}CloseRunningApp
     ${EndIf}
     StrCpy $WasRunning 1
     DetailPrint "Closing ${APP_NAME}"
-    nsExec::ExecToStack 'taskkill /IM ${APP_EXE}'
+    nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /IM ${APP_EXE}'
     Pop $0
     Pop $1
     StrCpy $3 0
     ${Do}
         Sleep 500
-        nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
+        nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /FI "IMAGENAME eq ${APP_EXE}" /NH'
         Pop $0
         Pop $1
         !insertmacro CloseRunningAppStrStr "${PREFIX}" $2 $1 "${APP_EXE}"
@@ -196,7 +196,7 @@ Function ${PREFIX}CloseRunningApp
         IntOp $3 $3 + 1
     ${LoopUntil} $3 >= 20
     DetailPrint "${APP_NAME} didn't close; ending it"
-    nsExec::ExecToStack 'taskkill /F /IM ${APP_EXE}'
+    nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /F /IM ${APP_EXE}'
     Pop $0
     Pop $1
     Sleep 1000
@@ -306,7 +306,7 @@ Function RestorePrevious
         CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$PrevDir\${APP_EXE}" "" "$PrevDir\${APP_ICON_FILE}"
     ${EndIf}
     ${If} $HadFirewall == 1
-        nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$PrevDir\${APP_EXE}" enable=yes'
+        nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$PrevDir\${APP_EXE}" enable=yes'
         Pop $0
     ${EndIf}
     StrCpy $INSTDIR "$PrevDir" ; so LaunchAsUser starts the version that was put back
@@ -369,16 +369,46 @@ Section "${APP_NAME}" SecApp
     ; The settings folder, in ProgramData: the settings, the certificate and key and the logs. Administrators and the
     ; system get everything; the account signed in at the screen (which runs the tray app until the Windows service
     ; comes) gets to change things, so its password and port changes can be saved. Nobody else can read the folder.
+    ; Any account can make a folder in ProgramData, so one that is already there is only kept when Windows or the
+    ; administrators own it (an earlier install made it). One made by an ordinary account could hold a password and
+    ; settings of that account's choosing: it is moved aside, never used.
+    StrCpy $5 "ours" ; whether the folder may be made the administrators' own: "ours", or "unknown" if it couldn't be checked
+    ${If} ${FileExists} "$APPDATA\${DATA_FOLDER}\*.*"
+        nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "(Get-Acl -LiteralPath $\'$APPDATA\${DATA_FOLDER}$\').GetOwner([System.Security.Principal.SecurityIdentifier]).Value"'
+        Pop $0
+        Pop $1
+        ${StrStr} $2 "$1" "S-1-5-32-544"
+        ${StrStr} $3 "$1" "S-1-5-18"
+        ${StrStr} $4 "$1" "S-1-"
+        ${If} $0 != 0
+        ${OrIf} $4 == ""
+            ; The owner couldn't be read. The folder is left exactly as it is; ${APP_NAME} itself only uses it if
+            ; Windows or the administrators own it.
+            StrCpy $5 "unknown"
+            DetailPrint "Could not check who made the settings folder; leaving it as it is."
+        ${ElseIf} "$2$3" == ""
+            System::Call 'kernel32::GetTickCount()i.r4'
+            DetailPrint "The settings folder was not made by an administrator. Moving it aside as ${DATA_FOLDER}.untrusted-$4 and starting a fresh one."
+            Rename "$APPDATA\${DATA_FOLDER}" "$APPDATA\${DATA_FOLDER}.untrusted-$4"
+            ${If} ${FileExists} "$APPDATA\${DATA_FOLDER}\*.*"
+                Abort "The settings folder ($APPDATA\${DATA_FOLDER}) was made by another account and could not be moved aside. Remove it, then install again."
+            ${EndIf}
+        ${EndIf}
+    ${EndIf}
     CreateDirectory "$APPDATA\${DATA_FOLDER}"
+    ${If} $5 == "ours"
+        nsExec::ExecToLog '"$SYSDIR\icacls.exe" "$APPDATA\${DATA_FOLDER}" /setowner "*S-1-5-32-544" /T /C /Q'
+        Pop $0
+    ${EndIf}
     Call GetConsoleUser
     Pop $ConsoleUser
-    nsExec::ExecToLog 'icacls "$APPDATA\${DATA_FOLDER}" /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F"'
+    nsExec::ExecToLog '"$SYSDIR\icacls.exe" "$APPDATA\${DATA_FOLDER}" /inheritance:r /grant:r "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F"'
     Pop $0
     ${If} $0 != 0
         DetailPrint "Could not restrict who can use the settings folder (icacls exit code $0)."
     ${EndIf}
     ${If} $ConsoleUser != ""
-        nsExec::ExecToLog 'icacls "$APPDATA\${DATA_FOLDER}" /grant:r "$ConsoleUser:(OI)(CI)M"'
+        nsExec::ExecToLog '"$SYSDIR\icacls.exe" "$APPDATA\${DATA_FOLDER}" /grant:r "$ConsoleUser:(OI)(CI)M"'
         Pop $0
         ${If} $0 != 0
             DetailPrint "Could not let $ConsoleUser change the settings (icacls exit code $0). ${APP_NAME} will then keep its settings in that account's own folder instead."
@@ -390,9 +420,9 @@ SectionEnd
 Section "Allow through Windows Firewall" SecFirewall
     ; Without this, other computers can't reach the server. The rule lets this program receive connections on the
     ; port Marconi uses (${DEFAULT_PORT}); if the port is changed later, the rule needs changing too.
-    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE}"'
+    nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="${FIREWALL_RULE}"'
     Pop $0
-    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$INSTDIR\${APP_EXE}" enable=yes'
+    nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$INSTDIR\${APP_EXE}" enable=yes'
     Pop $0
     ${If} $0 != 0
         DetailPrint "Could not add the firewall rule (netsh exit code $0). Other computers may not be able to connect until port ${DEFAULT_PORT} is allowed."
@@ -425,7 +455,7 @@ Function RememberPreviousChoices
     ${If} ${FileExists} "$SMPROGRAMS\${APP_NAME}.lnk"
         StrCpy $HadShortcut 1
     ${EndIf}
-    nsExec::ExecToStack 'netsh advfirewall firewall show rule name="${FIREWALL_RULE}"'
+    nsExec::ExecToStack '"$SYSDIR\netsh.exe" advfirewall firewall show rule name="${FIREWALL_RULE}"'
     Pop $1
     Pop $2
     ${If} $1 == 0
@@ -468,7 +498,7 @@ Section "un.${APP_NAME}" SecUnApp
     Call un.CloseRunningApp
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
 
-    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE}"'
+    nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="${FIREWALL_RULE}"'
     Pop $0
     DeleteRegValue HKLM "${RUN_KEY}" "${APP_NAME}"
 

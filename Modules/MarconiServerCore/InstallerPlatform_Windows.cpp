@@ -250,21 +250,37 @@ namespace Marconi
                     }
                 }
 
+                // Held open (others may read, not change or delete) from before the checks until this program ends,
+                // so the file that runs is the file that was checked.
+                bool Hold(const std::string& installerPath, std::string& error) override
+                {
+                    Release();
+                    m_lock = CreateFileW(Widen(installerPath).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                    if (m_lock == INVALID_HANDLE_VALUE)
+                    {
+                        error = "could not open the installer (" + std::to_string(GetLastError()) + ")";
+                        return false;
+                    }
+                    return true;
+                }
+
+                void Release() override
+                {
+                    if (m_lock != INVALID_HANDLE_VALUE)
+                    {
+                        CloseHandle(m_lock);
+                        m_lock = INVALID_HANDLE_VALUE;
+                    }
+                }
+
                 bool Launch(const std::string& installerPath, const std::vector<std::string>& arguments,
                             std::string& error) override
                 {
                     const std::wstring path = Widen(installerPath);
-                    // Held open (others may read, not change or delete) from the checks until this program ends, so
-                    // the file that runs is the file that was checked.
-                    if (m_lock != INVALID_HANDLE_VALUE)
+                    // Normally held since before the checks (Hold). If it isn't, it is taken now.
+                    if (m_lock == INVALID_HANDLE_VALUE && !Hold(installerPath, error))
                     {
-                        CloseHandle(m_lock);
-                    }
-                    m_lock = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                                         FILE_ATTRIBUTE_NORMAL, nullptr);
-                    if (m_lock == INVALID_HANDLE_VALUE)
-                    {
-                        error = "could not open the installer to start it (" + std::to_string(GetLastError()) + ")";
                         return false;
                     }
                     std::wstring parameters = QuoteArguments(arguments);

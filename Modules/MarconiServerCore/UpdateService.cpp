@@ -156,6 +156,10 @@ namespace Marconi
         {
             LOG_INFO("Server", "Update from '%s' refused (%u): %s", LogSafe(m_viewer.name).c_str(),
                      static_cast<unsigned>(status), detail.c_str());
+            if (m_environment != nullptr && m_environment->launcher != nullptr)
+            {
+                m_environment->launcher->Release(); // it won't be run: let it be removed
+            }
             DiscardFile();
             m_state = State::Done;
             ReleaseBusy();
@@ -384,6 +388,14 @@ namespace Marconi
             if (m_file.fail())
             {
                 Fail(Wire::UpdateResult::Status::WriteFailed, "closing the update file failed");
+                return;
+            }
+            // From here until it runs nobody else can change or replace the file: without this, something else on
+            // this computer could swap it between the checks below and the start.
+            std::string holdError;
+            if (m_environment->launcher != nullptr && !m_environment->launcher->Hold(StagedPath(), holdError))
+            {
+                Fail(Wire::UpdateResult::Status::WriteFailed, "the saved update could not be held: " + holdError);
                 return;
             }
             // The hash is worked out again from the disk, so what is checked is what will run.

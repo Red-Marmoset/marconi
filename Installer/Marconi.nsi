@@ -439,7 +439,7 @@ FunctionEnd
 !macro CloseRunningAppFunction PREFIX
 Function ${PREFIX}CloseRunningApp
     StrCpy $WasRunning 0
-    nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
+    nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /FI "IMAGENAME eq ${APP_EXE}" /NH'
     Pop $0
     Pop $1
     ${If} $0 != 0
@@ -451,13 +451,13 @@ Function ${PREFIX}CloseRunningApp
     ${EndIf}
     StrCpy $WasRunning 1
     DetailPrint "Closing ${APP_NAME}"
-    nsExec::ExecToStack 'taskkill /IM ${APP_EXE}'
+    nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /IM ${APP_EXE}'
     Pop $0
     Pop $1
     StrCpy $3 0
     ${Do}
         Sleep 500
-        nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH'
+        nsExec::ExecToStack '"$SYSDIR\tasklist.exe" /FI "IMAGENAME eq ${APP_EXE}" /NH'
         Pop $0
         Pop $1
         !insertmacro CloseRunningAppStrStr "${PREFIX}" $2 $1 "${APP_EXE}"
@@ -467,7 +467,7 @@ Function ${PREFIX}CloseRunningApp
         IntOp $3 $3 + 1
     ${LoopUntil} $3 >= 20
     DetailPrint "${APP_NAME} didn't close; ending it"
-    nsExec::ExecToStack 'taskkill /F /IM ${APP_EXE}'
+    nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /F /IM ${APP_EXE}'
     Pop $0
     Pop $1
     Sleep 1000

@@ -16,6 +16,7 @@
 #endif
 #include <windows.h>
 
+#include <aclapi.h>
 #include <sddl.h>
 
 #include <atomic>
@@ -381,6 +382,28 @@ namespace Marconi
                 }
             }
 
+            namespace
+            {
+                // Whether the pipe that answered was made by Windows itself or an administrator, which is who runs
+                // the real helper. Any program can make a pipe of this name when the helper isn't running; one
+                // made by an ordinary account is someone standing in for the helper, and is not talked to: it
+                // could tell the tray icon to stop serving and show a certificate of its own.
+                bool PipeBelongsToSystem(HANDLE pipe)
+                {
+                    PSID owner = nullptr;
+                    PSECURITY_DESCRIPTOR descriptor = nullptr;
+                    if (GetSecurityInfo(pipe, SE_KERNEL_OBJECT, OWNER_SECURITY_INFORMATION, &owner, nullptr, nullptr,
+                                        nullptr, &descriptor) != ERROR_SUCCESS)
+                    {
+                        return false;
+                    }
+                    const bool trusted = owner != nullptr && (IsWellKnownSid(owner, WinLocalSystemSid) ||
+                                                              IsWellKnownSid(owner, WinBuiltinAdministratorsSid));
+                    LocalFree(descriptor);
+                    return trusted;
+                }
+            } // namespace
+
             std::unique_ptr<Wire::Transport> ConnectToControlPipe(std::string& error)
             {
                 for (int attempt = 0; attempt < 2; ++attempt)
@@ -391,6 +414,12 @@ namespace Marconi
                                               nullptr);
                     if (pipe != INVALID_HANDLE_VALUE)
                     {
+                        if (!PipeBelongsToSystem(pipe))
+                        {
+                            CloseHandle(pipe);
+                            error = "the Marconi Server helper is not running";
+                            return nullptr; // treated as no helper at all
+                        }
                         return std::make_unique<OverlappedPipe>(pipe, true);
                     }
                     if (GetLastError() == ERROR_PIPE_BUSY)

@@ -36,6 +36,12 @@ namespace Marconi
             // said no to the system's permission prompt.
             virtual bool Launch(const std::string& installerPath, const std::vector<std::string>& arguments,
                                 std::string& error) = 0;
+            // Keeps the received installer from being changed, replaced or removed by anyone else from now until
+            // Release() or Launch(): called before it is checked, so the file that is checked is the file that
+            // runs. False (with `error`) if it couldn't be held. The default holds nothing (tests).
+            virtual bool Hold(const std::string& /*installerPath*/, std::string& /*error*/) { return true; }
+            // Lets go of a held installer that won't be run after all (it failed a check).
+            virtual void Release() {}
         };
 
         // What the person at this computer is asked.

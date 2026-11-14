@@ -11,6 +11,12 @@
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
 
+#ifdef __WXMSW__
+#include <wx/msw/wrapwin.h>
+
+#include <aclapi.h>
+#endif
+
 namespace Marconi
 {
     namespace ServerUI
@@ -38,6 +44,22 @@ namespace Marconi
             }
 
 #ifdef __WXMSW__
+            // Whether the folder's owner is Windows itself or the administrators group.
+            bool OwnedBySystem(const wxString& folder)
+            {
+                PSID owner = nullptr;
+                PSECURITY_DESCRIPTOR descriptor = nullptr;
+                if (GetNamedSecurityInfoW(folder.wc_str(), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, &owner, nullptr,
+                                          nullptr, nullptr, &descriptor) != ERROR_SUCCESS)
+                {
+                    return false;
+                }
+                const bool trusted = owner != nullptr && (IsWellKnownSid(owner, WinLocalSystemSid) ||
+                                                          IsWellKnownSid(owner, WinBuiltinAdministratorsSid));
+                LocalFree(descriptor);
+                return trusted;
+            }
+
             // The shared folder the installer makes (ProgramData, then "Marconi Server") if it exists and a file can
             // be made in it, else empty. It is never made here: the installer makes it, with the right permissions.
             wxString FindSharedDirectory()
@@ -49,6 +71,13 @@ namespace Marconi
                 }
                 wxString folder = wxFileName(programData, "Marconi Server").GetFullPath();
                 if (!wxFileName::DirExists(folder))
+                {
+                    return wxEmptyString;
+                }
+                // Any account can make a folder in ProgramData. Only one made by the installer (so owned by
+                // Windows or the administrators) is used: one made by an ordinary account could come with a
+                // password and settings of that account's choosing, and stay under its control.
+                if (!OwnedBySystem(folder))
                 {
                     return wxEmptyString;
                 }

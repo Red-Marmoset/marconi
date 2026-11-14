@@ -9,7 +9,9 @@
 #include <sstream>
 
 #ifndef _WIN32
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace Marconi
@@ -37,6 +39,20 @@ namespace Marconi
             // world-readable.
             bool WriteWholeFile(const std::string& path, const std::string& contents, bool privateKey)
             {
+#ifndef _WIN32
+                if (privateKey)
+                {
+                    // Made owner-only before anything is written to it, so there is never a moment when another
+                    // account could open it. (Any older file is removed first: its permissions would be kept.)
+                    unlink(path.c_str());
+                    int made = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+                    if (made < 0)
+                    {
+                        return false;
+                    }
+                    close(made);
+                }
+#endif
                 std::ofstream file(path, std::ios::binary | std::ios::trunc);
                 if (!file)
                 {
