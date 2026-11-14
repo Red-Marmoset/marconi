@@ -22,8 +22,7 @@ namespace Marconi
         {
             std::string address;
             std::string username;
-            std::string password;         // empty: none (the caller may fill it from MARCONI_PASSWORD)
-            std::string trustFingerprint; // accept a certificate or SSH host key with this fingerprint
+            std::string password; // empty: none (for a saved connection the caller may fill it from MARCONI_PASSWORD)
             std::vector<uint8_t> trustedCertificate; // a certificate trusted before (a saved connection's)
             std::string trustedSshHostKey;           // an SSH host key trusted before (a saved connection's)
             bool sshTunnel = false;                  // VNC through the computer's SSH server
@@ -38,8 +37,9 @@ namespace Marconi
         {
             bool connected = false;
             std::string error; // in plain words, when not connected
-            // Set when the connection stopped at an untrusted certificate or SSH host key: what to pass back as
-            // trustFingerprint to accept it, and what it is.
+            // Set when the connection stopped at an untrusted certificate or SSH host key: its fingerprint, for the
+            // user to check, and what it is. It can only be accepted in Marconi itself: a connect request has no
+            // way to trust anything the user hasn't.
             std::string untrustedFingerprint;
             std::string untrustedDescription;
             bool needsPassword = false; // the computer asked for credentials we didn't have, or turned them down

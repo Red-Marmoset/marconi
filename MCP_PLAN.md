@@ -223,7 +223,7 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `connect` | `address`, optional `username`, `password`, `trust_fingerprint`, `quality` | Connects; returns size, displays, encryption |
+| `connect` | `connection` or `address`, optional `username`, `password`, `quality` | Connects; returns size, displays, encryption |
 | `disconnect` | | Ends the connection |
 | `status` | | Connected or not, address, size, displays, encryption, last screenshot's scale |
 | `screenshot` | optional `area` (x, y, width, height in desktop pixels), `max_size`, `settle_ms` | PNG of the desktop or an area |
@@ -243,10 +243,14 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
 
 - **Connecting:** `QuickConnect` with a listener that records updates, the cursor and disconnects. The blocking
   questions are answered without a person:
-  - credentials: the `password` argument, else the `MARCONI_PASSWORD` environment variable, else turned down with
-    "this computer needs a password";
-  - untrusted certificate or SSH host key: turned down, and the result gives the fingerprint; calling `connect`
-    again with `trust_fingerprint` set to it accepts it. Nothing is remembered between runs.
+  - credentials: the `password` argument, else the saved connection's password, else (for a saved connection only)
+    the `MARCONI_PASSWORD` environment variable, else turned down with "this computer needs a password";
+  - untrusted certificate or SSH host key: turned down, and the result gives the fingerprint for the user to check.
+    Only a certificate or key the user accepted in Marconi (kept with the saved connection) is trusted. `connect`
+    had a `trust_fingerprint` argument that let the caller accept one; it was removed in 0.11.16, because the
+    caller is the AI and whoever is in between would then be sent the password;
+  - no encryption on offer (most VNC servers): turned down unless the saved connection says the user allowed it in
+    Marconi, or `MARCONI_ALLOW_UNENCRYPTED=1` is set for MarconiMcp.
 - **Scaling:** by default a screenshot fits within 1568 pixels on each side and 1.15 megapixels, which every current
   Claude model takes as it is; `max_size` allows up to 2576 for models that take more (finding 4). Scaling is an
   area average (sharper text than nearest-pixel). The scale is kept so the input tools convert back.
@@ -342,8 +346,14 @@ One connection at a time (section 7). Coordinates are in the last screenshot's p
 
 - MarconiMcp lets an AI tool control real computers. The AI tools ask before each tool use unless the user allows
   it; `--read-only` exists for looking without touching.
-- Passwords are never logged or echoed back. `MARCONI_PASSWORD` keeps them out of the conversation.
+- Passwords are never logged or echoed back. `MARCONI_PASSWORD` keeps them out of the conversation; it goes only to
+  connections saved in Marconi, never to an address the AI was merely given.
 - Nothing is saved between runs (no remembered certificates or passwords) in the first version.
+- Decisions about trust are the user's, made in Marconi, and a tool call can't make them (0.11.13 and 0.11.16):
+  accepting a certificate or SSH key, and connecting without encryption. What the screen of one computer says must
+  not be able to talk the AI into trusting another.
+- `connect` is not announced as read-only (`readOnlyHint` false), though `--read-only` keeps it, so an AI tool that
+  skips asking for read-only calls still asks before connecting.
 
 ## 4. Phases
 

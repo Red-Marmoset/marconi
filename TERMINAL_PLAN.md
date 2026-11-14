@@ -112,8 +112,8 @@ below changed.
   no tabs today.
 - **MarconiMcp** (`Modules/MarconiMcp`): one `Connection` at a time, which is a `RemoteSession` (a screen). Tools are
   listed in `Tools.cpp`, `ToolsInput.cpp` and `ToolsNetwork.cpp`, each marked `readOnly` or not for `--read-only`.
-  Nobody is there to answer questions, so an untrusted SSH host key is turned down and `connect` is called again
-  with `trust_fingerprint`.
+  Nobody is there to answer questions, so an SSH host key the user hasn't accepted in Marconi is turned down
+  (`connect` lost its `trust_fingerprint` argument in 0.11.16: trust is the user's to give, in Marconi).
 - **Tests:** `Tests/MarconiCoreTest` doesn't include `MarconiServerCore`; the server's services are tested in
   `Tests/MarconiServerTest` (`FileTests.cpp`). Each family of protocol messages has its own test file with a
   round-trip check and a random-input pass (`WireFileTests.cpp`, `WireGamepadTests.cpp`); there is no shared one.
@@ -171,9 +171,10 @@ or timed out come back.
 - **Terminals and commands use an SSH connection of their own**, apart from the file panel's and the tunnel's: the
   engine's SFTP calls can't be used while a channel is open on the same login, and `SftpFiles` keeps its session to
   itself.
-- **MarconiMcp** can't ask a person, so it trusts an SSH host key the way it does now (`trust_fingerprint`, or the
-  saved connection's trusted key) and takes the password from the saved connection, the `password` argument or
-  `MARCONI_PASSWORD`.
+- **MarconiMcp** can't ask a person, so it trusts an SSH host key the way it does now (only the saved connection's
+  trusted key, accepted by the user in Marconi) and takes the password from the saved connection, the `password`
+  argument or, for a saved connection, `MARCONI_PASSWORD`. Commands and files reach further than a screen does, so
+  these tools must stay behind that same rule: no trust decision in a tool call.
 - A saved connection holds one login name and one password. Where a computer's SSH login differs from its screen
   login, see section 8, question 7.
 

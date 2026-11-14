@@ -53,7 +53,8 @@ namespace
         std::printf("  --quiet             with those, print only the answer (the log still goes to the log file)\n");
         std::printf("  --version      print the version and exit\n");
         std::printf("  --help         show this\n");
-        std::printf("\nThe password for connections can come from the MARCONI_PASSWORD environment variable.\n");
+        std::printf("\nThe MARCONI_PASSWORD environment variable gives a password for connections saved in Marconi\n");
+        std::printf("that have none saved. MARCONI_ALLOW_UNENCRYPTED=1 allows computers that offer no encryption.\n");
         std::printf("Logs go to standard error and to %s.\n", Marconi::Mcp::LogDirectory().c_str());
     }
 

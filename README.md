@@ -387,9 +387,13 @@ any computer by its address, as you would type it in Marconi, and then to do som
 brings its own settings and its remembered password, which MarconiMcp takes from the system keychain itself, so the
 AI tool never sees it. To stop that, untick "Let AI tools use the passwords saved in Marconi" in Settings > AI tools;
 to keep one computer away from AI tools altogether, tick "Hide from AI tools" in its connection settings. For a
-computer that isn't saved, the AI tool can be given the password, or, to keep it out of the conversation, set it in
-the `MARCONI_PASSWORD` environment variable for MarconiMcp (Claude Desktop asks for it in the extension's
-settings).
+computer that isn't saved, the AI tool has to be given the password. For saved connections that have no password
+saved, one can be set in the `MARCONI_PASSWORD` environment variable for MarconiMcp (Claude Desktop asks for it in
+the extension's settings), which keeps it out of the conversation; it is never sent to a computer that isn't saved.
+
+An AI tool can't decide to trust a computer. When a computer shows a certificate or SSH key you haven't accepted,
+the AI tool is refused and told the fingerprint: connect to that computer in Marconi yourself, check it and accept
+it there, and the saved connection then works for the AI tool too.
 
 Many VNC servers offer no encryption, so others on the same network could see the screen and work out the password.
 An AI tool can't agree to that for you. It connects to such a computer only when you have: save the computer in

@@ -472,15 +472,18 @@ namespace Marconi
         bool Connection::OnUntrustedCertificate(const Net::TlsCertificate& certificate)
         {
             const std::string fingerprint = BytesToHex(certificate.sha256);
+            // Reached only for a certificate the user hasn't accepted in Marconi (one they have is passed as the
+            // connection's trusted certificate and never gets here). It is always refused: nothing in a tool call
+            // can accept it, since whoever is in between would then be sent the password.
             std::lock_guard<std::mutex> lock(m_mutex);
-            if (!m_request.trustFingerprint.empty() && SameFingerprint(m_request.trustFingerprint, fingerprint))
-            {
-                return true;
-            }
             m_outcome.untrustedFingerprint = fingerprint;
-            m_outcome.untrustedDescription = "The computer's certificate isn't trusted (" + certificate.problem +
-                                             "). Issued to " + certificate.subject + ", valid until " +
-                                             certificate.validUntil + ".";
+            m_outcome.untrustedDescription =
+                m_request.trustedCertificate.empty()
+                    ? "The computer's certificate hasn't been accepted in Marconi (" + certificate.problem +
+                          "). Issued to " + certificate.subject + ", valid until " + certificate.validUntil + "."
+                    : "The computer is not showing the certificate the user accepted for it in Marconi. It may "
+                      "have been set up again, or something in between may be pretending to be it. Issued to " +
+                          certificate.subject + ", valid until " + certificate.validUntil + ".";
             m_outcome.error = m_outcome.untrustedDescription;
             return false;
         }
@@ -504,19 +507,21 @@ namespace Marconi
         bool Connection::OnUntrustedSshHostKey(const Net::SshHostKeyQuestion& question)
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            if ((!m_request.trustFingerprint.empty() &&
-                 SameFingerprint(m_request.trustFingerprint, question.fingerprint)) ||
-                (!m_request.trustedSshHostKey.empty() &&
-                 SameFingerprint(m_request.trustedSshHostKey, question.fingerprint)))
+            // Only the key the user accepted in Marconi (the saved connection's) is trusted; a tool call can't
+            // add another.
+            if (!m_request.trustedSshHostKey.empty() &&
+                SameFingerprint(m_request.trustedSshHostKey, question.fingerprint))
             {
                 return true;
             }
             m_outcome.untrustedFingerprint = question.fingerprint;
             m_outcome.untrustedDescription =
-                question.previous.empty()
-                    ? "The SSH server " + question.host + " isn't known yet (" + question.algorithm + " key)."
-                    : "The SSH server " + question.host + "'s key has changed since it was last trusted (" +
-                          question.previous + ").";
+                m_request.trustedSshHostKey.empty()
+                    ? "The SSH server " + question.host + " hasn't been accepted in Marconi (" + question.algorithm +
+                          " key)."
+                    : "The SSH server " + question.host + "'s key is not the one the user accepted in Marconi (" +
+                          m_request.trustedSshHostKey + "). It may have been reinstalled, or something in between "
+                          "may be pretending to be it.";
             m_outcome.error = m_outcome.untrustedDescription;
             return false;
         }

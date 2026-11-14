@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.16
+
+- Security: AI tools can no longer accept a computer's certificate or SSH key themselves; you accept it by connecting in Marconi.
+- Security: the password set for AI tools (MARCONI_PASSWORD) is only used for connections saved in Marconi.
+
 ## 0.11.15
 
 - Security: Marconi Server's tray icon only believes a background helper that Windows or an administrator started.

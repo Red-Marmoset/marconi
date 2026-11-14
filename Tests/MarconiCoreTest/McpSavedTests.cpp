@@ -222,6 +222,72 @@ namespace MarconiTest
             CHECK(loggedIn && !result.isError);
         });
 
+        RunTest("MCP: the password set for MarconiMcp goes to a saved computer that has none saved", []() {
+            FakeServer server;
+            FakeSaved saved;
+            saved.computers = {Computer("4", "Drips", "127.0.0.1::" + std::to_string(server.GetPort()))};
+            Mcp::ToolOptions options = PlainAllowed();
+            options.saved = &saved;
+            options.defaultPassword = "fallback";
+            Mcp::MarconiTools tools(options);
+            Mcp::ToolResult result;
+            std::thread connecting([&]() { tools.CallTool("connect", {{"connection", "drips"}}, result); });
+            const bool accepted = server.AcceptClient();
+            const bool loggedIn = accepted && ServeVncPasswordLogin(server, "fallback");
+            connecting.join();
+            CHECK(loggedIn && !result.isError);
+        });
+
+        RunTest("MCP: the password set for MarconiMcp is never sent to an address that isn't saved", []() {
+            FakeServer server;
+            FakeSaved saved; // nothing saved
+            Mcp::ToolOptions options = PlainAllowed();
+            options.saved = &saved;
+            options.defaultPassword = "fallback";
+            Mcp::MarconiTools tools(options);
+            Mcp::ToolResult result;
+            std::thread connecting([&]() {
+                tools.CallTool("connect", {{"address", "127.0.0.1::" + std::to_string(server.GetPort())}}, result);
+            });
+            bool answered = false;
+            if (server.AcceptClient())
+            {
+                // A computer set up to collect a password: it asks for one and waits for the answer.
+                server.SendString("RFB 003.008\n");
+                server.In().ReadString(12);
+                Rfb::OutBuffer types;
+                types.U8(1).U8(Rfb::SecurityType::VncAuth);
+                server.Send(types);
+                try
+                {
+                    server.In().U8();
+                    server.Send(Rfb::Bytes(kChallenge, kChallenge + 16));
+                    server.In().ReadBytes(16);
+                    answered = true;
+                }
+                catch (const std::exception&)
+                {
+                    // the client went away without answering
+                }
+            }
+            connecting.join();
+            CHECK(!answered);
+            CHECK(result.isError);
+            CHECK(AllText(result).find("needs a password") != std::string::npos);
+        });
+
+        RunTest("MCP: connect has no way to accept a certificate or key", []() {
+            Mcp::MarconiTools tools(PlainAllowed());
+            for (const Mcp::ToolDefinition& tool : tools.ListTools())
+            {
+                if (tool.name == "connect")
+                {
+                    CHECK(!tool.inputSchema["properties"].contains("trust_fingerprint"));
+                    CHECK(tool.description.find("trust_fingerprint") == std::string::npos);
+                }
+            }
+        });
+
         RunTest("MCP: a server offering only encryption this computer can't make is reached without it", []() {
             if (!Net::IsTlsAvailable() || Net::IsAnonymousTlsAvailable())
             {

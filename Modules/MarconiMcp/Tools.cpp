@@ -70,17 +70,15 @@ namespace Marconi
                 "Marconi, by its name (list_connections shows them; its saved password, protocol and settings are "
                 "used), or an address: \"host\", \"host:display\", \"host::port\", \"vnc://host\", "
                 "\"marconi://host\" (Marconi's own server) or \"ssh://user@host\" (VNC through the computer's SSH "
-                "server). If the computer's certificate or SSH key isn't trusted, the result gives its fingerprint; "
-                "connect again with trust_fingerprint set to it to accept it.";
+                "server). A computer whose certificate or SSH key the user hasn't accepted in Marconi is refused: "
+                "the user accepts it by connecting to it in Marconi once, not through this tool.";
             connect.inputSchema = ObjectSchema(
                 {{"connection", Property("string", "The name of a connection saved in Marconi, such as \"studio\", "
                                                     "or of a computer list_connections found on this network.")},
                  {"address", Property("string", "The computer's address, when it isn't a saved connection.")},
                  {"username", Property("string", "User name, when the computer asks for an account.")},
-                 {"password", Property("string", "Password. If left out, the MARCONI_PASSWORD environment "
-                                                 "variable is used, when set.")},
-                 {"trust_fingerprint", Property("string", "Accept a certificate or SSH key with this fingerprint "
-                                                          "(from an earlier connect result).")},
+                 {"password", Property("string", "Password. Left out, a saved connection uses its saved password "
+                                                 "(or the one set for MarconiMcp).")},
                  {"quality", {{"type", "string"},
                               {"enum", {"best", "balanced", "low"}},
                               {"description", "Picture quality: best (no loss), balanced (default) or low "
@@ -213,6 +211,7 @@ namespace Marconi
             // (fetched here, never shown to the AI), are used unless the call gives its own.
             std::string savedPassword;
             std::string savedName;
+            bool isSaved = false; // a computer the user saved in Marconi, as opposed to any address the AI names
             if (m_options.saved)
             {
                 const std::vector<SavedComputer> computers = m_options.saved->List();
@@ -229,6 +228,7 @@ namespace Marconi
                     {
                         throw ArgumentError{error};
                     }
+                    isSaved = true;
                     savedName = computer->DisplayName();
                     request.username = computer->username;
                     request.sshTunnel = computer->sshTunnel;
@@ -254,10 +254,14 @@ namespace Marconi
             request.password = GetString(arguments, "password", false);
             if (request.password.empty())
             {
-                request.password = savedPassword.empty() ? m_options.defaultPassword : savedPassword;
+                // The password set for MarconiMcp (MARCONI_PASSWORD) goes only to computers the user saved in
+                // Marconi. Sent to any address the AI was given, it could be handed to a computer set up to
+                // collect it.
+                request.password = !savedPassword.empty() ? savedPassword
+                                   : isSaved              ? m_options.defaultPassword
+                                                          : std::string();
             }
             request.allowUnencrypted = request.allowUnencrypted || m_options.allowUnencrypted;
-            request.trustFingerprint = GetString(arguments, "trust_fingerprint", false);
             const std::string quality = GetString(arguments, "quality", false);
             if (!quality.empty())
             {
@@ -276,13 +280,19 @@ namespace Marconi
                 std::string message = "Couldn't connect to " + request.address + ": " + outcome.error;
                 if (!outcome.untrustedFingerprint.empty())
                 {
-                    message += " Fingerprint: " + outcome.untrustedFingerprint +
-                               ". Only if the user expects this computer, connect again with trust_fingerprint "
-                               "set to it.";
+                    // Whether to trust a computer is the user's decision, made in Marconi where they can see
+                    // what they are agreeing to. Nothing in a tool call can make it for them.
+                    message += " Its fingerprint is " + outcome.untrustedFingerprint +
+                               ". This can't be accepted from here. Tell the user: to allow it, they connect to "
+                               "this computer in Marconi, check the fingerprint and accept it there (saving the "
+                               "connection), and then you can connect to that saved connection.";
                 }
                 else if (outcome.needsPassword)
                 {
-                    message += " Ask the user for the password (or to set MARCONI_PASSWORD), then connect again.";
+                    message += isSaved ? " Ask the user for the password (or to save it in Marconi, or set "
+                                         "MARCONI_PASSWORD), then connect again."
+                                       : " Ask the user for the password, or to save this computer in Marconi "
+                                         "with its password, then connect again.";
                 }
                 LOG_INFO("Mcp", "Connecting to %s failed: %s", request.address.c_str(), outcome.error.c_str());
                 return ToolResult::Error(message);

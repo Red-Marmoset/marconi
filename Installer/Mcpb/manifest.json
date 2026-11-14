@@ -26,7 +26,7 @@
         "password": {
             "type": "string",
             "title": "Password",
-            "description": "The password for the computers Marconi connects to, if they need one. It's kept out of the conversation.",
+            "description": "A password for connections saved in Marconi that have none saved. It's kept out of the conversation, and never sent to a computer that isn't saved.",
             "sensitive": true,
             "required": false
         }
