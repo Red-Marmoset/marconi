@@ -83,6 +83,7 @@ Marconi viewer. It works the way `SERVER_PLAN.md` does:
 
 - **Phase 9 written, not run** 2026-11-13: `Package.sh` puts MarconiMcp, `Apps.json` and `marconi.mcpb` in
   `Marconi.app` and signs MarconiMcp before the bundle; nothing of it has been run on a Mac.
+  **Update 2026-11-14 (owner):** MarconiMcp works on the owner's Mac.
 
 - **Saved connections** 2026-11-13 (0.11.4, owner's request): `list_connections`, and `connect` by a saved
   connection's name (or an address that's saved) uses its address, the protocol and port Marconi found, user name,

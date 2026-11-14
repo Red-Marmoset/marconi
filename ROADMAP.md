@@ -23,6 +23,55 @@ Where the plans are:
 
 The ideas from the owner's phone chat of 2026-11-13 are folded in below, each next to what already exists.
 
+## Toward 1.0
+
+Drawn up with the owner on 2026-11-14. Calling a version 1.0 stays the owner's decision alone (`AGENTS.md`); this is
+the list of what the owner wants done first. Tick items off here as they are finished.
+
+Already settled:
+
+- MarconiMcp works on a Mac (owner, 2026-11-14).
+- Installing Marconi Server from the F8 menu works on Windows (owner, on "drips", 2026-11-14).
+- The Mac server compiles and links on the owner's Mac, and its disk image is made by the engine's packaging
+  (`bdaf4b8`); nothing of it has been run yet.
+
+Needed for 1.0:
+
+1. **Marconi Server on a Mac** (the owner chose all four parts):
+   - [ ] it runs: the permission prompts, picture, mouse and keyboard (the checks in `SERVER_PLAN.md`, "Phase 8
+     progress: macOS");
+   - [ ] the disk image works (`PackageServer.sh`): the app runs from Applications, signing and notarizing pass, the
+     permissions survive a rebuild;
+   - [ ] start at sign-in, switched on and off from the menu-bar icon;
+   - [ ] `Package.sh` makes the server's disk image along with Marconi's;
+   - [ ] F8 can install it on a Mac Marconi is connected to (copying it over Remote Login).
+2. **Marconi Server on Windows finished:**
+   - [ ] the Windows service tried for real: the sign-in screen, surviving a restart, the tray talking to it;
+   - [ ] clipboard, files and extra screens tried on Windows;
+   - [ ] self-update's Windows side built and run (the signature check, starting the installer, the approval window);
+   - [ ] the service follows the tray's settings (who can connect, idle disconnect);
+   - [ ] changing the port changes the firewall rule too.
+3. **Fix what can't change after 1.0** (changing any of these later would mean a 2.0):
+   - [ ] how a newer and an older Marconi and Marconi Server agree on the protocol;
+   - [ ] the saved-settings layout;
+   - [ ] addresses (`marconi://`, port 1895, the address forms).
+4. **Release tidy-up:**
+   - [ ] the changelog's "Unreleased" lines released under a version;
+   - [ ] the old `claude/*` branches kept or dropped (including `PERFORMANCE_PLAN.md` and `DRIVER_PLAN.md`);
+   - [ ] the plans and README brought up to date (`SERVER_PLAN.md`'s "Status at 0.9.7" section, the README's line
+     that the Linux server shows a test picture).
+
+The owner's choices, each in 1.0 or after it (undecided):
+
+- [ ] Marconi Server on a Linux Wayland desktop (GNOME, KDE): the real permission window and real input are untried.
+- [ ] The client's gaps (encryption without a certificate, `ssh://` addresses, clipboard and resizing over Remote
+  Desktop): fixed, or clearly said to be unsupported.
+- [ ] The phone and tablet apps: in 1.0, or labelled previews (the iPad app is well behind Android).
+- [ ] Video and game controllers: left switched off in 1.0, or finished.
+
+After 1.0 whatever happens: sound, a relay, recording sessions, the built-in terminal, "follow along", our own
+drivers, and the ideas for AI tools below.
+
 ## Marconi app and server
 
 | Feature | Status | Notes |
@@ -42,8 +91,10 @@ The ideas from the owner's phone chat of 2026-11-13 are folded in below, each ne
 
 Also planned or missing, from the plans and the README's "Not available yet":
 
-- Marconi Server: the first Windows run is done (the screen, encryption and scaling were seen working). Still to try
-  on Windows: the installer from the F8 menu, the Windows service, clipboard, files and the extra screens. The tray
+- Marconi Server: the first Windows run is done (the screen, encryption and scaling were seen working), and the owner
+  has installed it from the F8 menu on a Windows PC. Still to try on Windows: the Windows service, clipboard, files and
+  the extra screens. On a Mac the server installer is still to do (`PackageServer.sh` written, never run; the server
+  itself never built there). The tray
   program talking to the Windows service (Phase 3) is written, tried on Linux only. Still planned: the macOS server
   (written, never built) and several viewers at once (Phase 6 step 7). Video (Phase 4), the datagram channel (Phase 5)
   and game controllers (Phase 7) are written and tried only with stand-ins.
@@ -65,8 +116,8 @@ Also planned or missing, from the plans and the README's "Not available yet":
 
 ## Marconi for AI tools (MCP)
 
-`MarconiMcp` is written on branch `claude/sweet-bell-nobab4` (phases 1 to 8 of `MCP_PLAN.md`), not merged and not yet
-run on a real Windows PC. It takes one connection at a time and offers: `connect`, `disconnect`, `status`,
+`MarconiMcp` is on `main` (phases 1 to 9 of `MCP_PLAN.md`), and the owner reports it working on a Mac (2026-11-14). It
+takes one connection at a time and offers: `connect`, `disconnect`, `status`,
 `screenshot` (an area, a largest size, waiting for the screen to settle), `click`, `move`, `drag`, `scroll`,
 `type_text`, `key`, `get_clipboard`, `set_clipboard` and `wait_for_change`.
 

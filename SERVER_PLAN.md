@@ -586,6 +586,9 @@ saved connection.
 
 **Phase 2 status (written on Linux, none of it run on Windows).**
 
+- **Update 2026-11-14 (owner):** F8 > Install Marconi Server on the Other Computer has been used for real, on the
+  owner's Windows PC "drips", and works. The notes below are from before that run.
+
 - Done and checked here: `Installer/MarconiServer.nsi` and the client's `Installer/Marconi.nsi` (with the new "Marconi
   Server installer" component) both compile with makensis 3.09 under `/WX`, with a stand-in payload and the
   ShellExecAsUser calls swapped for `Exec` (the plug-in is Windows-only). The tray program's `--set-password-file`
