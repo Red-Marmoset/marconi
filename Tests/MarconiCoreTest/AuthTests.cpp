@@ -199,6 +199,62 @@ namespace MarconiTest
             CHECK(server.In().U8() == 1); // ClientInit
         });
 
+        RunTest("No encryption on offer: asked first, and a no sends nothing", []() {
+            FakeServer server;
+            RecordingListener listener;
+            listener.allowUnencrypted = false;
+            Rfb::Client client(listener);
+            Rfb::ConnectionOptions options;
+            options.host = "127.0.0.1";
+            options.port = server.GetPort();
+            options.credentials.password = "secret";
+            client.Connect(options);
+            CHECK(server.AcceptClient());
+            server.SendString("RFB 003.008\n");
+            server.In().ReadString(12);
+            Rfb::OutBuffer types;
+            types.U8(1).U8(Rfb::SecurityType::VncAuth);
+            server.Send(types);
+            // The client goes away without choosing a login, so no password answer is ever made.
+            CHECK(listener.WaitFor([&]() { return listener.disconnected; }));
+            CHECK(listener.unencryptedQuestions == 1 && !listener.lastUnencryptedWasEncryptedBefore);
+            CHECK(listener.disconnectError.empty() && listener.credentialRequests == 0);
+            bool closed = false;
+            try
+            {
+                server.In().U8();
+            }
+            catch (const std::exception&)
+            {
+                closed = true;
+            }
+            CHECK(closed);
+        });
+
+        RunTest("No encryption on offer: not asked when it was agreed to, asked again when it used to be encrypted", []() {
+            for (bool pinned : {false, true})
+            {
+                FakeServer server;
+                RecordingListener listener;
+                Rfb::Client client(listener);
+                Rfb::ConnectionOptions options;
+                options.host = "127.0.0.1";
+                options.port = server.GetPort();
+                options.allowUnencrypted = true;
+                if (pinned)
+                {
+                    options.trustedCertificateSha256.assign(32, 0x11); // a certificate was remembered for it
+                }
+                client.Connect(options);
+                CHECK(server.AcceptClient());
+                server.HandshakeNone("RFB 003.008\n", 16, 16, "plain");
+                CHECK(listener.WaitFor([&]() { return listener.connected; }));
+                CHECK(listener.unencryptedQuestions == (pinned ? 1 : 0));
+                CHECK(listener.lastUnencryptedWasEncryptedBefore == pinned);
+                client.Disconnect();
+            }
+        });
+
         RunTest("A Mac offering both logins: no user name at the prompt means the VNC password", []() {
             FakeServer server;
             RecordingListener listener;

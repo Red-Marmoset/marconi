@@ -31,6 +31,13 @@ namespace MarconiTest
 
     namespace
     {
+        // Tool options for the stand-in servers here, which offer no encryption: what MARCONI_ALLOW_UNENCRYPTED=1 gives.
+        Mcp::ToolOptions PlainAllowed()
+        {
+            Mcp::ToolOptions options;
+            options.allowUnencrypted = true;
+            return options;
+        }
         // A tool set with one tool, "echo", that returns its "text" argument, and one that always fails.
         class EchoTools : public Mcp::ToolSet
         {
@@ -200,7 +207,7 @@ namespace MarconiTest
         struct ConnectedTools
         {
             FakeServer server;
-            Mcp::MarconiTools tools{Mcp::ToolOptions{}};
+            Mcp::MarconiTools tools{PlainAllowed()};
 
             ConnectedTools(int width, int height)
             {
@@ -533,7 +540,7 @@ namespace MarconiTest
         });
 
         RunTest("MCP: tools before connecting, and a read-only tool set", []() {
-            Mcp::MarconiTools tools(Mcp::ToolOptions{});
+            Mcp::MarconiTools tools(PlainAllowed());
             Mcp::ToolResult result;
             CHECK(tools.CallTool("screenshot", json::object(), result));
             CHECK(result.isError);
@@ -554,7 +561,7 @@ namespace MarconiTest
 
         RunTest("MCP: connect and screenshot against a fake VNC server", []() {
             FakeServer server;
-            Mcp::MarconiTools tools(Mcp::ToolOptions{});
+            Mcp::MarconiTools tools(PlainAllowed());
             Mcp::ToolResult connectResult;
             std::thread connecting([&]() {
                 tools.CallTool("connect", {{"address", "127.0.0.1::" + std::to_string(server.GetPort())}},
@@ -616,12 +623,46 @@ namespace MarconiTest
         });
 
         RunTest("MCP: a wrong address fails with a message, not a hang", []() {
-            Mcp::MarconiTools tools(Mcp::ToolOptions{});
+            Mcp::MarconiTools tools(PlainAllowed());
             Mcp::ToolResult result;
             // Port 1 on this machine: nothing listens, so the connection is refused at once.
             CHECK(tools.CallTool("connect", {{"address", "127.0.0.1::1"}}, result));
             CHECK(result.isError);
             CHECK(result.content[0]["text"].get<std::string>().find("Couldn't connect") == 0);
+        });
+
+        RunTest("MCP: a computer with no encryption is refused unless the user allowed it", []() {
+            FakeServer server;
+            Mcp::MarconiTools tools(Mcp::ToolOptions{}); // nothing allowed: as installed
+            Mcp::ToolResult result;
+            std::thread connecting([&]() {
+                tools.CallTool("connect", {{"address", "127.0.0.1::" + std::to_string(server.GetPort())}}, result);
+            });
+            CHECK(server.AcceptClient());
+            server.SendString("RFB 003.008\n");
+            server.In().ReadString(12);
+            Rfb::OutBuffer types;
+            types.U8(1).U8(Rfb::SecurityType::None);
+            server.Send(types);
+            connecting.join();
+            CHECK(result.isError);
+            CHECK(result.content[0]["text"].get<std::string>().find("no encrypted connection") != std::string::npos);
+        });
+
+        RunTest("MCP: connect is not announced as read-only, though read-only mode keeps it", []() {
+            Mcp::ToolOptions options;
+            options.readOnly = true;
+            Mcp::MarconiTools tools(options);
+            bool found = false;
+            for (const Mcp::ToolDefinition& tool : tools.ListTools())
+            {
+                if (tool.name == "connect")
+                {
+                    found = true;
+                    CHECK(tool.readOnly && tool.reachesOut);
+                }
+            }
+            CHECK(found);
         });
 
         RunTest("MCP: key names and combinations", []() {
@@ -855,7 +896,7 @@ namespace MarconiTest
         });
 
         RunTest("MCP: read-only offers no tools that change things", []() {
-            Mcp::ToolOptions options;
+            Mcp::ToolOptions options = PlainAllowed();
             options.readOnly = true;
             Mcp::MarconiTools tools(options);
             std::vector<std::string> names;

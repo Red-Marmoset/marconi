@@ -108,6 +108,7 @@ namespace MarconiUI
         connection.resendPixelFormatOnResize = m_options.resendPixelFormatOnResize;
         connection.allowTight = m_allowTight;
         connection.allowEncryption = m_allowEncryption;
+        connection.allowUnencrypted = m_options.allowUnencrypted;
         connection.sshTunnel = m_options.sshTunnel;
         connection.trustedSshHostKey = m_options.sshHostKey.utf8_string();
         Marconi::QualitySettings quality = Marconi::SettingsFor(m_quality);
@@ -426,18 +427,41 @@ namespace MarconiUI
     bool ViewerFrame::ConfirmCertificate(const Marconi::Net::TlsCertificate& certificate)
     {
         SetStatusText("Waiting for you to check the server's certificate...");
-        wxString message = wxString::Format(
-            "%s identifies itself with a security certificate this computer doesn't trust (%s).\n\n"
-            "Issued to: %s\nIssued by: %s\nValid until: %s\n\nFingerprint (SHA-256):\n%s\n\n"
-            "If you set up that computer yourself, this is normal: connect anyway, and Marconi will remember this "
-            "certificate for this connection. If you weren't expecting it, someone may be listening in: cancel and "
-            "check the other computer.",
-            wxString::FromUTF8(m_options.address.host), wxString::FromUTF8(certificate.problem),
-            wxString::FromUTF8(certificate.subject), wxString::FromUTF8(certificate.issuer),
-            wxString::FromUTF8(certificate.validUntil), FormatFingerprint(certificate.sha256));
-        wxMessageDialog dialog(this, message, "Connection to " + GetServerDisplayName(),
+        // A certificate was remembered for this connection and this isn't it. That is a different question from
+        // a first visit, and it must not read like one: whoever is in between would be sent the password.
+        const bool changed = !m_options.trustedCertificateSha256.empty();
+        const wxString host = wxString::FromUTF8(m_options.address.host);
+        wxString message;
+        if (changed)
+        {
+            message = wxString::Format(
+                "%s is not showing the certificate Marconi remembered for it.\n\n"
+                "That happens when the other computer's remote access was set up again or reinstalled. It also "
+                "happens when someone in between is pretending to be that computer, and they would then get your "
+                "password and see everything you do.\n\n"
+                "Issued to: %s\nIssued by: %s\nValid until: %s\n\nFingerprint (SHA-256):\n%s\n\n"
+                "Only carry on if you know why it changed. To be sure, compare this fingerprint with the one the "
+                "other computer shows (Marconi Server: its tray icon, Copy full fingerprint).",
+                host, wxString::FromUTF8(certificate.subject), wxString::FromUTF8(certificate.issuer),
+                wxString::FromUTF8(certificate.validUntil), FormatFingerprint(certificate.sha256));
+        }
+        else
+        {
+            message = wxString::Format(
+                "%s identifies itself with a security certificate this computer doesn't trust (%s).\n\n"
+                "Issued to: %s\nIssued by: %s\nValid until: %s\n\nFingerprint (SHA-256):\n%s\n\n"
+                "If you set up that computer yourself, this is normal: connect anyway, and Marconi will remember "
+                "this certificate for this connection. If you weren't expecting it, someone may be listening in: "
+                "cancel and check the other computer.",
+                host, wxString::FromUTF8(certificate.problem), wxString::FromUTF8(certificate.subject),
+                wxString::FromUTF8(certificate.issuer), wxString::FromUTF8(certificate.validUntil),
+                FormatFingerprint(certificate.sha256));
+        }
+        // The title names the address that was typed, not the name the other computer gives itself.
+        wxMessageDialog dialog(this, message,
+                               changed ? "The certificate has changed: " + host : "Connection to " + host,
                                wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
-        dialog.SetYesNoLabels("Connect Anyway", "Cancel");
+        dialog.SetYesNoLabels(changed ? "Trust the New Certificate" : "Connect Anyway", "Cancel");
         if (dialog.ShowModal() != wxID_YES)
         {
             return false;
@@ -455,6 +479,70 @@ namespace MarconiUI
             }
         }
         SetStatusText("Connecting securely...");
+        return true;
+    }
+
+    bool ViewerFrame::OnUnencryptedConnection(const Marconi::UnencryptedQuestion& question)
+    {
+        // Connection thread.
+        if (m_options.headless)
+        {
+            LOG_WARNING("Viewer", "Headless: %s offers no encrypted connection; not connecting (--allow-unencrypted "
+                                  "connects anyway)",
+                        question.host.c_str());
+            return false;
+        }
+        Marconi::UnencryptedQuestion copy = question; // the UI thread gets its own copy
+        return AskUser([this, copy]() { return ConfirmUnencrypted(copy); });
+    }
+
+    bool ViewerFrame::ConfirmUnencrypted(const Marconi::UnencryptedQuestion& question)
+    {
+        SetStatusText("Waiting for you to decide about connecting without encryption...");
+        const wxString host = wxString::FromUTF8(question.host);
+        if (question.wasEncryptedBefore)
+        {
+            // Not remembered: a computer that stops offering encryption is asked about every time.
+            wxMessageDialog dialog(this,
+                                   host + " connected with encryption before, and now it offers none.\n\n"
+                                   "That happens when the other computer's remote access was changed. It also "
+                                   "happens when someone in between is taking the encryption away so they can read "
+                                   "your password and watch what you do.\n\n"
+                                   "Only carry on if you know why it changed.",
+                                   "This computer is no longer encrypted: " + host,
+                                   wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+            dialog.SetYesNoLabels("Connect Without Encryption", "Cancel");
+            return dialog.ShowModal() == wxID_YES;
+        }
+        const bool saved = !m_options.savedId.empty();
+        wxMessageDialog dialog(this,
+                               host + " doesn't offer an encrypted connection.\n\n"
+                               "Others on the same network could see its screen and what you type, and could work "
+                               "out the password you log in with. On a network you trust (your own, at home or "
+                               "work) that is how most VNC servers are used. Over the internet or public Wi-Fi it "
+                               "is not safe: connect through SSH or a VPN there, or use Marconi Server, which is "
+                               "always encrypted." +
+                                   wxString(saved ? "\n\nIf you connect, Marconi won't ask again for this computer."
+                                                  : ""),
+                               "Connect without encryption?", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+        dialog.SetYesNoLabels("Connect Without Encryption", "Cancel");
+        if (dialog.ShowModal() != wxID_YES)
+        {
+            return false;
+        }
+        // Reconnects in this window don't ask again, and neither does the saved connection next time.
+        m_options.allowUnencrypted = true;
+        if (saved)
+        {
+            ConnectionStore store;
+            SavedConnection connection;
+            if (store.Load(m_options.savedId, connection))
+            {
+                connection.allowUnencrypted = true;
+                store.Save(connection);
+            }
+        }
+        SetStatusText("Connecting...");
         return true;
     }
 

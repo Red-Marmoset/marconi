@@ -245,6 +245,9 @@ namespace
             options.trustedCertificateSha256 = BytesOf(trustedCertificateHex);
             options.clientName = clientName;
             options.sshTunnel = sshTunnel;
+            // Not asked about on Android yet: a VNC server with no encryption connects as it always has (the
+            // desktop app asks first). A computer that was encrypted before and now isn't is still refused.
+            options.allowUnencrypted = true;
             options.quality = QualityOf(quality);
             std::string error;
             std::unique_ptr<Marconi::RemoteSession> session = Marconi::QuickConnect(options, *this, error);

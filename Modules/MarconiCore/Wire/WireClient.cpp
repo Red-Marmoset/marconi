@@ -189,12 +189,15 @@ namespace Marconi
             Net::TlsOptions tlsOptions;
             tlsOptions.hostName = options.host;
             std::vector<uint8_t> pinned = options.trustedCertificateSha256;
-            tlsOptions.trustDecision = [this, pinned](const Net::TlsCertificate& certificate) {
+            bool declined = false;
+            tlsOptions.trustDecision = [this, pinned, &declined](const Net::TlsCertificate& certificate) {
                 if (!pinned.empty() && certificate.sha256 == pinned)
                 {
                     return true;
                 }
-                return m_listener.OnUntrustedCertificate(certificate);
+                bool trusted = m_listener.OnUntrustedCertificate(certificate);
+                declined = !trusted;
+                return trusted;
             };
             std::unique_ptr<Net::TlsStream> tls = Net::CreateTlsStream(m_socket, tlsOptions);
             if (!tls)
@@ -205,7 +208,9 @@ namespace Marconi
             }
             if (!tls->Handshake(error))
             {
-                info.error = m_stopping ? "" : error;
+                // A certificate the person turned down is a cancel, with no error: the viewer must not go on to
+                // try this computer some other way, with the same password, after being told no.
+                info.error = (m_stopping || declined) ? "" : error;
                 m_listener.OnDisconnected(info);
                 return;
             }

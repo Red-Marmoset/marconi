@@ -139,6 +139,10 @@ namespace
         {
             toolOptions.defaultPassword = password;
         }
+        if (const char* allow = std::getenv("MARCONI_ALLOW_UNENCRYPTED"))
+        {
+            toolOptions.allowUnencrypted = std::strcmp(allow, "1") == 0;
+        }
         Marconi::Mcp::MarconiTools tools(toolOptions);
 
         Marconi::Mcp::ServerInfo info;

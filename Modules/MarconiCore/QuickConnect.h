@@ -30,6 +30,9 @@ namespace Marconi
         // VNC: ask for encryption when the server offers it. Cleared for a second try after
         // DisconnectInfo::encryptionUnusable, as the desktop viewer does.
         bool allowEncryption = true;
+        // VNC: the person has agreed to connect to this computer without encryption. Off, the listener's
+        // OnUnencryptedConnection is asked before a connection that isn't encrypted goes ahead.
+        bool allowUnencrypted = false;
         PictureQuality quality = PictureQuality::Balanced;
     };
 

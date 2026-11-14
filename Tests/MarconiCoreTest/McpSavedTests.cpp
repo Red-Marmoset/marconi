@@ -24,6 +24,13 @@ namespace MarconiTest
 
     namespace
     {
+        // Tool options for the stand-in servers here, which offer no encryption: what MARCONI_ALLOW_UNENCRYPTED=1 gives.
+        Mcp::ToolOptions PlainAllowed()
+        {
+            Mcp::ToolOptions options;
+            options.allowUnencrypted = true;
+            return options;
+        }
         // A list of saved connections with passwords, and a record of which passwords were asked for.
         class FakeSaved : public Mcp::SavedComputers
         {
@@ -158,7 +165,7 @@ namespace MarconiTest
             saved.computers[0].hasPassword = true;
             saved.computers[0].group = "Studio";
             saved.passwords = {{"1", "hunter2"}};
-            Mcp::ToolOptions options;
+            Mcp::ToolOptions options = PlainAllowed();
             options.saved = &saved;
             Mcp::MarconiTools tools(options);
             Mcp::ToolResult result;
@@ -176,7 +183,7 @@ namespace MarconiTest
             saved.computers = {Computer("1", "Drips", "127.0.0.1::" + std::to_string(server.GetPort()))};
             saved.computers[0].hasPassword = true;
             saved.passwords = {{"1", "hunter2"}};
-            Mcp::ToolOptions options;
+            Mcp::ToolOptions options = PlainAllowed();
             options.saved = &saved;
             Mcp::MarconiTools tools(options);
 
@@ -204,7 +211,7 @@ namespace MarconiTest
             saved.computers = {Computer("7", "Drips", address)};
             saved.computers[0].hasPassword = true;
             saved.passwords = {{"7", "hunter2"}};
-            Mcp::ToolOptions options;
+            Mcp::ToolOptions options = PlainAllowed();
             options.saved = &saved;
             Mcp::MarconiTools tools(options);
             Mcp::ToolResult result;
@@ -225,7 +232,7 @@ namespace MarconiTest
             saved.computers = {Computer("3", "Snorkels", "127.0.0.1::" + std::to_string(server.GetPort()))};
             saved.computers[0].hasPassword = true;
             saved.passwords = {{"3", "hunter2"}};
-            Mcp::ToolOptions options;
+            Mcp::ToolOptions options = PlainAllowed();
             options.saved = &saved;
             Mcp::MarconiTools tools(options);
 
@@ -262,7 +269,7 @@ namespace MarconiTest
 
         RunTest("MCP saved connections: unknown names and no saved list say so", []() {
             FakeSaved saved;
-            Mcp::ToolOptions options;
+            Mcp::ToolOptions options = PlainAllowed();
             options.saved = &saved;
             Mcp::MarconiTools tools(options);
             Mcp::ToolResult result;
@@ -279,7 +286,7 @@ namespace MarconiTest
             FakeSaved saved;
             saved.computers = {Computer("1", "Studio", "studio.local")};
             int searches = 0;
-            Mcp::ToolOptions options;
+            Mcp::ToolOptions options = PlainAllowed();
             options.saved = &saved;
             options.discover = [&searches]() {
                 ++searches;
@@ -321,7 +328,7 @@ namespace MarconiTest
 
         RunTest("MCP on this network: connect by the name a computer announces", []() {
             FakeServer server;
-            Mcp::ToolOptions options; // no saved connections, as when wx can't start
+            Mcp::ToolOptions options = PlainAllowed(); // no saved connections, as when wx can't start
             options.discover = [&server]() {
                 Net::DiscoveredService phone;
                 phone.instance = "Sam's Phone";

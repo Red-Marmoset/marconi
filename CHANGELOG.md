@@ -5,6 +5,14 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.13
+
+- Security: Marconi asks before connecting to a computer that offers no encryption, and remembers a yes for that saved connection.
+- Security: a certificate that has changed since last time gets its own, stronger warning.
+- Security: pressing Cancel on a certificate warning no longer tries the computer another way with the same password.
+- AI tools connect without encryption only to computers you allowed in Marconi (or with MARCONI_ALLOW_UNENCRYPTED=1), and always ask before connecting.
+- `--allow-unencrypted` lets a headless run connect to a VNC server with no encryption.
+
 ## 0.11.12
 
 - Security: a file or folder copied from another computer can no longer be written outside the folder you chose.

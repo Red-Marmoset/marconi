@@ -40,6 +40,10 @@ namespace Marconi
         {
             bool readOnly = false;        // offer only the tools that look
             std::string defaultPassword;  // used when connect gets none (MARCONI_PASSWORD)
+            // Connect to computers that offer no encryption (most VNC servers). Set by the person who set
+            // MarconiMcp up (MARCONI_ALLOW_UNENCRYPTED=1), never by a tool call; without it only a saved
+            // connection the user allowed in Marconi connects that way.
+            bool allowUnencrypted = false;
             SavedComputers* saved = nullptr; // Marconi's saved connections, when available
             // Looks for computers on this network (Marconi's "On this network"); none when empty.
             std::function<std::vector<Net::DiscoveredService>()> discover;

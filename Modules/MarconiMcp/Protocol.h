@@ -31,6 +31,10 @@ namespace Marconi
             std::string description;
             nlohmann::json inputSchema; // a JSON Schema object
             bool readOnly = false;      // only looks; offered in read-only mode
+            // Reaches another computer on its own account (connect). Read-only mode still needs it, but it is
+            // never announced to the AI tool as read-only, so a tool that skips asking for read-only calls
+            // still asks before this one.
+            bool reachesOut = false;
         };
 
         // The tools a server offers. Calls arrive one at a time.

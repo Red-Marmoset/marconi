@@ -391,6 +391,11 @@ computer that isn't saved, the AI tool can be given the password, or, to keep it
 the `MARCONI_PASSWORD` environment variable for MarconiMcp (Claude Desktop asks for it in the extension's
 settings).
 
+Many VNC servers offer no encryption, so others on the same network could see the screen and work out the password.
+An AI tool can't agree to that for you. It connects to such a computer only when you have: save the computer in
+Marconi, connect to it there once and choose Connect Without Encryption. To allow it for every computer instead (a
+network you trust), set `MARCONI_ALLOW_UNENCRYPTED=1` for MarconiMcp.
+
 **By hand.** The part the AI tools start is a program called MarconiMcp (`marconi-mcp` on Linux), installed beside
 Marconi:
 

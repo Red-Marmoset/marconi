@@ -30,6 +30,7 @@ namespace MarconiMcpApp
             computer.certificate = saved.certificate.utf8_string();
             computer.sshHostKey = saved.sshHostKey.utf8_string();
             computer.sshTunnel = saved.sshTunnel;
+            computer.allowUnencrypted = saved.allowUnencrypted;
             computer.favourite = saved.favourite;
             computer.hasPassword = passwordsAllowed && saved.rememberPassword;
             computers.push_back(computer);

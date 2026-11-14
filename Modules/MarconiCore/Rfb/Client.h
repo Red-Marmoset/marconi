@@ -55,6 +55,10 @@ namespace Marconi
             // Ask for encryption when the server offers it and this build can encrypt. Cleared for a retry after
             // DisconnectInfo::encryptionUnusable.
             bool allowEncryption = true;
+            // The person has agreed to connect to this computer without encryption (most VNC servers offer none).
+            // Off, the listener's OnUnencryptedConnection is asked first. It is asked anyway when a certificate is
+            // remembered for the computer: that connection used to be encrypted.
+            bool allowUnencrypted = false;
             // Offer the Extended Clipboard, which carries UTF-8 text and images with servers that support it.
             bool extendedClipboard = true;
             // Connect through SSH: log in to the computer's SSH server on `sshPort` with the credentials (asking the

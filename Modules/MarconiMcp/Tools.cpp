@@ -86,6 +86,7 @@ namespace Marconi
                               {"description", "Picture quality: best (no loss), balanced (default) or low "
                                               "(for slow links)."}}}});
             connect.readOnly = true;
+            connect.reachesOut = true; // it opens a connection and may use a saved password
             tools.push_back(connect);
 
             ToolDefinition list;
@@ -231,6 +232,7 @@ namespace Marconi
                     savedName = computer->DisplayName();
                     request.username = computer->username;
                     request.sshTunnel = computer->sshTunnel;
+                    request.allowUnencrypted = computer->allowUnencrypted;
                     request.trustedCertificate = HexToBytes(computer->certificate);
                     request.trustedSshHostKey = computer->sshHostKey;
                     request.quality = QualityFromName(computer->quality);
@@ -254,6 +256,7 @@ namespace Marconi
             {
                 request.password = savedPassword.empty() ? m_options.defaultPassword : savedPassword;
             }
+            request.allowUnencrypted = request.allowUnencrypted || m_options.allowUnencrypted;
             request.trustFingerprint = GetString(arguments, "trust_fingerprint", false);
             const std::string quality = GetString(arguments, "quality", false);
             if (!quality.empty())

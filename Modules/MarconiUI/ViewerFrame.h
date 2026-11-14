@@ -70,6 +70,9 @@ namespace MarconiUI
         Marconi::PictureQuality quality = Marconi::PictureQuality::Balanced;
         bool lockOnDisconnect = false; // send the lock shortcut to the other computer when the window closes
         bool sshTunnel = false;        // connect through the computer's SSH server; no probe, VNC port from the address
+        // Connect to a VNC server that offers no encryption without asking first: the saved connection's "you
+        // agreed to this", or --allow-unencrypted. Off, the viewer asks (and a headless run refuses).
+        bool allowUnencrypted = false;
         bool skipServerUpdate = false; // from the saved connection: don't offer to update its Marconi Server
         wxString macAddress;    // for waking the computer up when it doesn't answer
         wxRect windowRect;      // where the window was last time; empty = fit it to the desktop
@@ -128,6 +131,9 @@ namespace MarconiUI
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
         bool OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestion& question) override;
+        bool OnUnencryptedConnection(const Marconi::UnencryptedQuestion& question) override;
+        // UI thread: the "connect without encryption?" question and remembering a yes.
+        bool ConfirmUnencrypted(const Marconi::UnencryptedQuestion& question);
 
         // Connection thread: runs `question` on the UI thread (it shows a dialog and returns the answer) and waits
         // for the answer, or for the window to close. The question must keep its results in members, not in the

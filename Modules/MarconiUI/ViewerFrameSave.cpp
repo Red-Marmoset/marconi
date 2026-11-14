@@ -72,6 +72,7 @@ namespace MarconiUI
         saved.detected = m_options.detected;
         saved.username = wxString::FromUTF8(m_options.credentials.username);
         saved.sshTunnel = m_options.sshTunnel;
+        saved.allowUnencrypted = m_options.allowUnencrypted; // agreed to in this window: don't ask again next time
         saved.viewOnly = m_options.viewOnly;
         saved.clipboard = m_options.clipboard;
         saved.systemKeys = m_options.systemKeys;

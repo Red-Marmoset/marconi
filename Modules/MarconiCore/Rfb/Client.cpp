@@ -534,9 +534,26 @@ namespace Marconi
                 }
                 // A server that accepts the connection but then says nothing mustn't leave us waiting for ever.
                 SetReceiveTimeout(options.connectTimeoutMs);
+                // No encryption on offer: ask first, unless this was agreed to already. Through SSH the whole
+                // session is encrypted whatever the VNC server offers. A computer with a remembered certificate
+                // was encrypted before, so it is asked about every time.
+                UnencryptedConfirmer confirmUnencrypted = [this, &options]() {
+                    if (options.sshTunnel)
+                    {
+                        return true;
+                    }
+                    UnencryptedQuestion question;
+                    question.host = options.host;
+                    question.wasEncryptedBefore = !options.trustedCertificateSha256.empty();
+                    if (options.allowUnencrypted && !question.wasEncryptedBefore)
+                    {
+                        return true;
+                    }
+                    return m_listener.OnUnencryptedConnection(question);
+                };
                 HandshakeResult handshake =
                     PerformHandshake(in, *this, options.shared, provider, startTls, options.allowTight, &choseTight,
-                                     anonymousTls);
+                                     anonymousTls, confirmUnencrypted);
                 m_fileTransfer = handshake.tightFileTransfer;
                 SetReceiveTimeout(0);
                 CheckDesktopSize(handshake.serverInit.width, handshake.serverInit.height);

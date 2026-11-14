@@ -119,8 +119,17 @@ namespace Marconi
             // `outCredentials` is set, so authentication must not ask again.
             uint8_t NegotiateSecurityType(InStream& in, ByteSink& out, int minor, const CredentialsProvider& provider,
                                           bool tlsAvailable, bool allowTight,
-                                          std::optional<Credentials>& outCredentials)
+                                          std::optional<Credentials>& outCredentials,
+                                          const UnencryptedConfirmer& confirmUnencrypted)
             {
+                // Asked as soon as it is clear the connection won't be encrypted, before any password is asked
+                // for or sent.
+                auto confirmPlain = [&confirmUnencrypted]() {
+                    if (confirmUnencrypted && !confirmUnencrypted())
+                    {
+                        throw AuthenticationCancelled("Connecting without encryption was not allowed");
+                    }
+                };
                 if (minor == 3)
                 {
                     // 3.3: the server decides.
@@ -132,6 +141,10 @@ namespace Marconi
                     if (type > 255)
                     {
                         throw RfbError("The server chose an unknown security type " + std::to_string(type));
+                    }
+                    if (type != SecurityType::VeNCrypt)
+                    {
+                        confirmPlain();
                     }
                     return static_cast<uint8_t>(type);
                 }
@@ -153,6 +166,10 @@ namespace Marconi
                 auto isOffered = [&types](uint8_t type) {
                     return std::find(types.begin(), types.end(), type) != types.end();
                 };
+                if (!(tlsAvailable && isOffered(SecurityType::VeNCrypt)))
+                {
+                    confirmPlain(); // encryption comes first whenever it is offered, so this one won't be encrypted
+                }
                 bool preferAccountLogin = false;
                 if (isOffered(SecurityType::AppleRemoteDesktop) && isOffered(SecurityType::VncAuth) &&
                     !isOffered(SecurityType::None))
@@ -249,13 +266,14 @@ namespace Marconi
 
         HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
                                          const CredentialsProvider& credentials, const TlsStarter& startTls,
-                                         bool allowTight, bool* outChoseTight, bool anonymousTls)
+                                         bool allowTight, bool* outChoseTight, bool anonymousTls,
+                                         const UnencryptedConfirmer& confirmUnencrypted)
         {
             HandshakeResult result;
             result.minor = NegotiateVersion(in, out, result);
             std::optional<Credentials> given;
-            result.securityType =
-                NegotiateSecurityType(in, out, result.minor, credentials, startTls != nullptr, allowTight, given);
+            result.securityType = NegotiateSecurityType(in, out, result.minor, credentials, startTls != nullptr,
+                                                        allowTight, given, confirmUnencrypted);
             LOG_INFO("Rfb", "Using security type %d", result.securityType);
             if (outChoseTight != nullptr)
             {

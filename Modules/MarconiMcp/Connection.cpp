@@ -73,6 +73,7 @@ namespace Marconi
             options.quality = request.quality;
             options.trustedCertificateSha256 = request.trustedCertificate;
             options.sshTunnel = request.sshTunnel;
+            options.allowUnencrypted = request.allowUnencrypted;
             options.clientName = "Marconi for AI tools";
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
@@ -481,6 +482,22 @@ namespace Marconi
                                              "). Issued to " + certificate.subject + ", valid until " +
                                              certificate.validUntil + ".";
             m_outcome.error = m_outcome.untrustedDescription;
+            return false;
+        }
+
+        bool Connection::OnUnencryptedConnection(const UnencryptedQuestion& question)
+        {
+            // Nobody to ask, and this isn't the AI's to decide: only a saved connection the user allowed in
+            // Marconi connects without encryption.
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_outcome.error =
+                question.wasEncryptedBefore
+                    ? "This computer's connection was encrypted before and now it offers no encryption, so "
+                      "Marconi didn't connect. The user should check the computer, or connect to it in Marconi."
+                    : "This computer offers no encrypted connection, so the screen, typing and password could be "
+                      "read by others on the network. Marconi only does that when the user has allowed it: they "
+                      "save the computer in Marconi, connect to it there once and choose to connect without "
+                      "encryption.";
             return false;
         }
 

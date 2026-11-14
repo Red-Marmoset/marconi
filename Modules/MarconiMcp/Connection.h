@@ -27,6 +27,9 @@ namespace Marconi
             std::vector<uint8_t> trustedCertificate; // a certificate trusted before (a saved connection's)
             std::string trustedSshHostKey;           // an SSH host key trusted before (a saved connection's)
             bool sshTunnel = false;                  // VNC through the computer's SSH server
+            // The user agreed, in Marconi, to connect to this saved computer without encryption. The AI can't
+            // agree to that itself: without this, a computer that offers no encryption is refused.
+            bool allowUnencrypted = false;
             PictureQuality quality = PictureQuality::Balanced;
             std::chrono::milliseconds timeout{20000};
         };
@@ -120,6 +123,7 @@ namespace Marconi
             void OnDisconnected(const DisconnectInfo& info) override;
             bool OnCredentialsRequired(Rfb::CredentialsKind kind, Rfb::Credentials& inOutCredentials) override;
             bool OnUntrustedCertificate(const Net::TlsCertificate& certificate) override;
+            bool OnUnencryptedConnection(const UnencryptedQuestion& question) override;
             bool OnUntrustedSshHostKey(const Net::SshHostKeyQuestion& question) override;
 
             mutable std::mutex m_mutex;

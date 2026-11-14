@@ -95,9 +95,13 @@ namespace Marconi
         // Runs the whole handshake up to and including ServerInit (and, with Tight security, the server's feature
         // lists). Throws RfbError / AuthenticationFailed.
         // `anonymousTls` says whether `startTls` can make a connection without a server certificate.
+        // `confirmUnencrypted`, when set, is asked once the server's offer shows the connection won't be encrypted,
+        // before any login or credentials question; false ends the handshake like a cancelled login.
+        using UnencryptedConfirmer = std::function<bool()>;
         HandshakeResult PerformHandshake(InStream& in, ByteSink& out, bool shared,
                                          const CredentialsProvider& credentials, const TlsStarter& startTls = nullptr,
                                          bool allowTight = false, bool* outChoseTight = nullptr,
-                                         bool anonymousTls = true);
+                                         bool anonymousTls = true,
+                                         const UnencryptedConfirmer& confirmUnencrypted = nullptr);
     } // namespace Rfb
 } // namespace Marconi

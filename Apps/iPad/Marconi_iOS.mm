@@ -722,6 +722,9 @@ enum class ViewerOrientation
     options.username = FromNSString(_username);
     options.password = FromNSString(_password);
     options.clientName = "Marconi for iPad";
+    // Not asked about on the iPad yet: a VNC server with no encryption connects as it always has (the desktop app
+    // asks first). A computer that was encrypted before and now isn't is still refused.
+    options.allowUnencrypted = true;
     NSString* trusted = [NSUserDefaults.standardUserDefaults stringForKey:[@"certificate:" stringByAppendingString:_address]];
     options.trustedCertificateSha256 = BytesOf(trusted ?: @"");
     std::string error;

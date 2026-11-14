@@ -86,6 +86,18 @@ namespace MarconiTest
         bool OnCredentialsRequired(Marconi::Rfb::CredentialsKind kind, Marconi::Rfb::Credentials& credentials) override;
         bool OnUntrustedCertificate(const Marconi::Net::TlsCertificate& certificate) override;
         bool OnUntrustedSshHostKey(const Marconi::Net::SshHostKeyQuestion& question) override;
+        bool OnUnencryptedConnection(const Marconi::UnencryptedQuestion& question) override
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            ++unencryptedQuestions;
+            lastUnencryptedWasEncryptedBefore = question.wasEncryptedBefore;
+            return allowUnencrypted;
+        }
+
+        // What OnUnencryptedConnection answers (the fake servers offer no encryption), and what it was asked.
+        bool allowUnencrypted = true;
+        int unencryptedQuestions = 0;
+        bool lastUnencryptedWasEncryptedBefore = false;
 
         // Waits until `predicate` (evaluated under the lock) holds. Returns false on timeout.
         bool WaitFor(const std::function<bool()>& predicate, int timeoutMs = 5000);

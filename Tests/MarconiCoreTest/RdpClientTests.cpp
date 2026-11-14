@@ -628,7 +628,9 @@ namespace MarconiTest
             server.GetClientSocket().SendAll(confirm.data(), confirm.size());
             CHECK(listener.WaitFor([&]() { return listener.disconnected; }));
             CHECK(listener.credentialRequests == 0); // the password was given
-            CHECK(listener.certificateQuestions == 1 && !listener.disconnectError.empty());
+            // A certificate that was turned down is a cancel, with no error: an error would send the viewer on to
+            // try this computer some other way, with the same password.
+            CHECK(listener.certificateQuestions == 1 && listener.disconnectError.empty());
             CHECK(!listener.authenticationFailed);
             server.Close();
 

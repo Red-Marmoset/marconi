@@ -196,6 +196,10 @@ namespace MarconiUI
             {wxCMD_LINE_SWITCH, nullptr, "headless",
              "no window or dialogs: log and save snapshots to the log folder (testing, automation)",
              wxCMD_LINE_VAL_NONE, 0},
+            {wxCMD_LINE_SWITCH, nullptr, "allow-unencrypted",
+             "connect to a VNC server that offers no encryption without asking first (a headless run refuses "
+             "otherwise)",
+             wxCMD_LINE_VAL_NONE, 0},
             {wxCMD_LINE_OPTION, nullptr, "snapshot-every", "headless: seconds between snapshots (default 5)",
              wxCMD_LINE_VAL_NUMBER, 0},
             {wxCMD_LINE_OPTION, nullptr, "quit-after", "headless: seconds before closing (default 60)",
@@ -362,6 +366,7 @@ namespace MarconiUI
                 options.showFiles = parser.Found("files");
                 options.clipboard = options.clipboard && !parser.Found("no-clipboard");
                 options.sshTunnel = options.sshTunnel || parser.Found("ssh");
+                options.allowUnencrypted = options.allowUnencrypted || parser.Found("allow-unencrypted");
                 options.video = parser.Found("video");
                 options.videoStats = parser.Found("stats");
                 if (headless)

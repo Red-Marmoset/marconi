@@ -251,7 +251,7 @@ namespace Marconi
                 {
                     entry["title"] = tool.title;
                 }
-                entry["annotations"] = {{"readOnlyHint", tool.readOnly}};
+                entry["annotations"] = {{"readOnlyHint", tool.readOnly && !tool.reachesOut}};
                 tools.push_back(entry);
             }
             return {{"tools", tools}};

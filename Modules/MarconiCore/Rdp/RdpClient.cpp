@@ -222,20 +222,25 @@ namespace Marconi
             SplitDomain(credentials.username, nla.domain, nla.user);
             nla.password = credentials.password;
             std::vector<uint8_t> pinned = options.trustedCertificateSha256;
-            auto trust = [this, pinned](const Net::TlsCertificate& certificate) {
+            std::shared_ptr<std::atomic<bool>> declined = std::make_shared<std::atomic<bool>>(false);
+            auto trust = [this, pinned, declined](const Net::TlsCertificate& certificate) {
                 if (!pinned.empty() && certificate.sha256 == pinned)
                 {
                     return true;
                 }
-                return m_listener.OnUntrustedCertificate(certificate);
+                bool trusted = m_listener.OnUntrustedCertificate(certificate);
+                *declined = !trusted;
+                return trusted;
             };
             std::string error;
             if (!connection.Open(options.host, options.port, nla, trust, options.connectTimeoutMs, error,
                                  &m_stopping))
             {
                 const ConnectOutcome& outcome = connection.Outcome();
-                if (m_stopping)
+                if (m_stopping || *declined)
                 {
+                    // Stopped here, or the person turned the certificate down: a cancel, with no error, so the
+                    // viewer doesn't go on to try this computer some other way.
                     info.error.clear();
                 }
                 else if (outcome.ntStatus != 0)

@@ -38,6 +38,15 @@ namespace Marconi
         bool serverUpdating = false;       // Marconi Server said it was starting an update, then went: reconnect
     };
 
+    // Asked before a connection goes ahead with no encryption (see SessionListener::OnUnencryptedConnection).
+    struct UnencryptedQuestion
+    {
+        std::string host;
+        // A certificate is remembered for this computer, so its connection was encrypted before and now isn't
+        // being offered that way: the stronger warning.
+        bool wasEncryptedBefore = false;
+    };
+
     // Counts since the last TakeTrafficStats().
     struct TrafficStats
     {
@@ -84,6 +93,11 @@ namespace Marconi
         // Blocking: connecting through SSH, and the SSH server's key isn't the one trusted before (or none was).
         // Return true to trust it. Only VNC-over-SSH asks this; other connections never call it.
         virtual bool OnUntrustedSshHostKey(const Net::SshHostKeyQuestion& /*question*/) { return false; }
+        // Blocking: the other computer offers no encrypted connection, so the screen, what is typed and the
+        // login would cross the network where others on it could read them. Asked before anything is logged in,
+        // unless the connection was told this is allowed (and the computer wasn't encrypted before). Return
+        // true to carry on. Only VNC asks this; the other protocols are always encrypted.
+        virtual bool OnUnencryptedConnection(const UnencryptedQuestion& /*question*/) { return false; }
     };
 
     // A connection the viewer drives. Connecting is protocol-specific and lives on the implementation; everything

@@ -24,6 +24,7 @@ namespace Marconi
             std::string certificate; // the SHA-256 of a certificate the user trusted, as hex; empty for none
             std::string sshHostKey;  // an SSH host key the user trusted ("SHA256:..."); empty for none
             bool sshTunnel = false;
+            bool allowUnencrypted = false; // the user agreed, in Marconi, to connect to it without encryption
             bool favourite = false;
             bool hasPassword = false; // a password is saved and AI tools may use it
 
