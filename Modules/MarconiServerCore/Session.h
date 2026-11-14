@@ -91,6 +91,20 @@ namespace Marconi
             // Lets a newer viewer update this server through `environment` (null, the default: every offer is answered
             // "not supported here"). It must outlive the session. Call before Run().
             void SetUpdateEnvironment(const UpdateEnvironment* environment) { m_updateEnvironment = environment; }
+            // Called once the password has been accepted, before the viewer is told it is in and before anything
+            // of this computer's is touched for it (the clipboard, the frame loop). It may wait (the listener
+            // serves one viewer at a time, and makes the next wait its turn here); false ends the session. Call
+            // before Run().
+            void SetAdmission(std::function<bool()> admit) { m_admit = std::move(admit); }
+            // Where the Welcome's display list comes from. The screen source is only safe to ask from one thread
+            // at a time, and several viewers may be logging in at once, so the listener answers for them. Unset,
+            // the screen source is asked directly. Call before Run().
+            void SetDisplaysProvider(std::function<std::vector<Wire::Display>()> provider)
+            {
+                m_displaysProvider = std::move(provider);
+            }
+            // The display layout last sent to the viewer. Thread-safe.
+            std::vector<Wire::Display> GetDisplays() const;
             // The viewer's name from its Hello (empty before that), for the tray icon's status. Thread-safe.
             std::string GetViewerName() const;
             // True once the viewer has passed the login.
@@ -162,7 +176,10 @@ namespace Marconi
             uint32_t m_requestedDisplay = 0;
             bool m_modePending = false;
             Wire::SetDisplayMode m_requestedMode;
-            // Frame thread only.
+            std::function<bool()> m_admit;
+            std::function<std::vector<Wire::Display>()> m_displaysProvider;
+            // Frame thread only, except m_displays: written there under m_displaysMutex, read by GetDisplays.
+            mutable std::mutex m_displaysMutex;
             std::vector<Wire::Display> m_displays; // the layout last sent
             uint32_t m_selectedDisplay = 0;        // 0 = the whole desktop
             bool m_needFull = false;               // the next frame must be a full picture of the selection

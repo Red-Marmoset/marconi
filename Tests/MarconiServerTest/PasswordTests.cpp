@@ -67,6 +67,44 @@ namespace MarconiServerTest
             CHECK(auth.Check("secret", retry) == Server::Auth::Result::LockedOut);
         });
 
+        RunTest("Wrong passwords from one address don't lock out another", []() {
+            Server::Auth auth(Server::HashPassword("secret", 10000));
+            int retry = 0;
+            for (int i = 0; i < 6; ++i)
+            {
+                auth.Check("nope", "10.0.0.66", retry);
+            }
+            // The guesser is locked out, right password or not.
+            CHECK(auth.Check("secret", "10.0.0.66", retry) == Server::Auth::Result::LockedOut);
+            CHECK(retry > 0);
+            // The owner, somewhere else, gets straight in, and may still mistype without being locked at once.
+            CHECK(auth.Check("secret", "192.168.1.20", retry) == Server::Auth::Result::Allowed);
+            CHECK(auth.Check("typo", "192.168.1.20", retry) == Server::Auth::Result::WrongPassword);
+            CHECK(auth.Check("secret", "192.168.1.20", retry) == Server::Auth::Result::Allowed);
+        });
+
+        RunTest("Guessing spread over many addresses gets one try each, and a lockout runs out", []() {
+            Server::Auth auth(Server::HashPassword("secret", 10000));
+            auto now = std::chrono::steady_clock::now();
+            auth.SetClock([&now]() { return now; });
+            int retry = 0;
+            // Twenty-one wrong passwords from twenty-one addresses: nobody is locked yet, but the server is "busy".
+            for (int i = 0; i < 21; ++i)
+            {
+                Server::Auth::Result result = auth.Check("nope", "10.1.0." + std::to_string(i), retry);
+                CHECK(result == (i < 20 ? Server::Auth::Result::WrongPassword : Server::Auth::Result::LockedOut));
+            }
+            // A new address's first mistake now locks it out...
+            CHECK(auth.Check("nope", "10.2.0.1", retry) == Server::Auth::Result::LockedOut);
+            const int lockedFor = retry;
+            CHECK(lockedFor > 0);
+            // ...but an address that makes no mistake is never refused.
+            CHECK(auth.Check("secret", "192.168.1.20", retry) == Server::Auth::Result::Allowed);
+            // The lockout ends by itself.
+            now += std::chrono::seconds(lockedFor + 1);
+            CHECK(auth.Check("secret", "10.2.0.1", retry) == Server::Auth::Result::Allowed);
+        });
+
         RunTest("A password file is read as UTF-16 or UTF-8, minus one line break, and can be erased", []() {
             const std::string path = "marconi_password_file_test.txt";
             auto write = [&](const std::string& bytes) {

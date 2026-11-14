@@ -33,6 +33,26 @@ namespace Marconi
                 return safe;
             }
 
+            // The viewer's name as it is kept and shown (the tray icon, notices, the update question): the same
+            // cleaning, and nothing at all if it isn't proper text, so a viewer can't fill a window on this
+            // computer with words of its choosing.
+            std::string ShownName(const std::string& text)
+            {
+                if (!Wire::IsValidUtf8(text))
+                {
+                    return std::string();
+                }
+                std::string safe = LogSafe(text);
+                while (!safe.empty() && !Wire::IsValidUtf8(safe))
+                {
+                    safe.pop_back(); // the cut fell inside a character
+                }
+                return safe;
+            }
+
+            // The largest message accepted from a viewer that hasn't logged in: a greeting and a password.
+            constexpr uint64_t kMaxPreLoginMessageBytes = 64 * 1024;
+
             // What this build's server can always do, for the capability handshake. It grows as phases land (video,
             // clipboard, files, gamepads). Resizing a display is added when the screen source can do it.
             constexpr uint64_t kServerCapabilities = Wire::Capability::MultipleDisplays | Wire::Capability::ServerUpdate;
@@ -152,8 +172,15 @@ namespace Marconi
             return Wire::WriteMessage(m_transport, framed);
         }
 
+        std::vector<Wire::Display> Session::GetDisplays() const
+        {
+            std::lock_guard<std::mutex> lock(m_displaysMutex);
+            return m_displays;
+        }
+
         bool Session::Handshake(Wire::MessageReader& reader)
         {
+            reader.SetMaxMessageBytes(kMaxPreLoginMessageBytes); // nobody has shown the password yet
             Wire::Bytes helloBytes = reader.Next();
             Wire::Reader helloReader(helloBytes);
             if (Wire::ReadType(helloReader) != Wire::Type::Hello)
@@ -165,9 +192,9 @@ namespace Marconi
             m_clientCapabilities = hello.capabilities;
             {
                 std::lock_guard<std::mutex> lock(m_nameMutex);
-                m_viewerName = hello.clientName;
+                m_viewerName = ShownName(hello.clientName);
             }
-            m_viewerVersion = hello.clientVersion;
+            m_viewerVersion = ShownName(hello.clientVersion);
             LOG_INFO("Server", "Viewer '%s' connected, protocol %u", LogSafe(hello.clientName).c_str(),
                      static_cast<unsigned>(hello.version));
 
@@ -201,16 +228,14 @@ namespace Marconi
             }
             m_grantedCapabilities = hello.capabilities & offered;
             welcome.capabilities = m_grantedCapabilities;
-            m_clipboardActive = (welcome.capabilities & Wire::Capability::Clipboard) != 0;
-            if (m_clipboardActive)
-            {
-                // Listen from now, not after the login: a copy made in between would otherwise never be offered.
-                m_clipboard->SetChangeHandler([this]() { m_clipboardChanged = true; });
-            }
+            const bool clipboardGranted = (welcome.capabilities & Wire::Capability::Clipboard) != 0;
             welcome.serverName = m_settings.serverName;
             welcome.serverVersion = m_settings.serverVersion;
-            welcome.displays = m_screen.GetDisplays();
-            m_displays = welcome.displays;
+            welcome.displays = m_displaysProvider ? m_displaysProvider() : m_screen.GetDisplays();
+            {
+                std::lock_guard<std::mutex> lock(m_displaysMutex);
+                m_displays = welcome.displays;
+            }
             if (!Send(welcome.Encode()))
             {
                 return false;
@@ -235,7 +260,7 @@ namespace Marconi
             else if (m_auth != nullptr)
             {
                 int retryAfterSeconds = 0;
-                Auth::Result check = m_auth->Check(login.password, retryAfterSeconds);
+                Auth::Result check = m_auth->Check(login.password, m_peerAddress, retryAfterSeconds);
                 if (check == Auth::Result::WrongPassword)
                 {
                     result.status = Wire::LoginResult::Status::WrongPassword;
@@ -250,6 +275,18 @@ namespace Marconi
             }
             if (result.status == Wire::LoginResult::Status::Ok)
             {
+                // The password is right. The listener serves one viewer at a time: this waits for its turn, and
+                // from here on this session is the one using the screen, the clipboard and the rest.
+                if (m_admit && !m_admit())
+                {
+                    return false;
+                }
+                reader.SetMaxMessageBytes(Wire::kMaxMessageBytes);
+                m_clipboardActive = clipboardGranted;
+                if (m_clipboardActive)
+                {
+                    m_clipboard->SetChangeHandler([this]() { m_clipboardChanged = true; });
+                }
                 // Start counting before the viewer is told it is in, so it can't be idle for longer than the time it
                 // has really been in (and the count can't start later than something the viewer does next).
                 m_idle.Touch();
@@ -271,9 +308,9 @@ namespace Marconi
                 {
                     bytes = reader.Next();
                 }
-                catch (const Wire::WireError&)
+                catch (const std::exception&)
                 {
-                    break; // the viewer went away or sent nonsense
+                    break; // the viewer went away, sent nonsense, or sent more than there is memory for
                 }
                 Wire::Reader body(bytes);
                 Wire::Type type;
@@ -438,6 +475,13 @@ namespace Marconi
                 catch (const Wire::WireError&)
                 {
                     break; // a malformed message: drop the viewer
+                }
+                catch (const std::exception& failure)
+                {
+                    // Anything else a message caused (running out of memory, a file name the system refuses):
+                    // drop the viewer, don't end the server.
+                    LOG_INFO("Server", "A viewer's message couldn't be handled (%s); dropping it", failure.what());
+                    break;
                 }
             }
             m_stop = true;
@@ -924,7 +968,7 @@ namespace Marconi
                     return;
                 }
             }
-            catch (const Wire::WireError& error)
+            catch (const std::exception& error)
             {
                 LOG_INFO("Server", "Handshake failed: %s", error.what());
                 StopClipboardHandler();

@@ -36,6 +36,11 @@ namespace Marconi
 
             Bytes Next();
 
+            // Lowers (or restores) the largest message Next() accepts; never more than kMaxMessageBytes. A server
+            // keeps it small until the viewer has logged in, so someone without the password can't make it set
+            // aside tens of megabytes.
+            void SetMaxMessageBytes(uint64_t bytes) { m_maxMessageBytes = bytes < kMaxMessageBytes ? bytes : kMaxMessageBytes; }
+
         private:
             uint8_t ReadByte();              // one byte, buffered; throws at end of stream
             void ReadExactly(uint8_t* out, size_t length);
@@ -43,6 +48,7 @@ namespace Marconi
             Transport& m_transport;
             Bytes m_buffer;      // bytes read from the transport but not yet consumed
             size_t m_position = 0;
+            uint64_t m_maxMessageBytes = kMaxMessageBytes;
         };
 
         // Writes an already-framed message (from a message's Encode()) to the transport. False if the transport

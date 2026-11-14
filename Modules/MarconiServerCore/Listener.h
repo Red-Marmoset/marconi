@@ -17,6 +17,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -53,8 +55,15 @@ namespace Marconi
             // disconnects. Returns false if nothing connected in time or the listener was stopped.
             bool ServeOne(int acceptTimeoutMs = 0);
 
-            // Accepts and serves viewers one after another until Stop().
+            // Accepts viewers until Stop(). Each connection is handled on its own thread up to the login, so one
+            // that says nothing (or is slow, or is trying passwords) never keeps anyone else waiting; one viewer
+            // at a time is then served, and a second that logs in waits for the first to leave.
             void Run();
+
+            // How long a connection may take over each step before it has logged in (the encryption handshake,
+            // the greeting, the password). It covers a person reading a certificate warning and typing a
+            // password. Tests shorten it. Call before Run() or ServeOne().
+            void SetLoginTimeoutMs(int ms) { m_loginTimeoutMs = ms; }
 
             // Stops accepting and ends the current viewer's session. Safe to call from another thread.
             void Stop();
@@ -112,6 +121,13 @@ namespace Marconi
             // Makes sure there is a usable TLS identity (generating a self-signed one if the settings have none)
             // and records its fingerprint. False (with `error`) if generation failed.
             bool EnsureIdentity(std::string& error);
+            // One connection, from the first byte to the viewer leaving. Runs on the caller's thread.
+            void ServeConnection(Net::Socket& client);
+            // The display list for a viewer that is logging in (see Session::SetDisplaysProvider).
+            std::vector<Wire::Display> DisplaysForWelcome();
+            // Whether one more connection from `address` may be taken on, counting it if so.
+            bool TakeConnectionSlot(const std::string& address);
+            void ReleaseConnectionSlot(const std::string& address);
 
             ScreenSource& m_screen;
             InputSink& m_input;
@@ -133,7 +149,15 @@ namespace Marconi
             mutable std::mutex m_allowMutex;
             AllowList m_allow; // guarded by m_allowMutex
             std::atomic<bool> m_stop{false};
+            int m_loginTimeoutMs = 2 * 60 * 1000;
+            // Connections being handled now (logged in or not), so Stop() can end them all and no one address
+            // can take every place.
+            std::mutex m_connectionsMutex;
+            std::vector<Net::Socket*> m_connectionSockets;     // guarded by m_connectionsMutex
+            std::map<std::string, int> m_connectionsByAddress; // guarded by m_connectionsMutex
+            int m_connectionCount = 0;                         // guarded by m_connectionsMutex
             mutable std::mutex m_currentMutex; // guards the members below
+            std::condition_variable m_currentFree; // signalled when the viewer being served leaves
             Session* m_current = nullptr;      // the live session, so Stop() and DisconnectViewer can end it
             Net::Socket* m_currentSocket = nullptr; // the live session's connection, shut down to end it
             uint32_t m_currentId = 0;

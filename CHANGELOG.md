@@ -5,6 +5,12 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.14
+
+- Security: someone who connects to Marconi Server and says nothing can no longer keep everyone else out.
+- Security: wrong passwords lock out the address they came from, not every viewer.
+- Marconi Server keeps running when a viewer sends something it can't handle, and shows a viewer's name only as plain text.
+
 ## 0.11.13
 
 - Security: Marconi asks before connecting to a computer that offers no encryption, and remembers a yes for that saved connection.

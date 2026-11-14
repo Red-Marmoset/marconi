@@ -100,6 +100,95 @@ namespace MarconiServerTest
             serverThread.join();
         });
 
+        RunTest("A connection that says nothing doesn't keep a viewer out, and is dropped", []() {
+            Server::TestPatternScreen screen(8, 8);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.allowNoPassword = true;
+            settings.port = 0;
+            settings.serverName = "Socket PC";
+            settings.serverVersion = "0.6.0.0";
+            Server::Listener listener(screen, input, settings);
+            listener.SetFrameIntervalMs(1);
+            listener.SetLoginTimeoutMs(1500);
+            std::string error;
+            CHECK(listener.Start(error, "127.0.0.1"));
+            std::thread serverThread([&]() { listener.Run(); });
+
+            // Someone connects and never says a word: before, that held the server for everyone.
+            Net::Socket silent;
+            CHECK(silent.Connect("127.0.0.1", listener.GetPort(), 2000, error));
+            uint8_t marker[4] = {};
+            silent.SetReceiveTimeout(2000);
+            CHECK(silent.Receive(marker, sizeof(marker)) > 0); // the server has taken the connection on
+
+            // A real viewer still gets in straight away.
+            RecordingClientListener clientListener;
+            Wire::Client client(clientListener);
+            Wire::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = listener.GetPort();
+            options.clientName = "socket viewer";
+            options.trustedCertificateSha256 = FromHex(listener.GetCertificateFingerprint());
+            client.Connect(options);
+            CHECK(clientListener.WaitFor([&]() { return clientListener.connected; }));
+            CHECK(clientListener.WaitFor([&]() { return clientListener.updates >= 1; }));
+
+            // The silent one is closed once its time to log in runs out.
+            silent.SetReceiveTimeout(5000);
+            uint8_t more[16];
+            CHECK(silent.Receive(more, sizeof(more)) <= 0);
+            silent.Close();
+
+            client.Disconnect();
+            CHECK(clientListener.WaitFor([&]() { return clientListener.disconnected; }));
+            listener.Stop();
+            serverThread.join();
+        });
+
+        RunTest("A second viewer waits its turn while the first is connected", []() {
+            Server::TestPatternScreen screen(8, 8);
+            RecordingInput input;
+            Server::Settings settings;
+            settings.allowNoPassword = true;
+            settings.port = 0;
+            settings.serverName = "Socket PC";
+            settings.serverVersion = "0.6.0.0";
+            Server::Listener listener(screen, input, settings);
+            listener.SetFrameIntervalMs(1);
+            std::string error;
+            CHECK(listener.Start(error, "127.0.0.1"));
+            std::thread serverThread([&]() { listener.Run(); });
+
+            Wire::ClientOptions options;
+            options.host = "127.0.0.1";
+            options.port = listener.GetPort();
+            options.trustedCertificateSha256 = FromHex(listener.GetCertificateFingerprint());
+
+            RecordingClientListener firstListener;
+            Wire::Client first(firstListener);
+            options.clientName = "first";
+            first.Connect(options);
+            CHECK(firstListener.WaitFor([&]() { return firstListener.connected; }));
+
+            RecordingClientListener secondListener;
+            Wire::Client second(secondListener);
+            options.clientName = "second";
+            second.Connect(options);
+            CHECK(!secondListener.WaitFor([&]() { return secondListener.connected; }, 700)); // still waiting
+
+            Server::ViewerSnapshot viewer;
+            CHECK(listener.GetViewer(viewer) && viewer.name == "first");
+            first.Disconnect();
+            CHECK(secondListener.WaitFor([&]() { return secondListener.connected; }));
+            CHECK(listener.GetViewer(viewer) && viewer.name == "second");
+
+            second.Disconnect();
+            CHECK(secondListener.WaitFor([&]() { return secondListener.disconnected; }));
+            listener.Stop();
+            serverThread.join();
+        });
+
         RunTest("A viewer that pins the wrong fingerprint and declines the question is turned away", []() {
             Server::TestPatternScreen screen(8, 8);
             RecordingInput input;

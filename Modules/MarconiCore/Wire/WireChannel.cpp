@@ -76,7 +76,7 @@ namespace Marconi
                     break;
                 }
             }
-            if (length > kMaxMessageBytes)
+            if (length > m_maxMessageBytes)
             {
                 throw WireError("message larger than the protocol allows");
             }
