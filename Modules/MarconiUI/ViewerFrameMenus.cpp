@@ -33,9 +33,7 @@ namespace MarconiUI
                                      wxAUI_TB_TEXT | wxAUI_TB_HORZ_LAYOUT | wxAUI_TB_GRIPPER | wxAUI_TB_OVERFLOW);
         m_toolBar->SetArtProvider(new ViewerToolbarArt());
         // The system font at its regular weight: Nebula's semibold is too heavy for a row of small labels.
-        wxFont toolbarFont = GetFont();
-        toolbarFont.SetPointSize(10);
-        m_toolBar->SetFont(toolbarFont);
+        m_toolBar->SetFont(SizedFont(GetFont(), 10));
         m_toolBar->SetMargins(FromDIP(8), FromDIP(6));
         m_toolBar->SetToolPacking(FromDIP(6));
         m_toolBar->SetToolBorderPadding(0);

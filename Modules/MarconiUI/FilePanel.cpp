@@ -76,9 +76,7 @@ namespace MarconiUI
 
     FilePanel::FilePanel(wxWindow* parent, const Remote& remote) : wxPanel(parent), m_remote(remote)
     {
-        wxFont bodyFont = GetFont();
-        bodyFont.SetPointSize(10);
-        SetFont(bodyFont);
+        SetFont(SizedFont(GetFont(), 10));
         wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
         sizer->AddSpacer(FromDIP(12));
         m_message = new wxStaticText(this, wxID_ANY, "");

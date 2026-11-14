@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.12
+
+- Text on the Mac is the same size as on Windows and Linux; it was a quarter smaller.
+
 ## 0.11.11
 
 - The Mac disk image shows Marconi's icon.

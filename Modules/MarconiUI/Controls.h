@@ -11,6 +11,9 @@
 namespace MarconiUI
 {
     wxFont HeadingFont(const wxFont& base, float scale = 1.0f, bool heavy = false);
+    // base at a size given in Windows points, so text is the same size on screen everywhere: a Mac point is one
+    // screen unit (72 to the inch), a Windows or Linux point is 4/3 of one (96 to the inch).
+    wxFont SizedFont(const wxFont& base, double windowsPoints);
 
     class ThemedListView : public wxListView
     {
