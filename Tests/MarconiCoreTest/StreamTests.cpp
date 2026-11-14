@@ -105,6 +105,11 @@ namespace MarconiTest
             CHECK(fb.Contains({0, 0, 4, 4}));
             CHECK(!fb.Contains({1, 0, 4, 1}));
             CHECK(!fb.Contains({-1, 0, 1, 1}));
+            // Edges that would wrap round if they were added as 32-bit numbers.
+            CHECK(!fb.Contains({0x7FFFFFFF, 0, 1, 1}));
+            CHECK(!fb.Contains({0, 0x7FFFFFFF, 1, 1}));
+            CHECK(!fb.Contains({1, 0, 0x7FFFFFFF, 1}));
+            CHECK(!fb.Contains({0, 1, 1, 0x7FFFFFFF}));
 
             fb.Resize(5, 2);
             CHECK(fb.GetWidth() == 5 && fb.GetHeight() == 2);

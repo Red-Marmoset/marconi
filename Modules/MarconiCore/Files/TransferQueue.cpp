@@ -175,11 +175,16 @@ namespace Marconi
             return names;
         }
 
-        uint64_t TransferQueue::MeasureTree(FileSource& source, const std::string& path, const FileEntry& entry)
+        uint64_t TransferQueue::MeasureTree(FileSource& source, const std::string& path, const FileEntry& entry,
+                                            int depth)
         {
             if (!entry.isFolder)
             {
                 return entry.size;
+            }
+            if (depth >= kMaxFolderDepth)
+            {
+                return 0; // the copy itself refuses a tree this deep
             }
             uint64_t total = 0;
             std::vector<FileEntry> children;
@@ -192,7 +197,10 @@ namespace Marconi
                     {
                         break;
                     }
-                    total += MeasureTree(source, JoinPath(path, child.name), child);
+                    if (IsSafeEntryName(child.name))
+                    {
+                        total += MeasureTree(source, JoinPath(path, child.name), child, depth + 1);
+                    }
                 }
             }
             return total;
@@ -239,10 +247,23 @@ namespace Marconi
 
         bool TransferQueue::CopyTree(const Item& item, const std::string& sourcePath, const FileEntry& entry,
                                      const std::string& destinationFolder, const std::set<std::string>& existing,
-                                     TransferStatus& status)
+                                     TransferStatus& status, int depth)
         {
             if (m_cancel)
             {
+                return false;
+            }
+            // The name comes from the other computer's listing. Joined as it is, "../x" or "C:/x" would be
+            // written outside the folder chosen for the copy.
+            if (!IsSafeEntryName(entry.name))
+            {
+                status.error = "The other computer sent a file name that can't be used here, so nothing more was "
+                               "copied.";
+                return false;
+            }
+            if (depth > kMaxFolderDepth)
+            {
+                status.error = "The folders go too many levels deep to copy.";
                 return false;
             }
             if (!entry.isFolder)
@@ -286,7 +307,7 @@ namespace Marconi
             }
             for (const FileEntry& child : children)
             {
-                if (!CopyTree(item, JoinPath(sourcePath, child.name), child, folder, inside, status))
+                if (!CopyTree(item, JoinPath(sourcePath, child.name), child, folder, inside, status, depth + 1))
                 {
                     return false;
                 }

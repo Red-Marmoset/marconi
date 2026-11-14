@@ -122,6 +122,16 @@ namespace MarconiTest
             CHECK(response.selectedProtocol == Rdp::kStandardRdp);
         });
 
+        RunTest("A Connection Confirm with a too-short length reads nothing past its end", []() {
+            // Seven bytes, saying no bytes follow the length: it must count as a bare confirm, not be read as if
+            // a negotiation answer followed.
+            Rdp::Bytes tiny = {0x03, 0x00, 0x00, 0x07, 0x00, 0xD0, 0x00};
+            Rdp::NegotiationResponse response;
+            std::string error;
+            CHECK(Rdp::ParseConnectionConfirm(tiny, response, error));
+            CHECK(!response.hasNegotiation && !response.failed);
+        });
+
         RunTest("A reply that isn't a Connection Confirm is rejected with a reason", []() {
             Rdp::NegotiationResponse response;
             std::string error;

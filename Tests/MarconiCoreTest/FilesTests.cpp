@@ -222,6 +222,112 @@ namespace MarconiTest
             CHECK(recorder.asked == 0);
         });
 
+        RunTest("IsSafeEntryName accepts one plain name and nothing that leaves the folder", []() {
+            CHECK(Files::IsSafeEntryName("report.pdf"));
+            CHECK(Files::IsSafeEntryName(".bashrc"));
+            CHECK(Files::IsSafeEntryName("a..b"));
+            CHECK(Files::IsSafeEntryName("...hidden"));
+            CHECK(!Files::IsSafeEntryName(""));
+            CHECK(!Files::IsSafeEntryName("."));
+            CHECK(!Files::IsSafeEntryName(".."));
+            CHECK(!Files::IsSafeEntryName("../x"));
+            CHECK(!Files::IsSafeEntryName("a/b"));
+            CHECK(!Files::IsSafeEntryName("/etc/passwd"));
+            CHECK(!Files::IsSafeEntryName(std::string("a\0b", 3)));
+            CHECK(!Files::IsSafeEntryName("line\nbreak"));
+#if defined(_WIN32)
+            CHECK(!Files::IsSafeEntryName("..\\..\\x.bat"));
+            CHECK(!Files::IsSafeEntryName("C:x"));
+            CHECK(!Files::IsSafeEntryName("name:stream"));
+            CHECK(!Files::IsSafeEntryName(".. "));
+            CHECK(!Files::IsSafeEntryName("name."));
+            CHECK(!Files::IsSafeEntryName("NUL"));
+            CHECK(!Files::IsSafeEntryName("con.txt"));
+            CHECK(!Files::IsSafeEntryName("COM1"));
+            CHECK(!Files::IsSafeEntryName("lpt9.log"));
+            CHECK(Files::IsSafeEntryName("COMMON"));
+            CHECK(Files::IsSafeEntryName("console.txt"));
+#else
+            CHECK(Files::IsSafeEntryName("back\\slash"));
+            CHECK(Files::IsSafeEntryName("12:30 notes"));
+#endif
+        });
+
+        RunTest("TransferQueue refuses a listed name that would leave the chosen folder", []() {
+            TempFolder from;
+            TempFolder to;
+            fs::create_directories(ToPath(from.Path() + "/photos"));
+            WriteFile(from.Path() + "/photos/ok.txt", "fine");
+            WriteFile(from.Path() + "/escaped.txt", "should never be copied");
+            // What a hostile computer would do: list a folder with a name that climbs out of it.
+            class HostileFiles : public Files::LocalFiles
+            {
+            public:
+                bool List(const std::string& folder, std::vector<Files::FileEntry>& out, std::string& error) override
+                {
+                    if (!LocalFiles::List(folder, out, error))
+                    {
+                        return false;
+                    }
+                    if (Files::FileName(folder) == "photos")
+                    {
+                        Files::FileEntry evil;
+                        evil.name = "../escaped.txt";
+                        evil.size = 22;
+                        out.push_back(evil);
+                    }
+                    return true;
+                }
+            };
+            HostileFiles hostile;
+            Files::LocalFiles local;
+            Recorder recorder;
+            // The chosen folder sits one level down, so "../" has somewhere to land.
+            const std::string chosen = to.Path() + "/chosen";
+            fs::create_directories(ToPath(chosen));
+            {
+                Files::TransferQueue queue(recorder.Status(), recorder.Conflict());
+                std::vector<int> ids = queue.Add(hostile, {from.Path() + "/photos"}, local, chosen);
+                queue.WaitUntilIdle();
+                CHECK(recorder.Final(ids[0]) == Files::TransferState::Failed);
+            }
+            CHECK(!Exists(chosen + "/escaped.txt"));
+            CHECK(!Exists(to.Path() + "/escaped.txt"));
+            CHECK(!Exists(chosen + "/photos/../escaped.txt"));
+        });
+
+        RunTest("TransferQueue stops at a folder tree that never ends", []() {
+            TempFolder to;
+            // Every folder holds one more folder, for ever.
+            class EndlessFiles : public Files::LocalFiles
+            {
+            public:
+                bool List(const std::string&, std::vector<Files::FileEntry>& out, std::string&) override
+                {
+                    Files::FileEntry child;
+                    child.name = "a";
+                    child.isFolder = true;
+                    out.assign(1, child);
+                    return true;
+                }
+                bool Stat(const std::string&, Files::FileEntry& out, std::string&) override
+                {
+                    out.name = "a";
+                    out.isFolder = true;
+                    return true;
+                }
+            };
+            EndlessFiles endless;
+            Files::LocalFiles local;
+            Recorder recorder;
+            {
+                Files::TransferQueue queue(recorder.Status(), recorder.Conflict());
+                std::vector<int> ids = queue.Add(endless, {"/a"}, local, to.Path());
+                queue.WaitUntilIdle();
+                CHECK(recorder.Final(ids[0]) == Files::TransferState::Failed);
+            }
+        });
+
         RunTest("TransferQueue asks about existing files: replace, skip, keep both, for the rest", []() {
             TempFolder from;
             TempFolder to;

@@ -32,16 +32,29 @@ namespace Marconi
                 Net::TlsStream& m_tls;
             };
 
-            // The whole desktop's size is the box that holds every display.
+            // The largest desktop accepted, each way (the VNC client's limit too). The picture is kept whole in
+            // memory, so a server may not ask for more than this.
+            constexpr int64_t kMaxDesktopSide = 16384;
+            // The largest pointer shape accepted, each way.
+            constexpr int32_t kMaxCursorSide = 1024;
+
+            // The whole desktop's size is the box that holds every display. Throws WireError for a desktop too
+            // large to be real, so the server can't make this program ask for an impossible amount of memory.
             void DesktopSize(const std::vector<Display>& displays, int& width, int& height)
             {
-                width = 0;
-                height = 0;
+                int64_t right = 0;
+                int64_t bottom = 0;
                 for (const Display& display : displays)
                 {
-                    width = std::max(width, display.x + display.width);
-                    height = std::max(height, display.y + display.height);
+                    right = std::max(right, static_cast<int64_t>(display.x) + display.width);
+                    bottom = std::max(bottom, static_cast<int64_t>(display.y) + display.height);
                 }
+                if (right > kMaxDesktopSide || bottom > kMaxDesktopSide)
+                {
+                    throw WireError("the server reported an implausibly large desktop");
+                }
+                width = static_cast<int>(right);
+                height = static_cast<int>(bottom);
             }
 
             std::vector<Rfb::Screen> ToScreens(const std::vector<Display>& displays)
@@ -263,6 +276,14 @@ namespace Marconi
                     case Type::CursorShape:
                     {
                         Wire::CursorShape shape = Wire::CursorShape::Decode(body);
+                        // The pixels must be exactly the size the message says: the window draws width x height
+                        // of them, so a mismatch would have it read or write past its picture.
+                        if (shape.width < 0 || shape.height < 0 || shape.width > kMaxCursorSide ||
+                            shape.height > kMaxCursorSide ||
+                            shape.argb.size() != static_cast<size_t>(shape.width) * shape.height * 4)
+                        {
+                            throw WireError("the server sent a pointer shape that doesn't match its size");
+                        }
                         Marconi::CursorShape cursor;
                         cursor.width = shape.width;
                         cursor.height = shape.height;
@@ -355,6 +376,16 @@ namespace Marconi
                 if (!m_stopping)
                 {
                     info.error = wireError.what();
+                    info.wasConnected = true;
+                }
+            }
+            catch (const std::exception&)
+            {
+                // Anything else (running out of memory on what the server sent, say) ends this connection, not
+                // the whole program.
+                if (!m_stopping)
+                {
+                    info.error = "The server sent something Marconi couldn't handle";
                     info.wasConnected = true;
                 }
             }
@@ -490,7 +521,11 @@ namespace Marconi
             int width = 0;
             int height = 0;
             DesktopSize(welcome.displays, width, height);
-            m_framebuffer.Resize(width, height);
+            {
+                // The window may be drawing from the picture (a reconnect in the same window).
+                std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                m_framebuffer.Resize(width, height);
+            }
             ApplyDisplays(welcome.displays, true);
 
             Rfb::ServerInit serverInit;
@@ -580,7 +615,11 @@ namespace Marconi
                 DesktopSize(displays, width, height);
                 if (width != m_framebuffer.GetWidth() || height != m_framebuffer.GetHeight())
                 {
-                    m_framebuffer.Resize(width, height);
+                    {
+                        // Under the lock: the window reads the picture on another thread.
+                        std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                        m_framebuffer.Resize(width, height);
+                    }
                     m_listener.OnDesktopResized(width, height);
                 }
             }
@@ -593,6 +632,15 @@ namespace Marconi
             if (rect.width <= 0 || rect.height <= 0)
             {
                 return;
+            }
+            {
+                // Checked before any memory is set aside for it, so the size is never more than the desktop's.
+                // (Checked again below, in case the desktop changes size meanwhile.)
+                std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                if (!m_framebuffer.Contains(rect))
+                {
+                    return;
+                }
             }
             const size_t pixelCount = static_cast<size_t>(rect.width) * rect.height;
             const size_t byteCount = pixelCount * 4;
@@ -645,7 +693,10 @@ namespace Marconi
                                  move.destination.height};
             {
                 std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
-                if (!m_framebuffer.Contains(dest))
+                // Both ends of the copy must be inside the picture: the place it comes from as much as the place
+                // it goes to.
+                const Rfb::Rect source{move.sourceX, move.sourceY, dest.width, dest.height};
+                if (!m_framebuffer.Contains(dest) || !m_framebuffer.Contains(source))
                 {
                     return;
                 }

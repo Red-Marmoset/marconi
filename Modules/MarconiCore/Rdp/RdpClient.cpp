@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <stdexcept>
+#include <string>
 
 namespace Marconi
 {
@@ -26,6 +28,19 @@ namespace Marconi
             // Share Data PDU types beyond the ones Pdu.h names: the server's reasons and session notices.
             constexpr uint8_t kPduTypeSaveSessionInfo = 38;
             constexpr uint8_t kPduTypeSetErrorInfo = 47;
+
+            // The largest desktop accepted, each way (the VNC client's limit too). The picture is kept whole in
+            // memory, so a server may not ask for more than this.
+            constexpr int kMaxDesktopSide = 16384;
+
+            void CheckDesktopSize(int width, int height)
+            {
+                if (width > kMaxDesktopSide || height > kMaxDesktopSide)
+                {
+                    throw std::runtime_error("the server reported an implausibly large desktop (" +
+                                             std::to_string(width) + " x " + std::to_string(height) + ")");
+                }
+            }
 
             // The NTSTATUS codes an NLA login fails with when the credentials are the problem.
             bool IsCredentialsStatus(uint32_t ntStatus)
@@ -129,7 +144,22 @@ namespace Marconi
         {
             Disconnect();
             m_stopping = false;
-            m_thread = std::thread([this, options]() { Run(options); });
+            m_thread = std::thread([this, options]() {
+                try
+                {
+                    Run(options);
+                }
+                catch (const std::exception& failure)
+                {
+                    // Something the server sent couldn't be handled (a desktop too large to be real, running out
+                    // of memory): that ends this connection, not the whole program.
+                    DisconnectInfo info;
+                    info.error = m_stopping ? "" : std::string("The Remote Desktop connection ended: ") + failure.what();
+                    m_connected = false;
+                    m_encrypted = false;
+                    m_listener.OnDisconnected(info);
+                }
+            });
         }
 
         void Client::Disconnect()
@@ -240,7 +270,12 @@ namespace Marconi
             const ConnectOutcome& outcome = connection.Outcome();
             int width = outcome.desktopWidth != 0 ? outcome.desktopWidth : options.desktopWidth;
             int height = outcome.desktopHeight != 0 ? outcome.desktopHeight : options.desktopHeight;
-            m_framebuffer.Resize(width, height);
+            CheckDesktopSize(width, height);
+            {
+                // The window may be drawing from the picture (a reconnect in the same window).
+                std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                m_framebuffer.Resize(width, height);
+            }
             {
                 std::lock_guard<std::mutex> lock(m_sendMutex);
                 m_shareId = outcome.shareId;
@@ -523,7 +558,12 @@ namespace Marconi
             {
                 return;
             }
-            m_framebuffer.Resize(width, height);
+            CheckDesktopSize(width, height);
+            {
+                // Under the lock: the window reads the picture on another thread.
+                std::lock_guard<std::mutex> lock(m_framebuffer.GetMutex());
+                m_framebuffer.Resize(width, height);
+            }
             {
                 std::lock_guard<std::mutex> lock(m_sendMutex);
                 m_desktopWidth = width;

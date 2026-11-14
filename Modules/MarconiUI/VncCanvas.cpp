@@ -309,6 +309,10 @@ namespace MarconiUI
             }
 
             image.Create(rect.width, rect.height, false);
+            if (!image.IsOk())
+            {
+                return; // no memory for a picture this size: skip this update, don't write through nothing
+            }
             unsigned char* out = image.GetData();
             for (int y = 0; y < rect.height; ++y)
             {
@@ -477,7 +481,10 @@ namespace MarconiUI
         }
         m_cursorScale = m_scale;
         const Marconi::Rfb::CursorShape& cursor = m_remoteCursor;
-        if (cursor.width <= 0 || cursor.height <= 0)
+        // A shape whose pixels don't match its size is treated as no shape: the loop below writes one pixel for
+        // each entry into a picture of width x height.
+        if (cursor.width <= 0 || cursor.height <= 0 ||
+            cursor.argb.size() != static_cast<size_t>(cursor.width) * static_cast<size_t>(cursor.height))
         {
             // The server hid its pointer (TightVNC does while you type; Windows does when it sees no mouse). A small
             // dot, black ringed with white, so the pointer can still be found. Drawn on a 32x32 canvas: Windows
@@ -504,6 +511,10 @@ namespace MarconiUI
         }
 
         wxImage image(cursor.width, cursor.height, false);
+        if (!image.IsOk())
+        {
+            return;
+        }
         image.InitAlpha();
         unsigned char* rgb = image.GetData();
         unsigned char* alpha = image.GetAlpha();

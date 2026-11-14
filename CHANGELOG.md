@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.12
+
+- Security: a file or folder copied from another computer can no longer be written outside the folder you chose.
+- Security: a pointer shape, picture or screen size that makes no sense, sent by the other computer, is refused instead of crashing Marconi or writing where it shouldn't.
+
 ## 0.11.11
 
 - The Mac disk image shows Marconi's icon.

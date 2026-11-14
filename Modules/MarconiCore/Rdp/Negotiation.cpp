@@ -132,7 +132,8 @@ namespace Marconi
                 error = "The server's RDP reply was truncated";
                 return false;
             }
-            if (variableEnd - variableStart < 8)
+            // (Compared this way round: a length shorter than the header would make the subtraction wrap.)
+            if (variableEnd < variableStart + 8)
             {
                 return true; // a bare Confirm: the server speaks only Standard RDP security
             }

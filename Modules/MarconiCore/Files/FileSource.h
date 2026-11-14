@@ -64,6 +64,13 @@ namespace Marconi
         // The folder holding `path`; a root ("/" or "C:/") is its own parent.
         std::string ParentPath(const std::string& path);
         std::string FileName(const std::string& path);
+        // Whether a name from a listing is one file or folder name and nothing more, so joining it to a folder
+        // stays inside that folder. The other computer chooses these names, so "..", a name with a separator in
+        // it and (on Windows) a drive, a stream or a device name are all refused.
+        bool IsSafeEntryName(const std::string& name);
+        // How many folders deep a copy may go. Deeper than any real folder tree, and it stops a listing that
+        // never ends.
+        constexpr int kMaxFolderDepth = 64;
         // "report.pdf" -> "report (2).pdf", or (3) and so on: the first name `taken` says is free.
         std::string KeepBothName(const std::string& name, const std::function<bool(const std::string&)>& taken);
     } // namespace Files

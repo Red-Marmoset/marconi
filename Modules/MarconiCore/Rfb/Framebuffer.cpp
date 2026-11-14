@@ -69,8 +69,11 @@ namespace Marconi
 
         bool Framebuffer::Contains(const Rect& rect) const
         {
-            return rect.x >= 0 && rect.y >= 0 && rect.width >= 0 && rect.height >= 0 && rect.Right() <= m_width &&
-                   rect.Bottom() <= m_height;
+            // Added as 64-bit numbers: Marconi's own protocol carries 32-bit positions and sizes, and a huge one
+            // would otherwise wrap round to a negative edge and pass.
+            return rect.x >= 0 && rect.y >= 0 && rect.width >= 0 && rect.height >= 0 &&
+                   static_cast<int64_t>(rect.x) + rect.width <= m_width &&
+                   static_cast<int64_t>(rect.y) + rect.height <= m_height;
         }
 
         void Framebuffer::Fill(const Rect& rect, uint32_t colour)

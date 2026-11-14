@@ -88,10 +88,10 @@ namespace Marconi
             void CopyItem(const Item& item);
             bool CopyTree(const Item& item, const std::string& sourcePath, const FileEntry& entry,
                           const std::string& destinationFolder, const std::set<std::string>& existing,
-                          TransferStatus& status);
+                          TransferStatus& status, int depth = 0);
             bool CopyFile(const Item& item, const std::string& sourcePath, const std::string& destinationPath,
                           bool replace, TransferStatus& status);
-            uint64_t MeasureTree(FileSource& source, const std::string& path, const FileEntry& entry);
+            uint64_t MeasureTree(FileSource& source, const std::string& path, const FileEntry& entry, int depth = 0);
             static std::set<std::string> ListNames(FileSource& source, const std::string& folder);
             // Where to write `name` in `folder` (whose names are `existing`), after asking about an existing file.
             // Empty means skip.

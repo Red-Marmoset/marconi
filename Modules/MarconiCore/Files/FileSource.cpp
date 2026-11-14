@@ -58,6 +58,50 @@ namespace Marconi
             return slash == std::string::npos ? trimmed : trimmed.substr(slash + 1);
         }
 
+        bool IsSafeEntryName(const std::string& name)
+        {
+            if (name.empty() || name == "." || name == "..")
+            {
+                return false;
+            }
+            for (char c : name)
+            {
+                if (c == '/' || static_cast<unsigned char>(c) < 0x20 || c == 0x7F)
+                {
+                    return false;
+                }
+            }
+#if defined(_WIN32)
+            // Windows also splits paths at a backslash, reads "name:stream" and "C:name" specially, and drops
+            // dots and spaces from the end of a name (so ".. " would become "..").
+            if (name.find_first_of("\\:") != std::string::npos || name.back() == '.' || name.back() == ' ')
+            {
+                return false;
+            }
+            // Device names (CON, NUL, COM1...) open the device whatever folder and extension they are given.
+            std::string stem = name.substr(0, name.find('.'));
+            while (!stem.empty() && stem.back() == ' ')
+            {
+                stem.pop_back();
+            }
+            for (char& c : stem)
+            {
+                c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+            }
+            if (stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" || stem == "CONIN$" ||
+                stem == "CONOUT$")
+            {
+                return false;
+            }
+            if (stem.size() == 4 && (stem.compare(0, 3, "COM") == 0 || stem.compare(0, 3, "LPT") == 0) &&
+                stem[3] >= '0' && stem[3] <= '9')
+            {
+                return false;
+            }
+#endif
+            return true;
+        }
+
         std::string KeepBothName(const std::string& name, const std::function<bool(const std::string&)>& taken)
         {
             // The number goes before the last extension; a name that starts with its only dot has no extension.

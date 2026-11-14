@@ -83,6 +83,14 @@ namespace Marconi
                         der.push_back(lengthBytes[i]);
                     }
                 }
+                // A login message is a few kilobytes. Without a limit the server could name any size up to 4 GB
+                // and have that much memory set aside before a byte of it arrives.
+                constexpr size_t kMaxTsRequestBytes = 1024 * 1024;
+                if (length > kMaxTsRequestBytes)
+                {
+                    error = "the server's CredSSP reply was implausibly large";
+                    return false;
+                }
                 size_t headerSize = der.size();
                 der.resize(headerSize + length);
                 if (!readExact(der.data() + headerSize, length))
