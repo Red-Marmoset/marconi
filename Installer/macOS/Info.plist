@@ -1,16 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Copyright (c) 2026 Red Marmoset Studios Ltd. -->
-<!-- Info.plist for Marconi.app. Package.sh fills in the @VERSION@, @SHORT_VERSION@ and @MIN_MACOS@ placeholders. -->
+<!-- Marconi.app's own Info.plist entries. The Una engine's Packaging/PackageProject.sh starts from this and adds the
+     executable, icon, version, bundle identifier and minimum macOS from Project.json and the build. -->
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Marconi</string>
-    <key>CFBundleExecutable</key>
-    <string>Marconi</string>
-    <key>CFBundleIconFile</key>
     <string>Marconi</string>
     <key>CFBundleURLTypes</key>
     <array>
@@ -23,22 +20,8 @@
             </array>
         </dict>
     </array>
-    <key>CFBundleIdentifier</key>
-    <string>com.redmarmosetstudios.marconi</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
     <key>CFBundleName</key>
     <string>Marconi</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>@SHORT_VERSION@</string>
-    <key>CFBundleVersion</key>
-    <string>@VERSION@</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.utilities</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>@MIN_MACOS@</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>

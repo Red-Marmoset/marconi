@@ -2,7 +2,8 @@
 # Copyright (c) 2026 Red Marmoset Studios Ltd.
 # Tools/make_mcpb.sh - Make the Claude Desktop extension (marconi.mcpb): Installer/Mcpb/manifest.json filled in, and
 # the MarconiMcp program as server/<its name>, in a zip without folder entries (Anthropic's mcpb tool can't unpack
-# those). Package.sh runs it on macOS after signing MarconiMcp; Build.ps1 does the same on Windows itself.
+# those). Installer/macOS/BeforeSigning.sh runs it on macOS after MarconiMcp is signed; Build.ps1 does the same on
+# Windows itself.
 #
 #   Tools/make_mcpb.sh <MarconiMcp program> <platform: darwin|win32|linux> <version MAJOR.MINOR.PATCH> <output.mcpb>
 

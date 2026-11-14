@@ -3,8 +3,11 @@
 # Renders the app icons:
 #
 #   Modules/MarconiUI/Resources/Marconi.ico    embedded in the Windows executable and installer
-#   Modules/MarconiUI/Resources/Marconi.icns   the macOS app bundle's icon (Package.sh), the same mark on a white
-#                                              rounded-square plate as macOS icons expect
+#   Assets/AppIcon.png                         1024x1024, the icon Project.json's package.iconImage names: the Una
+#                                              engine's packaging makes the macOS app's icon and the disk image's
+#                                              background from it (the mark on a white plate)
+#   Modules/MarconiUI/Resources/Marconi.icns   the same picture as a macOS icon, for PackageServer.sh until the
+#                                              server's packaging goes through the engine too
 #   Installer/Linux/icons/hicolor/<size>x<size>/apps/marconi.png
 #                                              the Linux package's icons (Package.sh), one PNG per size in the layout
 #                                              /usr/share/icons expects
@@ -123,6 +126,10 @@ def main():
     # stay crisp instead of being downscaled from 256.
     images[-1].save(ico, format="ICO", sizes=[(n, n) for n in SIZES], append_images=images[:-1])
     print("Wrote " + ico)
+
+    app_icon = os.path.join(root, "Assets", "AppIcon.png")
+    draw_mac_icon(1024).save(app_icon, format="PNG", optimize=True)
+    print("Wrote " + app_icon)
 
     icns = os.path.join(resources, "Marconi.icns")
     images = [draw_mac_icon(size) for size in MAC_SIZES]

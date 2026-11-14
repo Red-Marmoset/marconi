@@ -67,13 +67,13 @@ it before working on that, follow its phases in order, and keep it current.
 - **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
   `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local. Its branding bitmaps (`Installer/Art/`) come from
   `python Tools/make_installer_art.py`; rerun it after changing the icon, accent colour or fonts.
-- **macOS disk image:** `./Package.sh` builds Release, wraps the binary in `Marconi.app` (`Installer/macOS/Info.plist`,
-  `Marconi.icns`, fonts in `Contents/Resources`), signs it ad-hoc or with `MARCONI_SIGN_IDENTITY`, and writes
-  `Build/Installer/Marconi-<version>-macos-<arch>.dmg`. BuildTool itself makes a bare executable, not a bundle.
-  Finder lays out the image's window (`Installer/macOS/DmgWindow.applescript`, sizes in `Tools/dmg_layout.py`,
-  background `Installer/Art/DmgBackground*.png` from `make_installer_art.py`), because macOS 26 ignores a background
-  Finder didn't set; so it needs a logged-in screen and permission to control Finder (README, "Packaging on a build
-  server"). Opening a Finder window takes focus, so don't run it while the owner is typing without saying so.
+- **macOS disk image:** `./Package.sh` builds Release, checks the version, then hands the binary to the engine's
+  `Packaging/PackageProject.sh`, which makes `Marconi.app` and `Build/Installer/Marconi-<version>-macos-<arch>.dmg`
+  from `Project.json`'s `package` section: the icon and background from `Assets/AppIcon.png` (drawn by
+  `Tools/make_app_icon.py`), `Installer/macOS/Info.plist` for Marconi's own entries, signing as the `signing`
+  section says. Finder lays out the disk image's window, so it needs a logged-in screen and permission to control
+  Finder (the engine's `Packaging/README.md`). Opening a Finder window takes focus, so don't run it while the owner
+  is typing without saying so. BuildTool itself makes a bare executable, not a bundle.
 - **Linux package:** `./Package.sh` on Linux builds Release and makes a Debian package,
   `Build/Installer/Marconi-<version>-linux-<arch>.deb`: the app as `/usr/bin/marconi`,
   `/usr/bin/marconi-mcp` (MarconiMcp) with `Apps.json` in `/usr/share/marconi`, `Installer/Linux/marconi.desktop`, the

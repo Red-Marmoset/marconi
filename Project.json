@@ -1,7 +1,7 @@
 {
     "name": "Marconi",
     "type": "windowed",
-    "version": "0.11.10",
+    "version": "0.11.11",
     "description": "Marconi - cross-platform VNC client",
     "modules": [
         "MarconiCore",
@@ -11,6 +11,10 @@
     "package": {
         "displayName": "Marconi",
         "publisher": "Red Marmoset Studios Ltd.",
+        "iconImage": "Assets/AppIcon.png",
+        "accentColour": "#B22234",
+        "titleFont": "Assets/Fonts/NebulaSans-Black.ttf",
+        "textFont": "Assets/Fonts/NebulaSans-Semibold.ttf",
         "build": "Build.ps1",
         "files": [
             {
@@ -37,7 +41,17 @@
             "ShellExecAsUser"
         ],
         "outputDir": "Build/Installer",
-        "zip": false
+        "zip": false,
+        "macos": {
+            "bundleIdentifier": "com.redmarmosetstudios.marconi",
+            "infoPlist": "Installer/macOS/Info.plist",
+            "category": "public.app-category.utilities",
+            "buildFiles": [
+                "MarconiMcp",
+                "Apps.json"
+            ],
+            "beforeSigning": "Installer/macOS/BeforeSigning.sh"
+        }
     },
     "signing": {
         "windows": {

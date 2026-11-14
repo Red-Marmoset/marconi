@@ -7,10 +7,12 @@
 #
 # Both start by building the Release app with Build.sh and checking that the build is the current source's version.
 #
-# macOS: wraps Build/Marconi/Release/Marconi in Marconi.app (Info.plist from Installer/macOS, the icon, and Nebula
-# Sans in Contents/Resources), signs it and puts it on a disk image beside an Applications shortcut, so it installs
-# by dragging. Finder lays out the disk image's window, so it has to run with someone logged in to the Mac's screen
-# and be allowed to control Finder (see check_finder below).
+# macOS: hands Build/Marconi/Release/Marconi to the Una engine's Packaging/PackageProject.sh, which makes Marconi.app
+# (Installer/macOS/Info.plist, the icon from Assets/AppIcon.png, Nebula Sans in Contents/Resources, MarconiMcp beside
+# the app's program with the Claude Desktop extension made from it by Installer/macOS/BeforeSigning.sh), signs it
+# and puts it on a disk image to drag it to Applications from, all as Project.json's package section says. Finder
+# lays out the disk image's window, so it has to run with someone logged in to the Mac's screen and be allowed to
+# control Finder (the engine's Packaging/README.md, "Packaging on a build server"); that is checked before the build.
 #
 # Signing: with the Developer ID Application certificate in this Mac's keychain when there is exactly one, else
 # ad hoc, which runs on the Mac that built it (on another Mac, Gatekeeper blocks a downloaded copy until it's
@@ -48,29 +50,7 @@ fail() {
     exit 1
 }
 
-# Finder lays out the disk image's window (Installer/macOS/DmgWindow.applescript): macOS 26 shows a background picture
-# only when Finder set it itself. That needs a desktop session (someone logged in to the Mac's screen) and permission
-# for the program that started Package.sh to control Finder (Privacy & Security > Automation). Checked before the
-# build, so a build server without them stops straight away and says which is missing.
-check_finder() {
-    local session result
-    session="$(launchctl managername 2> /dev/null || echo unknown)"
-    if [[ "$session" != "Aqua" ]]; then
-        fail "Finder lays out the disk image's window, and that needs someone logged in to the Mac's screen, but this runs outside it (a \"$session\" session: over SSH, or as a background service). Run it in Terminal on the Mac, or run the build server's agent as a user logged in to the screen (see README, \"Packaging on a build server\")."
-    fi
-    if ! result="$(osascript -e 'tell application "Finder" to get name of startup disk' 2>&1)"; then
-        case "$result" in
-            *-1743*)
-                fail "the program that started Package.sh isn't allowed to control Finder, which lays out the disk image's window. Allow it in System Settings > Privacy & Security > Automation (Terminal, or the build server's agent: see README, \"Packaging on a build server\"). Finder said: $result" ;;
-            *-1712*)
-                fail "Finder didn't answer in time. If macOS is asking on the Mac's screen whether this program may control Finder, nobody answered it (see README, \"Packaging on a build server\"). Finder said: $result" ;;
-            *-600*)
-                fail "Finder isn't running, and it lays out the disk image's window. Log in to the Mac's screen, or start Finder. Finder said: $result" ;;
-            *)
-                fail "couldn't ask Finder to lay out the disk image's window: $result" ;;
-        esac
-    fi
-}
+ENGINE="${UNA_ENGINE_PATH:-$ROOT/../engine}"
 
 CLEAN=0
 SKIP_BUILD=0
@@ -88,10 +68,11 @@ done
 case "$(uname -s)" in
     Darwin)
         PLATFORM=macos
-        for tool in git hdiutil codesign otool lipo plutil python3 osascript tiffutil; do
-            command -v "$tool" > /dev/null || fail "$tool not found. Install the Xcode command line tools (xcode-select --install)."
-        done
-        check_finder
+        command -v git > /dev/null || fail "git not found. Install the Xcode command line tools (xcode-select --install)."
+        [[ -f "$ENGINE/Packaging/PackageProject.sh" ]] ||
+            fail "the Una engine at $ENGINE has no Packaging/PackageProject.sh: update it, or set UNA_ENGINE_PATH."
+        # The engine's packaging checks Finder, its permission, the tools and Project.json before the build
+        bash "$ENGINE/Packaging/PackageProject.sh" --check-only --project-dir "$ROOT"
         ;;
     Linux)
         PLATFORM=linux
@@ -147,119 +128,6 @@ fi
 INSTALLER_DIR="$ROOT/Build/Installer"
 mkdir -p "$INSTALLER_DIR"
 OUT_FILE=""
-
-package_macos() {
-    # Only system libraries may be linked dynamically: anything else would be missing on other Macs.
-    local nonSystem
-    nonSystem="$(otool -L "$EXE" | tail -n +2 | awk '{print $1}' | grep -vE '^(/usr/lib/|/System/Library/)' || true)"
-    if [[ -n "$nonSystem" ]]; then
-        fail "Marconi links libraries that other Macs won't have:"$'\n'"$nonSystem"
-    fi
-
-    local archs archLabel minMacos
-    archs="$(lipo -archs "$EXE" 2>/dev/null || uname -m)"
-    archLabel="$(tr ' ' '-' <<< "$archs")"
-    if [[ "$archs" == *" "* ]]; then
-        archLabel="universal"
-    fi
-    # The oldest macOS the binary runs on, from its LC_BUILD_VERSION load command (the build Mac's SDK by default).
-    minMacos="$(otool -l "$EXE" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')"
-    [[ -n "$minMacos" ]] || minMacos="11.0"
-
-    # Stage: Marconi.app plus an Applications shortcut, which become the disk image's contents.
-    local stageDir app
-    stageDir="$INSTALLER_DIR/StageMac"
-    app="$stageDir/Marconi.app"
-    rm -rf "$stageDir"
-    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-
-    cp "$EXE" "$app/Contents/MacOS/Marconi"
-    sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/$BASE_VERSION/g" -e "s/@MIN_MACOS@/$minMacos/g" \
-        "$ROOT/Installer/macOS/Info.plist" > "$app/Contents/Info.plist"
-    plutil -lint "$app/Contents/Info.plist" > /dev/null
-    printf 'APPL????' > "$app/Contents/PkgInfo"
-    cp "$ROOT/Modules/MarconiUI/Resources/Marconi.icns" "$app/Contents/Resources/"
-    cp "$ROOT/Assets/Fonts/NebulaSans-Black.ttf" "$ROOT/Assets/Fonts/NebulaSans-Semibold.ttf" \
-        "$ROOT/Assets/Fonts/NebulaSans-LICENSE.txt" "$app/Contents/Resources/"
-    cp "$ROOT/LICENSE" "$app/Contents/Resources/LICENSE.txt"
-    # MarconiMcp beside the app's own program, and the list of apps it looks for with the other resources.
-    cp "$MCP_EXE" "$app/Contents/MacOS/MarconiMcp"
-    cp "$APPS_JSON" "$app/Contents/Resources/Apps.json"
-
-    # The Developer ID certificate in the keychain, when there is exactly one and no choice was made
-    IDENTITY="$(signing_input macos.identity)"
-    if [[ -z "$IDENTITY" ]]; then
-        local found
-        found="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Developer ID Application: [^"]*"' | tr -d '"' | sort -u || true)"
-        if [[ -n "$found" && "$(wc -l <<< "$found")" -eq 1 ]]; then
-            IDENTITY="$found"
-        else
-            IDENTITY="-"
-        fi
-    fi
-    # MarconiMcp first: code inside a bundle is signed before the bundle around it, each on its own (Apple advises
-    # against --deep).
-    if [[ "$IDENTITY" == "-" ]]; then
-        codesign --force --sign - "$app/Contents/MacOS/MarconiMcp"
-    else
-        # Notarization requires the hardened runtime and a secure timestamp.
-        codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app/Contents/MacOS/MarconiMcp"
-    fi
-    # The Claude Desktop extension, made from the signed MarconiMcp, among the resources the app's signature seals.
-    bash "$ROOT/Tools/make_mcpb.sh" "$app/Contents/MacOS/MarconiMcp" darwin "$BASE_VERSION" \
-        "$app/Contents/Resources/marconi.mcpb"
-    if [[ "$IDENTITY" == "-" ]]; then
-        codesign --force --sign - "$app"
-    else
-        codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app"
-    fi
-    codesign --verify --strict "$app"
-
-    OUT_FILE="$INSTALLER_DIR/Marconi-$VERSION-macos-$archLabel.dmg"
-    rm -f "$OUT_FILE"
-
-    echo "[Package.sh] Version=$VERSION"
-    echo "[Package.sh] Arch=$archs MinMacOS=$minMacos"
-    echo "[Package.sh] Signing=$IDENTITY"
-
-    # The disk image: Marconi.app and an Applications shortcut, large, either side of the background's arrow, in a
-    # square window (Tools/dmg_layout.py). The background, normal and Retina sizes in one file, goes in a hidden
-    # .background folder, where Finder takes it from.
-    ln -s /Applications "$stageDir/Applications"
-    mkdir "$stageDir/.background"
-    tiffutil -cathidpicheck "$ROOT/Installer/Art/DmgBackground.png" "$ROOT/Installer/Art/DmgBackground@2x.png" \
-        -out "$stageDir/.background/background.tiff" 2> /dev/null
-
-    # A writable image first, with room for the window settings Finder saves on it; compressed afterwards.
-    local rwImage mountPoint layout sizeMb
-    rwImage="$INSTALLER_DIR/Marconi-rw.dmg"
-    rm -f "$rwImage"
-    sizeMb=$(( $(du -sm "$stageDir" | cut -f 1) + 20 ))
-    hdiutil create -quiet -volname "Marconi" -srcfolder "$stageDir" -fs HFS+ -format UDRW -size "${sizeMb}m" -ov "$rwImage"
-    mountPoint="$(hdiutil attach -readwrite -noverify -noautoopen "$rwImage" | awk -F'\t' '/\/Volumes\// { print $NF }')"
-    [[ -d "$mountPoint" ]] || fail "couldn't open $rwImage to lay out its window."
-    layout="$(cd "$ROOT/Tools" && python3 -c 'import dmg_layout as l; print(l.WINDOW_SIZE, l.ICON_SIZE, l.TEXT_SIZE, l.ICON_Y, l.APP_X, l.APPLICATIONS_X)')"
-    # shellcheck disable=SC2086  # the layout is six numbers
-    if ! osascript "$ROOT/Installer/macOS/DmgWindow.applescript" "$(basename "$mountPoint")" $layout; then
-        hdiutil detach -quiet "$mountPoint" || true
-        fail "Finder couldn't lay out the disk image's window (see check_finder at the top of Package.sh)."
-    fi
-    rm -rf "$mountPoint/.fseventsd"
-    sync
-    hdiutil detach -quiet "$mountPoint"
-    hdiutil convert -quiet "$rwImage" -format UDZO -o "$OUT_FILE"
-    rm -f "$rwImage"
-
-    if [[ "$IDENTITY" != "-" ]]; then
-        codesign --force --timestamp --sign "$IDENTITY" "$OUT_FILE"
-        local notaryProfile
-        notaryProfile="$(signing_input macos.notaryProfile)"
-        if [[ -n "$notaryProfile" ]]; then
-            xcrun notarytool submit "$OUT_FILE" --keychain-profile "$notaryProfile" --wait
-            xcrun stapler staple "$OUT_FILE"
-        fi
-    fi
-}
 
 package_linux() {
     # Only system libraries may be linked dynamically: anything from the build tree would be missing elsewhere.
@@ -346,15 +214,9 @@ CONTROL
 }
 
 if [[ "$PLATFORM" == macos ]]; then
-    package_macos
-    HASH="$(shasum -a 256 "$OUT_FILE" | awk '{print $1}')"
-    echo ""
-    echo "Disk image: $OUT_FILE"
-    echo "SHA256:     $HASH"
+    bash "$ENGINE/Packaging/PackageProject.sh" --executable "$EXE" --version "$VERSION" --project-dir "$ROOT"
     if [[ -n "$DIRTY" ]]; then
         echo "WARNING: built with uncommitted changes; don't publish this one."
-    elif [[ "$IDENTITY" == "-" ]]; then
-        echo "Ad-hoc signed: fine for testing, but other Macs need 'Open Anyway' in System Settings > Privacy & Security."
     else
         echo "To mark the release: git tag v$VERSION; git push origin v$VERSION"
     fi
