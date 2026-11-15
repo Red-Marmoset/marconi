@@ -5,6 +5,10 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.18
+
+- A Marconi Server password can be any length again.
+
 ## 0.11.17
 
 - Security: a new Marconi Server password needs at least 8 characters.

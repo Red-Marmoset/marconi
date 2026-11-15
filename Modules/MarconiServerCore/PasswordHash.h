@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -12,14 +11,6 @@ namespace Marconi
 {
     namespace Server
     {
-        // The shortest access password the tray icon and the command line take. A password set before this rule
-        // keeps working: only its hash is stored, so its length isn't known.
-        constexpr size_t kMinPasswordLength = 8;
-
-        // True if `password` (UTF-8) has at least kMinPasswordLength characters. Counts characters, not bytes, so
-        // four accented letters don't pass as eight.
-        bool IsPasswordLongEnough(const std::string& password);
-
         // Hashes `password` with a fresh random salt and returns a self-describing string that HashMatches reads
         // back: "pbkdf2$<iterations>$<saltHex>$<hashHex>". Store this, never the password.
         std::string HashPassword(const std::string& password, uint32_t iterations = 200000);

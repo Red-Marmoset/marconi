@@ -352,10 +352,8 @@ A read-through of the client and server for weaknesses, and the fixes that follo
 
 Done since, on the owner's say-so (0.11.17, 2026-11-15):
 
-- **Password length.** A new access password needs 8 characters (`IsPasswordLongEnough` in `PasswordHash.h`,
-  counting characters, not bytes): the tray's first-run prompt and Set password, `--set-password`,
-  `--control-set-password` and `--set-password-file`. A password set earlier keeps working (only its hash is kept,
-  so its length isn't known). `--password` (for testing) and `--password-hash` are not checked.
+- **Password length.** 0.11.17 required 8 characters for a new access password; the owner didn't want a minimum,
+  so 0.11.18 took it out again. Only an empty password is refused. Don't add a minimum back without asking.
 - **Firewall.** The installer's rule is `profile=private,domain`. A silent upgrade (an update sent from a viewer)
   keeps an earlier rule that covered every network, so nobody updating from afar is cut off; installing by hand
   narrows it. When every network in use is marked Public, the installer says other computers can't connect until

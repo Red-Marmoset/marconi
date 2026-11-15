@@ -114,8 +114,8 @@ namespace Marconi
                 return wxBitmapBundle::FromBitmaps(bitmaps);
             }
 
-            // Asks for an access password, and asks again if it is left empty (a server with no password refuses every
-            // viewer) or is shorter than kMinPasswordLength. Returns false if the person cancelled. On OK, `hashOut` is the stored hash.
+            // Asks for an access password, and asks again if it is left empty: a server with no password refuses every
+            // viewer. Returns false if the person cancelled. On OK, `hashOut` is the stored hash.
             bool AskForPassword(const wxString& message, std::string& hashOut)
             {
                 wxString prompt = message;
@@ -130,11 +130,6 @@ namespace Marconi
                     if (password.IsEmpty())
                     {
                         prompt = "A password is needed: without one, nobody can connect.\n\n" + message;
-                        continue;
-                    }
-                    if (!Server::IsPasswordLongEnough(password.utf8_string()))
-                    {
-                        prompt = "The password needs at least 8 characters.\n\n" + message;
                         continue;
                     }
                     hashOut = Server::HashPassword(password.utf8_string());
@@ -339,7 +334,7 @@ namespace Marconi
             if (m_config->IsFirstRun())
             {
                 std::string hash;
-                if (AskForPassword("Welcome to Marconi Server.\n\nSet an access password of at least 8 characters. Viewers are asked for it when "
+                if (AskForPassword("Welcome to Marconi Server.\n\nSet an access password. Viewers are asked for it when "
                                    "they connect, and nobody can connect until you set one.",
                                    hash))
                 {
@@ -425,17 +420,11 @@ namespace Marconi
             }
             // Hash first and erase the file straight away, so the plain password sits on disk for as short a time as
             // possible; the hash is what is stored.
-            const bool longEnough = Server::IsPasswordLongEnough(password);
-            std::string hash = longEnough ? Server::HashPassword(password) : std::string();
+            std::string hash = Server::HashPassword(password);
             password.assign(password.size(), '\0');
             if (!Server::ErasePasswordFile(path.utf8_string()))
             {
                 LOG_WARNING("Server", "The password file could not be removed");
-            }
-            if (!longEnough)
-            {
-                LOG_WARNING("Server", "The password in the file is shorter than 8 characters; it was not set");
-                return 1;
             }
             if (hash.empty())
             {

@@ -235,7 +235,7 @@ You don't have to walk to the other computer. While you are connected to a Windo
    (you can untick that too). The firewall is opened on networks Windows has marked Private or as a work network,
    not Public ones; if that computer's network is marked Public, Setup says so, and other computers can't connect
    until you set it to Private in Windows' network settings. When Setup finishes, Marconi Server starts and asks you
-   to choose an **access password** of at least 8 characters. Anyone who knows it can control that computer, so pick
+   to choose an **access password**. Anyone who knows it can control that computer, so pick
    one you would not mind guarding. It doesn't have to match the VNC password.
 4. Close the connection and connect again. Marconi finds Marconi Server by itself and uses it;
    your saved connection stays as it is.
