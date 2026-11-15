@@ -68,8 +68,12 @@ engine changes included, with no branches left behind.
 - **AI tools (MarconiMcp):** `MCP_PLAN.md`. The app's build also builds `Mcp/Project.json` and puts `MarconiMcp` and
   the engine's `Packaging/Apps.json` beside Marconi; the installer's AI tools page is `Installer/AiTools.nsh`, which
   includes the engine's `Packaging/Include/DetectApps.nsh`.
-- **Installer:** `.\Package.ps1` builds Release and runs NSIS on `Installer/Marconi.nsi`, giving
-  `Build/Installer/Marconi-<version>-win64-setup.exe`. It ships the MSVC runtime DLLs app-local. Its branding bitmaps (`Installer/Art/`) come from
+- **Installer:** `.\Package.ps1` builds Release and packages it with the una engine's `Packaging/PackageProject.ps1`
+  and its standard `Installer.nsi`, giving `Build/Installer/Marconi-<version>-win64-setup.exe`. `Project.json`'s
+  `package.windows` turns on the engine's options (Just me or Everyone, closing a running Marconi, `vnc://`, ...);
+  `Installer/Marconi.nsh` adds what is Marconi's alone (the AI tools page and component, the Marconi Server installer,
+  removing saved data on uninstall, the wording). The server's installer is `PackageServer.ps1` through the same
+  engine script, with `ServerUI/Project.json` and its own `Installer/MarconiServer.nsi`. It ships the MSVC runtime DLLs app-local. Its branding bitmaps (`Installer/Art/`) come from
   `python Tools/make_installer_art.py`; rerun it after changing the icon, accent colour or fonts.
 - **macOS disk image:** `./Package.sh` builds Release, checks the version, then hands the binary to the engine's
   `Packaging/PackageProject.sh`, which makes `Marconi.app` and `Build/Installer/Marconi-<version>-macos-<arch>.dmg`

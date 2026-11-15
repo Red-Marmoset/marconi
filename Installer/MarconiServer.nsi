@@ -1,5 +1,6 @@
 ; Copyright (c) 2026 Red Marmoset Studios Ltd.
-; NSIS script for the Marconi Server installer (Windows). Package.ps1 builds and stages the server and runs makensis with:
+; NSIS script for the Marconi Server installer (Windows). PackageServer.ps1 builds the server and the una engine's
+; Packaging\PackageProject.ps1 stages it and runs makensis with:
 ;   /DVERSION=0.1.0.27         MAJOR.MINOR.PATCH.REVISION, the same as the client's
 ;   /DSTAGE_DIR=<dir>          App\ holds MarconiServer.exe and the MSVC runtime DLLs; UninstallFiles.nsh deletes them;
 ;                              LicensePage.txt is the license with one line per paragraph
@@ -68,7 +69,7 @@ VIAddVersionKey /LANG=0 "FileDescription" "${APP_NAME} ${VERSION} Setup"
 VIAddVersionKey /LANG=0 "CompanyName" "${PUBLISHER}"
 VIAddVersionKey /LANG=0 "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}"
 
-; Authenticode signing, when Package.ps1 is configured for it (see Marconi.nsi).
+; Authenticode signing, when Package.ps1 is configured for it (MARCONI_SIGN_THUMBPRINT; see Package.ps1).
 !ifdef SIGN_SCRIPT
     !uninstfinalize '"${SIGN_SCRIPT}" "%1"' = 0
     !finalize '"${SIGN_SCRIPT}" "%1"' = 0

@@ -627,6 +627,12 @@ saved connection.
 
 - **Update 2026-11-14 (owner):** F8 > Install Marconi Server on the Other Computer has been used for real, on the
   owner's Windows PC "drips", and works. The notes below are from before that run.
+- **Update 2026-11-15:** `PackageServer.ps1` now builds the tray program and hands it to the engine's
+  `Packaging/PackageProject.ps1` (`-Executable`, `-Version`), with `ServerUI/Project.json`'s `package` section
+  (`installerScript` is still `Installer/MarconiServer.nsi`, `windows.executableName` ships it as `MarconiServer.exe`,
+  `signing.windows` names `MARCONI_SIGN_THUMBPRINT`). Run on Windows: it stages the same files as the old script did,
+  signs the program and the installer, and checks the version stamped into the program, which it now has (point 6
+  below no longer holds). The client's installer is the engine's standard `Installer.nsi` with `Installer/Marconi.nsh`.
 
 - Done and checked here: `Installer/MarconiServer.nsi` and the client's `Installer/Marconi.nsi` (with the new "Marconi
   Server installer" component) both compile with makensis 3.09 under `/WX`, with a stand-in payload and the

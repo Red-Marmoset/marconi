@@ -36,12 +36,53 @@
             "marconi.mcpb"
         ],
         "license": "LICENSE",
-        "installerScript": "Installer/Marconi.nsi",
+        "icon": "Modules/MarconiUI/Resources/Marconi.ico",
+        "wizardBitmap": "Installer/Art/Wizard.bmp",
+        "headerBitmap": "Installer/Art/Header.bmp",
+        "installerInclude": "Installer/Marconi.nsh",
         "nsisPlugins": [
             "ShellExecAsUser"
         ],
         "outputDir": "Build/Installer",
         "zip": false,
+        "windows": {
+            "installFor": "choice",
+            "closeRunningApp": true,
+            "licenseTicked": true,
+            "desktopShortcut": "unticked",
+            "startMenuShortcut": "optional",
+            "sourceUrl": "https://github.com/Red-Marmoset/marconi",
+            "sourceUrlText": "Open the source code on GitHub",
+            "urlProtocols": [
+                {
+                    "scheme": "vnc",
+                    "description": "URL:VNC connection"
+                }
+            ],
+            "componentFiles": [
+                "MarconiMcp.exe",
+                "Apps.json",
+                "marconi.mcpb"
+            ],
+            "files": [
+                {
+                    "from": "Assets/Fonts/NebulaSans-Black.ttf",
+                    "to": "NebulaSans-Black.ttf"
+                },
+                {
+                    "from": "Assets/Fonts/NebulaSans-Semibold.ttf",
+                    "to": "NebulaSans-Semibold.ttf"
+                },
+                {
+                    "from": "Assets/Fonts/NebulaSans-LICENSE.txt",
+                    "to": "NebulaSans-LICENSE.txt"
+                },
+                {
+                    "from": "LICENSE",
+                    "to": "LICENSE.txt"
+                }
+            ]
+        },
         "macos": {
             "iconImage": "Assets/AppIcon-macOS.png",
             "bundleIdentifier": "com.redmarmosetstudios.marconi",

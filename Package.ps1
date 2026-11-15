@@ -6,9 +6,11 @@
 # hands it out through F8 > Install Marconi Server on the Other Computer and Settings > Share this computer.
 #
 # The client is packaged by the una engine's Packaging\PackageProject.ps1, which every una project packages with. Project.json's "package"
-# section says what goes in: Marconi.exe (built Release by Build.ps1), Nebula Sans and its licence, and the MSVC
-# runtime DLLs it links against (/MD). The installer is Installer\Marconi.nsi, compiled with NSIS 3.08 or newer
-# (winget install NSIS.NSIS).
+# section says what goes in: Marconi.exe (built Release by Build.ps1), Nebula Sans and its licence, the licence, and
+# the MSVC runtime DLLs it links against (/MD). The installer is the engine's standard one (Packaging\Installer.nsi),
+# compiled with NSIS 3.08 or newer (winget install NSIS.NSIS): package.windows turns on its options (installing just
+# for me or for everyone, closing a running Marconi, vnc:// links, ...) and Installer\Marconi.nsh adds what is
+# Marconi's alone (the AI tools page, the Marconi Server installer, removing saved connections on uninstall).
 #
 # The installer's "Start Marconi now" uses the ShellExecAsUser NSIS plug-in, so Marconi starts as the signed-in user
 # rather than as administrator. Install its Unicode build as ShellExecAsUser.dll in the NSIS installation's
@@ -46,10 +48,11 @@ if (-not (Test-Path $script)) {
     Write-Host "ERROR: the una engine at $engine has no Packaging\PackageProject.ps1. Update it (git pull), or set UNA_ENGINE_PATH." -ForegroundColor Red
     exit 1
 }
-# Project.json names the signing variables in its "signing" section, which an older engine doesn't read: it would
-# make an unsigned installer without saying why.
-if (-not (Select-String -LiteralPath $script -Pattern 'thumbprintEnv' -SimpleMatch -Quiet)) {
-    Write-Host "ERROR: the una engine at $engine is too old to read Project.json's signing section. Update it (git pull)." -ForegroundColor Red
+# Project.json names the signing variables in its "signing" section, and the installer's options in package.windows,
+# which an older engine doesn't read: it would make an unsigned or plainer installer without saying why.
+if (-not (Select-String -LiteralPath $script -Pattern 'thumbprintEnv' -SimpleMatch -Quiet) -or
+    -not (Select-String -LiteralPath $script -Pattern 'installFor' -SimpleMatch -Quiet)) {
+    Write-Host "ERROR: the una engine at $engine is too old to read Project.json's signing section and package.windows. Update it (git pull)." -ForegroundColor Red
     exit 1
 }
 # The installer's AI tools page includes the engine's Packaging\Include\DetectApps.nsh, and the app ships its

@@ -586,10 +586,11 @@ as `Build\Installer\MarconiServer-<version>-win64-setup.exe` with the same versi
 prints its SHA-256, and puts it inside the Marconi installer as the "Marconi Server installer" option. The server
 installer needs the same NSIS and ShellExecAsUser plug-in as the client's. It installs for the whole computer (it asks
 for administrator permission straight away), asks for an access password, adds a Windows Firewall rule for port 1895,
-starts the tray program when someone signs in, and has an uninstaller. Neither the script nor the installer has been
-run on Windows yet (see `SERVER_PLAN.md`, Phase 2).
+starts the tray program when someone signs in, and has an uninstaller.
 
-`Installer/Marconi.nsi` is the installer script. The icons, `Modules/MarconiUI/Resources/Marconi.ico`,
+Both are packaged by the una engine's `Packaging/PackageProject.ps1`, as every una project is. Marconi's installer is
+the engine's standard one, with the options `Project.json`'s `package.windows` turns on and Marconi's own additions in
+`Installer/Marconi.nsh`; the server's is `Installer/MarconiServer.nsi`. The icons, `Modules/MarconiUI/Resources/Marconi.ico`,
 `Assets/AppIcon.png` (the bare mark, for every platform), `Assets/AppIcon-macOS.png` (the mark on a white plate,
 the Mac app's icon and disk image picture) and the Linux package's PNGs in `Installer/Linux/icons`, are rendered by
 `python Tools/make_app_icon.py` from the same drawing as the window icon in `AppIcon.cpp`. The installer's welcome panel and header images in `Installer/Art` come from

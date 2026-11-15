@@ -1,6 +1,6 @@
 ; Copyright (c) 2026 Red Marmoset Studios Ltd.
 ; The installer's "Connect Marconi to your AI tools" page, and removing what it added on uninstall. Included by
-; Marconi.nsi. It finds the tools with the engine's DetectApps.nsh (Packaging\Include, which PackageProject.ps1
+; Marconi.nsh. It finds the tools with the engine's DetectApps.nsh (Packaging\Include, which PackageProject.ps1
 ; adds to makensis's include folders) and registers with MarconiMcp.exe, which uses each tool's own commands.
 ;
 ; Registering runs as the signed-in user: installing just for them, Setup isn't elevated and waits for the answer;
