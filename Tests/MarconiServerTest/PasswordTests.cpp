@@ -35,6 +35,16 @@ namespace MarconiServerTest
             CHECK(Server::HashMatches(a, "same") && Server::HashMatches(b, "same")); // both still verify
         });
 
+        RunTest("A new password needs eight characters, counted as characters", []() {
+            CHECK(!Server::IsPasswordLongEnough(""));
+            CHECK(!Server::IsPasswordLongEnough("1234567"));
+            CHECK(Server::IsPasswordLongEnough("12345678"));
+            CHECK(Server::IsPasswordLongEnough("correct horse"));
+            // Four accented letters are eight bytes but only four characters.
+            CHECK(!Server::IsPasswordLongEnough("\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9"));
+            CHECK(Server::IsPasswordLongEnough("\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9\xC3\xA9"));
+        });
+
         RunTest("No password set lets anyone in", []() {
             Server::Auth auth("");
             CHECK(!auth.HasPassword());

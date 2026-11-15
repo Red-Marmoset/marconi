@@ -92,7 +92,8 @@ Var PrevVersion     ; and its version, for putting its Apps entry back if this i
 Var HadRunKey       ; 1 when "Start with Windows" was on before this install
 Var HadShortcut     ; 1 when the Start menu shortcut was there before this install
 Var HadFirewall     ; 1 when the firewall rule was there before this install
-Var BackupDone      ; 1 once the previous version's files are copied aside
+Var PrevFirewallAll ; 1 when that rule let every kind of network in (the rule made before 0.11.17), public ones included
+Var BackupDone     ; 1 once the previous version's files are copied aside
 Var Restored        ; 1 once they have been put back
 
 !define MUI_ICON "${APP_ICON}"
@@ -306,7 +307,14 @@ Function RestorePrevious
         CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "$PrevDir\${APP_EXE}" "" "$PrevDir\${APP_ICON_FILE}"
     ${EndIf}
     ${If} $HadFirewall == 1
-        nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$PrevDir\${APP_EXE}" enable=yes'
+        ; Put back with the reach it had.
+        StrCpy $1 "private,domain"
+        ${If} $PrevFirewallAll == 1
+            StrCpy $1 "any"
+        ${EndIf}
+        nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="${FIREWALL_RULE}"'
+        Pop $0
+        nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$PrevDir\${APP_EXE}" enable=yes profile=$1'
         Pop $0
     ${EndIf}
     StrCpy $INSTDIR "$PrevDir" ; so LaunchAsUser starts the version that was put back
@@ -420,12 +428,37 @@ SectionEnd
 Section "Allow through Windows Firewall" SecFirewall
     ; Without this, other computers can't reach the server. The rule lets this program receive connections on the
     ; port Marconi uses (${DEFAULT_PORT}); if the port is changed later, the rule needs changing too.
+    ;
+    ; The rule covers networks Windows has marked Private or as a work domain, not Public ones (a cafe, an airport):
+    ; there, strangers on the same network could otherwise reach the password prompt. One exception: an upgrade with
+    ; nobody at the computer (an update sent from a viewer) keeps an earlier rule that covered every network, so the
+    ; person updating from afar isn't cut off. Installing by hand narrows it.
+    StrCpy $1 "private,domain"
+    ${If} ${Silent}
+    ${AndIf} $PrevFirewallAll == 1
+        StrCpy $1 "any"
+    ${EndIf}
     nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="${FIREWALL_RULE}"'
     Pop $0
-    nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$INSTDIR\${APP_EXE}" enable=yes'
+    nsExec::ExecToLog '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${DEFAULT_PORT} program="$INSTDIR\${APP_EXE}" enable=yes profile=$1'
     Pop $0
     ${If} $0 != 0
         DetailPrint "Could not add the firewall rule (netsh exit code $0). Other computers may not be able to connect until port ${DEFAULT_PORT} is allowed."
+    ${ElseIf} $1 != "any"
+        ; Windows marks a new network Public unless told otherwise, and then nothing can connect: say so, since
+        ; otherwise it just looks broken. Only when every network in use is Public.
+        nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "(Get-NetConnectionProfile).NetworkCategory"'
+        Pop $0
+        Pop $2
+        ${StrStr} $3 "$2" "Public"
+        ${StrStr} $4 "$2" "Private"
+        ${StrStr} $5 "$2" "Domain"
+        ${If} $0 == 0
+        ${AndIf} $3 != ""
+        ${AndIf} "$4$5" == ""
+            DetailPrint "This computer's network is marked Public in Windows, so other computers can't connect yet."
+            MessageBox MB_OK|MB_ICONINFORMATION "Windows has this computer's network marked as Public, so other computers can't connect to ${APP_NAME} yet.$\r$\n$\r$\nIf this is your home or office network, open Windows' Settings, choose Network && internet, open your network and set it to Private. Leave it Public on a network you share with strangers." /SD IDOK
+        ${EndIf}
     ${EndIf}
 SectionEnd
 
@@ -458,8 +491,24 @@ Function RememberPreviousChoices
     nsExec::ExecToStack '"$SYSDIR\netsh.exe" advfirewall firewall show rule name="${FIREWALL_RULE}"'
     Pop $1
     Pop $2
+    StrCpy $PrevFirewallAll 0
     ${If} $1 == 0
         StrCpy $HadFirewall 1
+        ; Which kinds of network it covered: "Any", or a list such as "Domain, Private". If that can't be read, it
+        ; counts as every kind, which is what every version before 0.11.17 made.
+        StrCpy $PrevFirewallAll 1
+        nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "(Get-NetFirewallRule -DisplayName $\'${FIREWALL_RULE}$\' | Select-Object -First 1).Profile"'
+        Pop $1
+        Pop $2
+        ${StrStr} $3 "$2" "Any"
+        ${StrStr} $4 "$2" "Public"
+        ${StrStr} $5 "$2" "Private"
+        ${StrStr} $6 "$2" "Domain"
+        ${If} $1 == 0
+        ${AndIf} "$3$4" == ""
+        ${AndIf} "$5$6" != ""
+            StrCpy $PrevFirewallAll 0
+        ${EndIf}
     ${EndIf}
     ${If} ${Silent}
     ${AndIf} $0 != ""
@@ -477,7 +526,7 @@ FunctionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
     !insertmacro MUI_DESCRIPTION_TEXT ${SecApp} "The ${APP_NAME} program."
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecFirewall} "Let other computers reach ${APP_NAME} through Windows Firewall (port ${DEFAULT_PORT})."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecFirewall} "Let other computers reach ${APP_NAME} through Windows Firewall (port ${DEFAULT_PORT}), on networks Windows has marked Private or as a work network, not Public ones."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecAutoStart} "Start ${APP_NAME} when someone signs in to Windows."
     !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Add ${APP_NAME} to the Start menu."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END

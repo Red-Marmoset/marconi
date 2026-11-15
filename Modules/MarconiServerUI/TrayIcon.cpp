@@ -239,7 +239,7 @@ namespace Marconi
         {
             const bool viaHelper = m_mode.GetMode() == Server::Tray::Mode::StatusOnly;
             wxPasswordEntryDialog dialog(nullptr,
-                                         "Enter an access password for this server.\nViewers are asked for it when "
+                                         "Enter an access password for this server, at least 8 characters.\nViewers are asked for it when "
                                          "they connect, and nobody can connect without one.",
                                          "Marconi Server password");
             if (dialog.ShowModal() != wxID_OK)
@@ -250,6 +250,12 @@ namespace Marconi
             if (password.IsEmpty())
             {
                 wxMessageBox("A password is needed: without one, nobody can connect. The password was not changed.",
+                             "Marconi Server", wxOK | wxICON_INFORMATION);
+                return;
+            }
+            if (!Server::IsPasswordLongEnough(password.utf8_string()))
+            {
+                wxMessageBox("The password needs at least 8 characters. The password was not changed.",
                              "Marconi Server", wxOK | wxICON_INFORMATION);
                 return;
             }

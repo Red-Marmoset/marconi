@@ -125,6 +125,19 @@ namespace Marconi
             }
         } // namespace
 
+        bool IsPasswordLongEnough(const std::string& password)
+        {
+            size_t characters = 0;
+            for (unsigned char byte : password)
+            {
+                if ((byte & 0xC0) != 0x80) // not a continuation byte: the start of a character
+                {
+                    ++characters;
+                }
+            }
+            return characters >= kMinPasswordLength;
+        }
+
         std::string HashPassword(const std::string& password, uint32_t iterations)
         {
             std::vector<uint8_t> salt(kSaltBytes);

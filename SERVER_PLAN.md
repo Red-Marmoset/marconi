@@ -350,10 +350,20 @@ A read-through of the client and server for weaknesses, and the fixes that follo
   account.
 - **Self-update.** The staged installer is opened deny-write before it is hashed and inspected (`Hold`), not after.
 
+Done since, on the owner's say-so (0.11.17, 2026-11-15):
+
+- **Password length.** A new access password needs 8 characters (`IsPasswordLongEnough` in `PasswordHash.h`,
+  counting characters, not bytes): the tray's first-run prompt and Set password, `--set-password`,
+  `--control-set-password` and `--set-password-file`. A password set earlier keeps working (only its hash is kept,
+  so its length isn't known). `--password` (for testing) and `--password-hash` are not checked.
+- **Firewall.** The installer's rule is `profile=private,domain`. A silent upgrade (an update sent from a viewer)
+  keeps an earlier rule that covered every network, so nobody updating from afar is cut off; installing by hand
+  narrows it. When every network in use is marked Public, the installer says other computers can't connect until
+  the network is set to Private. Compiled but not run: the installer needs an administrator and changes this
+  computer's firewall.
+
 Still open, for the owner to decide (none of these is done):
 
-1. A minimum length for the access password (only an empty one is refused now).
-2. The firewall rule covers every network type, public ones included.
 3. "Ask me each time" for updates can be changed from the tray menu by a viewer using the mouse; so can file
    access. A setting a viewer can't reach needs either the Windows permission prompt or ignoring input that comes
    from the viewer on those windows.
@@ -816,7 +826,8 @@ yet):
 - Uninstall: close the tray icon, `"$INSTDIR\MarconiServer.exe" --remove-service` before deleting files; remove the
   data folder only if the person asks.
 - Firewall: a program rule, `netsh advfirewall firewall add rule name="Marconi Server" dir=in action=allow
-  program="$INSTDIR\MarconiServer.exe" enable=yes profile=any` (the helper is this same exe).
+  program="$INSTDIR\MarconiServer.exe" enable=yes profile=private,domain` (the helper is this same exe; not public
+  networks, as the tray installer does since 0.11.17).
 
 ### Phase 4: video
 

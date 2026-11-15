@@ -5,6 +5,11 @@ build adds the commit count as a fourth number (see [README.md](README.md#versio
 
 ## Unreleased
 
+## 0.11.17
+
+- Security: a new Marconi Server password needs at least 8 characters.
+- Security: Marconi Server's installer opens Windows Firewall on private and work networks only, not public ones.
+
 ## 0.11.16
 
 - Security: AI tools can no longer accept a computer's certificate or SSH key themselves; you accept it by connecting in Marconi.

@@ -105,6 +105,11 @@ namespace Marconi
                 printf("The password can't be empty: that would let anyone connect.\n");
                 return 2;
             }
+            if (!IsPasswordLongEnough(password))
+            {
+                printf("The password needs at least 8 characters.\n");
+                return 2;
+            }
             std::string hash = HashPassword(password);
             if (hash.empty())
             {
@@ -181,9 +186,9 @@ namespace Marconi
             else if (command == "set-password")
             {
                 std::string password;
-                if (!ReadPassword(password) || password.empty())
+                if (!ReadPassword(password) || !IsPasswordLongEnough(password))
                 {
-                    printf("Give the new password on standard input (it can't be empty).\n");
+                    printf("Give the new password on standard input (at least 8 characters).\n");
                     return 2;
                 }
                 code = client.SetPasswordHash(HashPassword(password), text);
